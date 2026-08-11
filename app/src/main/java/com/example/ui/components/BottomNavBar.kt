@@ -1,6 +1,9 @@
 package com.example.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -9,28 +12,30 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
-import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.outlined.AutoStories
-import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -42,15 +47,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.example.ui.theme.SpaceGrotesk
 
 enum class NavItem(val route: String, val label: String, val iconSelected: ImageVector, val iconUnselected: ImageVector) {
-    HOME("home", "Prayer", Icons.Filled.Home, Icons.Outlined.Home),
+    HOME("home", "Home", Icons.Filled.Home, Icons.Outlined.Home),
     QIBLA("qibla", "Qibla", Icons.Filled.Explore, Icons.Outlined.Explore),
     QURAN("quran", "Quran", Icons.Filled.AutoStories, Icons.Outlined.AutoStories),
     TASBEEH("tasbeeh", "Tasbeeh", Icons.Filled.RadioButtonChecked, Icons.Outlined.RadioButtonUnchecked),
-    CALENDAR("calendar", "Calendar", Icons.Filled.CalendarMonth, Icons.Outlined.CalendarMonth)
+    MORE("calendar", "More", Icons.Filled.MoreHoriz, Icons.Outlined.MoreHoriz)
 }
 
 @Composable
@@ -60,87 +63,100 @@ fun SereneBottomNavBar(
     modifier: Modifier = Modifier
 ) {
     val isDark = MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
-    val barBg = if (isDark) Color(0x99181818) else Color(0x99FFFFFF)
-    val barBorder = if (isDark) Color(0x1AFFFFFF) else Color(0x14000000)
-    val activePillBg = if (isDark) Color(0xFFF2EFE9) else Color(0xFF1A1815)
-    val activePillText = if (isDark) Color(0xFF000000) else Color(0xFFFFFFFF)
-    val inactiveText = if (isDark) Color(0xFF7A7568) else Color(0xFF6B6558)
+
+    // Floating Glass Surface Styling
+    val dockBg = if (isDark) Color(0xD91C1C1E) else Color(0xD9F5F5F7) // ~85% translucent neutral glass
+    val dockBorder = if (isDark) Color(0x26FFFFFF) else Color(0x1F000000) // subtle 1px border
+    val activeHighlightBg = if (isDark) Color(0x26FFFFFF) else Color(0x1F000000) // ~15% / 12% subtle active pill
+    val activeIconTint = if (isDark) Color(0xFFFFFFFF) else Color(0xFF1C1C1E)
+    val inactiveIconTint = if (isDark) Color(0x80FFFFFF) else Color(0x73000000)
+
+    val selectedIndex = NavItem.entries.indexOfFirst { it.route == currentRoute }.coerceAtLeast(0)
+
+    // Smooth spring active indicator movement across items
+    val animatedIndex by animateFloatAsState(
+        targetValue = selectedIndex.toFloat(),
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "dockIndicatorPosition"
+    )
 
     Box(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(bottom = 22.dp, start = 16.dp, end = 16.dp),
+            .padding(bottom = 20.dp),
         contentAlignment = Alignment.Center
     ) {
-        // Floating Liquid Glass Bar Container
+        // Floating Standalone Glass Capsule (Overlays screen content)
         Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .width(310.dp)
+                .height(62.dp)
                 .shadow(
                     elevation = 16.dp,
                     shape = CircleShape,
-                    spotColor = Color.Black.copy(alpha = if (isDark) 0.5f else 0.15f),
-                    ambientColor = Color.Black.copy(alpha = if (isDark) 0.5f else 0.15f)
+                    spotColor = Color.Black.copy(alpha = if (isDark) 0.45f else 0.18f),
+                    ambientColor = Color.Black.copy(alpha = if (isDark) 0.30f else 0.12f)
                 )
                 .clip(CircleShape)
-                .background(barBg)
+                .background(dockBg)
                 .border(
-                    border = BorderStroke(1.dp, barBorder),
+                    border = BorderStroke(1.dp, dockBorder),
                     shape = CircleShape
                 )
-                .padding(horizontal = 8.dp, vertical = 6.dp)
+                .padding(horizontal = 6.dp, vertical = 6.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                NavItem.entries.forEach { item ->
-                    val isSelected = currentRoute == item.route
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val totalWidth = maxWidth
+                val segmentWidth = totalWidth / NavItem.entries.size.toFloat()
+                val leftPos = (animatedIndex * segmentWidth.value).dp
 
-                    val animatedIconTint by animateColorAsState(
-                        targetValue = if (isSelected) activePillText else inactiveText,
-                        animationSpec = tween(durationMillis = 200),
-                        label = "navIconTint"
-                    )
+                // Active item background highlight
+                Box(
+                    modifier = Modifier
+                        .offset(x = leftPos)
+                        .width(segmentWidth)
+                        .height(50.dp)
+                        .clip(CircleShape)
+                        .background(activeHighlightBg)
+                )
 
-                    val animatedBg by animateColorAsState(
-                        targetValue = if (isSelected) activePillBg else Color.Transparent,
-                        animationSpec = tween(durationMillis = 200),
-                        label = "navBg"
-                    )
+                // 5 Icon navigation items
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    NavItem.entries.forEach { item ->
+                        val isSelected = currentRoute == item.route
 
-                    Box(
-                        modifier = Modifier
-                            .testTag("nav_${item.route}")
-                            .clip(CircleShape)
-                            .background(animatedBg)
-                            .clickable { onNavigate(item) }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                        val animatedTint by animateColorAsState(
+                            targetValue = if (isSelected) activeIconTint else inactiveIconTint,
+                            animationSpec = tween(durationMillis = 200),
+                            label = "dockIconTint"
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(50.dp)
+                                .testTag("nav_${item.route}")
+                                .clip(CircleShape)
+                                .clickable(
+                                    interactionSource = remember { MutableInteractionSource() },
+                                    indication = null
+                                ) { onNavigate(item) },
+                            contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = if (isSelected) item.iconSelected else item.iconUnselected,
                                 contentDescription = item.label,
-                                tint = animatedIconTint,
-                                modifier = Modifier.size(18.dp)
+                                tint = animatedTint,
+                                modifier = Modifier.size(23.dp)
                             )
-
-                            if (isSelected) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = item.label,
-                                    color = activePillText,
-                                    fontFamily = SpaceGrotesk,
-                                    fontSize = 12.sp,
-                                    lineHeight = 14.sp
-                                )
-                            }
                         }
                     }
                 }
@@ -148,4 +164,6 @@ fun SereneBottomNavBar(
         }
     }
 }
+
+
 

@@ -223,7 +223,7 @@ fun HomeScreen(
                                     "Qibla" -> onQuickAccessNavigate(NavItem.QIBLA)
                                     "Quran" -> onQuickAccessNavigate(NavItem.QURAN)
                                     "Tasbeeh" -> onQuickAccessNavigate(NavItem.TASBEEH)
-                                    "Calendar" -> onQuickAccessNavigate(NavItem.CALENDAR)
+                                    "Calendar" -> onQuickAccessNavigate(NavItem.MORE)
                                 }
                             }
                             .padding(horizontal = 16.dp, vertical = 9.dp)
