@@ -1,0 +1,6 @@
+{
+  "name": "FiveLight",
+  "description": "A serene, distraction-free Islamic companion app with prayer times, Qibla compass, Quran, Tasbeeh, and Hijri calendar.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
