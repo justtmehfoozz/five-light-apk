@@ -224,17 +224,10 @@ fun QiblaScreen(
         label = "animated_kaaba_glow"
     )
 
-    // Part 1: Warmth-based ambient Qibla proximity glow behind entire compass ring
+    // Part 1: Continuous Warmth-based ambient Qibla proximity glow behind entire compass ring
     // Continuous angular difference interpolation: 180° away (0.0) to 0° facing Qibla (1.0)
-    val rawProximityFactor = if (isSensorAvailable) ((180f - absDiff) / 180f).coerceIn(0f, 1f) else 0f
-    val animatedProximityGlow by animateFloatAsState(
-        targetValue = rawProximityFactor,
-        animationSpec = tween(
-            durationMillis = 200,
-            easing = FastOutSlowInEasing
-        ),
-        label = "animated_proximity_glow"
-    )
+    // Formula: intensity = (180 - angularDifference) / 180, smoothly clamped to [0.0, 1.0]
+    val proximityGlow = if (isSensorAvailable) ((180f - absDiff) / 180f).coerceIn(0f, 1f) else 0f
 
     // Subtle breathing pulse at Kaaba when closely aligned (< 5°)
     val infiniteTransition = rememberInfiniteTransition(label = "kaaba_breathing_transition")
@@ -434,7 +427,7 @@ fun QiblaScreen(
                     animatedDelta = animatedDelta,
                     animatedHeading = animatedHeading,
                     glowIntensity = animatedGlowIntensity,
-                    proximityGlow = animatedProximityGlow,
+                    proximityGlow = proximityGlow,
                     ringPulse = ringPulseAnim.value,
                     trailSweep = trailSweepAnim.value,
                     trailAlpha = trailAlphaAnim.value,

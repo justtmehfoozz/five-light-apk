@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -524,26 +526,34 @@ fun DockSearchResultsPanel(
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))
                                     Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = dua.title,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = textPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            modifier = Modifier.padding(bottom = 2.dp)
                                         ) {
-                                            Text(
-                                                text = dua.title,
-                                                fontSize = 14.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = textPrimary
-                                            )
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(CircleShape)
-                                                    .background(if (isDark) Color(0xFF2C2C2E) else Color.semanticSurfaceElevated)
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = if (isDark) Color(0xFF2C2C2E) else Color.semanticSurfaceElevated,
+                                                border = BorderStroke(0.5.dp, if (isDark) Color.White.copy(alpha = 0.08f) else LightBorder.copy(alpha = 0.5f))
                                             ) {
                                                 Text(
                                                     text = dua.category,
+                                                    fontFamily = SpaceGrotesk,
                                                     fontSize = 10.sp,
-                                                    color = textSecondary
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = textSecondary,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                                 )
                                             }
                                         }

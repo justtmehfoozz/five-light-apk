@@ -30,6 +30,18 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.CalendarMonth
@@ -1293,12 +1305,15 @@ fun PersonalLogSheet(
             .fillMaxWidth()
             .testTag("personal_log_sheet")
     ) {
+        val sheetScrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(sheetScrollState)
                 .padding(horizontal = 24.dp)
+                .imePadding()
                 .navigationBarsPadding()
-                .padding(bottom = 12.dp),
+                .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Header
@@ -2174,10 +2189,13 @@ fun PersonalLogDayDetailSheet(
         },
         modifier = Modifier.fillMaxWidth().testTag("day_detail_sheet_$dateString")
     ) {
+        val detailScrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(detailScrollState)
                 .padding(horizontal = 24.dp)
+                .imePadding()
                 .navigationBarsPadding()
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -2577,6 +2595,7 @@ fun QadaRow(
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun PersonalLogPrayerRow(
     prayerName: com.example.data.model.PrayerName,
@@ -2591,7 +2610,59 @@ fun PersonalLogPrayerRow(
 ) {
     val isFuture = status == com.example.data.model.PrayerStatus.FUTURE
     var isEditingNote by remember { mutableStateOf(false) }
-    var noteText by remember(note) { mutableStateOf(note ?: "") }
+    var textFieldValue by remember(note) {
+        mutableStateOf(
+            TextFieldValue(
+                text = note ?: "",
+                selection = TextRange((note ?: "").length)
+            )
+        )
+    }
+    var isActivelyTyping by remember { mutableStateOf(false) }
+    var isInputFocused by remember { mutableStateOf(false) }
+
+    LaunchedEffect(textFieldValue.text) {
+        if (textFieldValue.text.isNotEmpty()) {
+            isActivelyTyping = true
+            kotlinx.coroutines.delay(1800L)
+            isActivelyTyping = false
+        } else {
+            isActivelyTyping = false
+        }
+    }
+
+    val focusRequester = remember { FocusRequester() }
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val coroutineScope = rememberCoroutineScope()
+
+    LaunchedEffect(isEditingNote) {
+        if (isEditingNote) {
+            textFieldValue = textFieldValue.copy(
+                selection = TextRange(textFieldValue.text.length)
+            )
+            kotlinx.coroutines.delay(100L)
+            try {
+                focusRequester.requestFocus()
+                keyboardController?.show()
+            } catch (e: Exception) {
+                // Focus requester not attached yet
+            }
+            try {
+                bringIntoViewRequester.bringIntoView()
+            } catch (e: Exception) {
+                // Bring into view failed gracefully
+            }
+        } else {
+            isInputFocused = false
+        }
+    }
+
+    val animatedBorderColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isInputFocused) Color.semanticPrimaryAccent else Color.semanticBorder,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 180),
+        label = "noteInputBorderColorAnim"
+    )
 
     val cardBg = Color.semanticControl
     val cardBorder = BorderStroke(1.dp, Color.semanticBorder)
@@ -2601,6 +2672,7 @@ fun PersonalLogPrayerRow(
     Surface(
         modifier = modifier
             .fillMaxWidth()
+            .bringIntoViewRequester(bringIntoViewRequester)
             .testTag("personal_log_row_${prayerName.name.lowercase()}"),
         shape = RoundedCornerShape(16.dp),
         color = cardBg,
@@ -2916,12 +2988,12 @@ fun PersonalLogPrayerRow(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp),
+                        .padding(top = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     OutlinedTextField(
-                        value = noteText,
-                        onValueChange = { noteText = it },
+                        value = textFieldValue,
+                        onValueChange = { textFieldValue = it },
                         placeholder = {
                             Text(
                                 text = "Private reflection (e.g. khushu, prayed in jama'ah)...",
@@ -2932,18 +3004,32 @@ fun PersonalLogPrayerRow(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("note_input_${prayerName.name.lowercase()}"),
+                            .testTag("note_input_${prayerName.name.lowercase()}")
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { focusState ->
+                                isInputFocused = focusState.isFocused
+                                if (focusState.isFocused) {
+                                    coroutineScope.launch {
+                                        kotlinx.coroutines.delay(120)
+                                        try {
+                                            bringIntoViewRequester.bringIntoView()
+                                        } catch (e: Exception) {
+                                            // Ignore
+                                        }
+                                    }
+                                }
+                            },
                         textStyle = androidx.compose.ui.text.TextStyle(
                             fontFamily = com.example.ui.theme.SpaceGrotesk,
                             fontSize = 12.5.sp,
                             color = Color.semanticPrimaryText
                         ),
-                        minLines = 2,
+                        minLines = 1,
                         maxLines = 4,
                         shape = RoundedCornerShape(10.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color.semanticPrimaryAccent,
-                            unfocusedBorderColor = Color.semanticBorder,
+                            focusedBorderColor = animatedBorderColor,
+                            unfocusedBorderColor = animatedBorderColor,
                             focusedContainerColor = Color.semanticSurface,
                             unfocusedContainerColor = Color.semanticSurface
                         )
@@ -2951,63 +3037,95 @@ fun PersonalLogPrayerRow(
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (!note.isNullOrBlank()) {
-                            Surface(
-                                onClick = {
-                                    noteText = ""
-                                    onSaveNote?.invoke(null)
-                                    isEditingNote = false
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color.Transparent,
-                                modifier = Modifier.padding(end = 6.dp)
+                        val charCount = textFieldValue.text.length
+                        val wordCount = remember(textFieldValue.text) {
+                            if (textFieldValue.text.isBlank()) 0
+                            else textFieldValue.text.trim().split(Regex("\\s+")).count { it.isNotEmpty() }
+                        }
+
+                        Box(modifier = Modifier.weight(1f, fill = false)) {
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = isActivelyTyping && textFieldValue.text.isNotEmpty(),
+                                enter = fadeIn(animationSpec = tween(200)),
+                                exit = fadeOut(animationSpec = tween(400))
                             ) {
                                 Text(
-                                    text = "Delete",
+                                    text = "$wordCount ${if (wordCount == 1) "word" else "words"} • $charCount ${if (charCount == 1) "char" else "chars"}",
                                     fontFamily = com.example.ui.theme.SpaceGrotesk,
                                     fontSize = 11.sp,
-                                    color = Color.semanticError,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    color = Color.semanticSecondaryText.copy(alpha = 0.7f),
+                                    modifier = Modifier
+                                        .padding(start = 2.dp)
+                                        .testTag("note_live_counter_${prayerName.name.lowercase()}")
                                 )
                             }
                         }
 
-                        Surface(
-                            onClick = { isEditingNote = false },
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color.semanticControl,
-                            border = BorderStroke(1.dp, Color.semanticBorder),
-                            modifier = Modifier.padding(end = 6.dp)
+                        Row(
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "Cancel",
-                                fontFamily = com.example.ui.theme.SpaceGrotesk,
-                                fontSize = 11.sp,
-                                color = Color.semanticSecondaryText,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
+                            if (!note.isNullOrBlank()) {
+                                Surface(
+                                    onClick = {
+                                        textFieldValue = TextFieldValue("")
+                                        onSaveNote?.invoke(null)
+                                        isEditingNote = false
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color.Transparent,
+                                    modifier = Modifier.padding(end = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "Delete",
+                                        fontFamily = com.example.ui.theme.SpaceGrotesk,
+                                        fontSize = 11.sp,
+                                        color = Color.semanticError,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
 
-                        Surface(
-                            onClick = {
-                                onSaveNote?.invoke(noteText.trim().ifEmpty { null })
-                                isEditingNote = false
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color.semanticPrimaryAccent,
-                            modifier = Modifier.testTag("btn_save_note_${prayerName.name.lowercase()}")
-                        ) {
-                            Text(
-                                text = "Save Note",
-                                fontFamily = com.example.ui.theme.SpaceGrotesk,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.semanticAccentForeground,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                            )
+                            Surface(
+                                onClick = {
+                                    textFieldValue = TextFieldValue(note ?: "", selection = TextRange((note ?: "").length))
+                                    isEditingNote = false
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.semanticControl,
+                                border = BorderStroke(1.dp, Color.semanticBorder),
+                                modifier = Modifier.padding(end = 6.dp)
+                            ) {
+                                Text(
+                                    text = "Cancel",
+                                    fontFamily = com.example.ui.theme.SpaceGrotesk,
+                                    fontSize = 11.sp,
+                                    color = Color.semanticSecondaryText,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+
+                            Surface(
+                                onClick = {
+                                    onSaveNote?.invoke(textFieldValue.text.trim().ifEmpty { null })
+                                    isEditingNote = false
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.semanticPrimaryAccent,
+                                modifier = Modifier.testTag("btn_save_note_${prayerName.name.lowercase()}")
+                            ) {
+                                Text(
+                                    text = "Save Note",
+                                    fontFamily = com.example.ui.theme.SpaceGrotesk,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.semanticAccentForeground,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
                         }
                     }
                 }
