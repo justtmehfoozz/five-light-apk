@@ -547,16 +547,16 @@ private fun SoftArcCompass(
 
             // Part 1: Warmth-Based Qibla Proximity Glow (Radial accent glow behind compass ring)
             if (proximityGlow > 0.001f) {
-                val ambientGlowRadius = radius * 1.35f
+                val ambientGlowRadius = radius * 1.40f
                 val glowBaseColor = if (isDark) Color(0xFF494556) else Color(0xFF8D6B1E)
-                val peakOpacity = if (isDark) 0.14f else 0.10f
+                val peakOpacity = if (isDark) 0.24f else 0.20f
                 val finalOpacity = (peakOpacity * proximityGlow).coerceIn(0f, 1f)
 
                 drawCircle(
                     brush = Brush.radialGradient(
                         0.0f to glowBaseColor.copy(alpha = finalOpacity),
-                        0.40f to glowBaseColor.copy(alpha = finalOpacity * 0.60f),
-                        0.75f to glowBaseColor.copy(alpha = finalOpacity * 0.20f),
+                        0.45f to glowBaseColor.copy(alpha = finalOpacity * 0.65f),
+                        0.80f to glowBaseColor.copy(alpha = finalOpacity * 0.22f),
                         1.0f to Color.Transparent,
                         center = center,
                         radius = ambientGlowRadius

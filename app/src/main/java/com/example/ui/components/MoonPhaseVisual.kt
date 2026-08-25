@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -19,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -44,7 +46,7 @@ import com.example.ui.theme.semanticSurfaceElevated
 /**
  * Geometric Vector Moon Phase visual.
  *
- * Renders an exact, static astronomical terminator curve corresponding to [MoonPhase.phaseAngle].
+ * Renders an exact, smoothly transitioning astronomical terminator curve corresponding to [MoonPhase.phaseAngle].
  * Visible with high contrast across both Light and Dark themes without arbitrary glow or cartoons.
  */
 @Composable
@@ -56,6 +58,12 @@ fun MoonPhaseVisual(
     val isDark = MaterialTheme.colorScheme.background.run {
         (red * 0.299f + green * 0.587f + blue * 0.114f) < 0.5f
     }
+
+    val animatedProgress by animateFloatAsState(
+        targetValue = moonPhase.phaseAngle.coerceIn(0f, 1f),
+        animationSpec = tween(durationMillis = 350),
+        label = "moonTerminatorProgress"
+    )
 
     // High contrast theme tokens
     val unlitColor = if (isDark) Color(0xFF1E242B) else Color(0xFFE2E8F0)
@@ -81,7 +89,7 @@ fun MoonPhaseVisual(
         )
 
         // 2. Draw illuminated terminator path
-        val progress = moonPhase.phaseAngle.coerceIn(0f, 1f)
+        val progress = animatedProgress
 
         when {
             // New Moon: completely unlit disc
@@ -186,7 +194,7 @@ fun MoonPhaseVisual(
 /**
  * Subtle, premium Moon Phase indicator component for the Hijri Calendar.
  *
- * Displays the astronomical lunar phase with subtle state crossfade and
+ * Displays the astronomical lunar phase with smooth state transitions and
  * clearly distinguishes astronomical computation from official Hijri calendar date.
  */
 @Composable
@@ -205,16 +213,10 @@ fun MoonPhaseIndicatorRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f, fill = false)
         ) {
-            Crossfade(
-                targetState = moonPhase,
-                animationSpec = tween(durationMillis = 280),
-                label = "MoonPhaseVisualCrossfade"
-            ) { targetPhase ->
-                MoonPhaseVisual(
-                    moonPhase = targetPhase,
-                    size = 28.dp
-                )
-            }
+            MoonPhaseVisual(
+                moonPhase = moonPhase,
+                size = 28.dp
+            )
 
             Spacer(modifier = Modifier.width(12.dp))
 
@@ -233,12 +235,12 @@ fun MoonPhaseIndicatorRow(
                 Spacer(modifier = Modifier.height(1.dp))
 
                 Crossfade(
-                    targetState = moonPhase,
+                    targetState = moonPhase.phaseName,
                     animationSpec = tween(durationMillis = 280),
                     label = "MoonPhaseNameCrossfade"
-                ) { targetPhase ->
+                ) { phaseName ->
                     Text(
-                        text = "${targetPhase.emoji} ${targetPhase.phaseName}",
+                        text = phaseName,
                         style = MaterialTheme.typography.titleSmall.copy(
                             fontWeight = FontWeight.SemiBold
                         ),

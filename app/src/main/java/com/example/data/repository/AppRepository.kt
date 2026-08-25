@@ -572,7 +572,20 @@ class AppRepository(
 
     fun setQadaCount(prayerName: com.example.data.model.PrayerName, count: Int) {
         val safeCount = Math.max(0, count)
-        prefs?.edit()?.putInt("qada_${prayerName.name}", safeCount)?.apply()
+        val editor = prefs?.edit()
+        editor?.putInt("qada_${prayerName.name}", safeCount)
+        if (safeCount > 0) {
+            editor?.putBoolean("qada_ever_added_${prayerName.name}", true)
+        }
+        editor?.apply()
+    }
+
+    fun hasEverHadQada(prayerName: com.example.data.model.PrayerName): Boolean {
+        return prefs?.getBoolean("qada_ever_added_${prayerName.name}", false) ?: false
+    }
+
+    fun setHasEverHadQada(prayerName: com.example.data.model.PrayerName, everAdded: Boolean) {
+        prefs?.edit()?.putBoolean("qada_ever_added_${prayerName.name}", everAdded)?.apply()
     }
     
     // Quran Goal Persistence
@@ -684,18 +697,86 @@ class AppRepository(
         }
 
         val existing = db.prayerLogDao().getPrayerLogForDateDirect(dateString) ?: PrayerLogEntity(date = dateString)
+        val wasQadaAdded = existing.isQadaAdded(prayerName)
         val isCompleted = status == com.example.data.model.PrayerStatus.PRAYED
         val isMissed = status == com.example.data.model.PrayerStatus.MISSED
 
         val updated = when (prayerName) {
-            PrayerName.FAJR -> existing.copy(fajrCompleted = isCompleted, fajrMissed = isMissed)
-            PrayerName.DHUHR -> existing.copy(dhuhrCompleted = isCompleted, dhuhrMissed = isMissed)
-            PrayerName.ASR -> existing.copy(asrCompleted = isCompleted, asrMissed = isMissed)
-            PrayerName.MAGHRIB -> existing.copy(maghribCompleted = isCompleted, maghribMissed = isMissed)
-            PrayerName.ISHA -> existing.copy(ishaCompleted = isCompleted, ishaMissed = isMissed)
+            PrayerName.FAJR -> existing.copy(
+                fajrCompleted = isCompleted,
+                fajrMissed = isMissed,
+                fajrQadaAdded = if (isCompleted) false else existing.fajrQadaAdded
+            )
+            PrayerName.DHUHR -> existing.copy(
+                dhuhrCompleted = isCompleted,
+                dhuhrMissed = isMissed,
+                dhuhrQadaAdded = if (isCompleted) false else existing.dhuhrQadaAdded
+            )
+            PrayerName.ASR -> existing.copy(
+                asrCompleted = isCompleted,
+                asrMissed = isMissed,
+                asrQadaAdded = if (isCompleted) false else existing.asrQadaAdded
+            )
+            PrayerName.MAGHRIB -> existing.copy(
+                maghribCompleted = isCompleted,
+                maghribMissed = isMissed,
+                maghribQadaAdded = if (isCompleted) false else existing.maghribQadaAdded
+            )
+            PrayerName.ISHA -> existing.copy(
+                ishaCompleted = isCompleted,
+                ishaMissed = isMissed,
+                ishaQadaAdded = if (isCompleted) false else existing.ishaQadaAdded
+            )
             PrayerName.SUNRISE -> existing
         }
         db.prayerLogDao().insertOrUpdatePrayerLog(updated)
+
+        if (isCompleted && wasQadaAdded) {
+            val currentCount = getQadaCount(prayerName)
+            if (currentCount > 0) {
+                setQadaCount(prayerName, currentCount - 1)
+            }
+        }
+        return true
+    }
+
+    suspend fun makeUpQadaPrayer(prayerName: PrayerName): Boolean {
+        if (prayerName == PrayerName.SUNRISE) return false
+
+        val currentCount = getQadaCount(prayerName)
+        if (currentCount <= 0) return false
+
+        // 1. Decrement Qada count
+        val newCount = (currentCount - 1).coerceAtLeast(0)
+        setQadaCount(prayerName, newCount)
+
+        // 2. Identify the originating missed prayer record in Room DB (FIFO: oldest first)
+        val allLogsAsc = db.prayerLogDao().getAllPrayerLogsDirectAsc()
+
+        // Prioritize finding the oldest record where this prayer was marked missed and explicitly added to Qada
+        val explicitTarget = allLogsAsc.firstOrNull {
+            it.isMissed(prayerName) && it.isQadaAdded(prayerName) && !it.isCompleted(prayerName)
+        }
+
+        // Fallback: oldest record where this prayer is missed and not completed
+        val fallbackTarget = if (explicitTarget == null) {
+            allLogsAsc.firstOrNull { it.isMissed(prayerName) && !it.isCompleted(prayerName) }
+        } else null
+
+        val targetLog = explicitTarget ?: fallbackTarget
+
+        if (targetLog != null) {
+            val updated = when (prayerName) {
+                PrayerName.FAJR -> targetLog.copy(fajrCompleted = true, fajrMissed = false, fajrQadaAdded = false)
+                PrayerName.DHUHR -> targetLog.copy(dhuhrCompleted = true, dhuhrMissed = false, dhuhrQadaAdded = false)
+                PrayerName.ASR -> targetLog.copy(asrCompleted = true, asrMissed = false, asrQadaAdded = false)
+                PrayerName.MAGHRIB -> targetLog.copy(maghribCompleted = true, maghribMissed = false, maghribQadaAdded = false)
+                PrayerName.ISHA -> targetLog.copy(ishaCompleted = true, ishaMissed = false, ishaQadaAdded = false)
+                PrayerName.SUNRISE -> targetLog
+            }
+            db.prayerLogDao().insertOrUpdatePrayerLog(updated)
+        }
+
         return true
     }
 

@@ -105,6 +105,10 @@ fun ExploreScreen(
     islamicDateState: IslamicDateState? = null,
     activeSubRoute: String = "main",
     onSubRouteChange: (String) -> Unit = {},
+    targetDuaCategory: String? = null,
+    targetDuaId: String? = null,
+    targetAdhkarTitle: String? = null,
+    targetNameNumber: Int? = null,
     modifier: Modifier = Modifier
 ) {
     val predictiveState = rememberPredictiveBackState()
@@ -139,13 +143,23 @@ fun ExploreScreen(
                 )
             }
             "adhkar" -> {
-                AdhkarScreen(onBack = { onSubRouteChange("main") })
+                AdhkarScreen(
+                    onBack = { onSubRouteChange("main") },
+                    initialItemTitle = targetAdhkarTitle
+                )
             }
             "dua" -> {
-                DuaLibraryScreen(onBack = { onSubRouteChange("main") })
+                DuaLibraryScreen(
+                    onBack = { onSubRouteChange("main") },
+                    initialCategory = targetDuaCategory,
+                    initialDuaId = targetDuaId
+                )
             }
             "names" -> {
-                NamesOfAllahScreen(onBack = { onSubRouteChange("main") })
+                NamesOfAllahScreen(
+                    onBack = { onSubRouteChange("main") },
+                    initialNameNumber = targetNameNumber
+                )
             }
             "calendar" -> {
                 Column(

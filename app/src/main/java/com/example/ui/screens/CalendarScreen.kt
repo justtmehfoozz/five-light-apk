@@ -71,6 +71,7 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -99,6 +100,7 @@ import com.example.data.model.IslamicDateState
 import com.example.data.model.IslamicEvent
 import com.example.data.repository.IslamicDateRepository
 import com.example.data.util.HijriCalc
+import com.example.data.util.MoonPhaseCalculator
 import com.example.ui.components.MoonPhaseIndicatorRow
 import com.example.ui.components.PageHeader
 import com.example.ui.theme.ArabicText
@@ -118,6 +120,20 @@ fun CalendarScreen(
     },
     modifier: Modifier = Modifier
 ) {
+    // Real-time astronomical Moon Phase calculated from current date & time, refreshed periodically
+    var liveMoonPhase by remember {
+        mutableStateOf(MoonPhaseCalculator.calculateMoonPhase(System.currentTimeMillis()))
+    }
+
+    // Continuous real-time periodic update while CalendarScreen is active (refreshes every 60 seconds)
+    LaunchedEffect(Unit) {
+        liveMoonPhase = MoonPhaseCalculator.calculateMoonPhase(System.currentTimeMillis())
+        while (true) {
+            delay(60_000L)
+            liveMoonPhase = MoonPhaseCalculator.calculateMoonPhase(System.currentTimeMillis())
+        }
+    }
+
     val todayGregorian = hijriDate.gregorianDateString.ifEmpty {
         SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(Date())
     }
@@ -216,9 +232,9 @@ fun CalendarScreen(
                         shape = RoundedCornerShape(12.dp),
                         color = Color.semanticPrimaryAccent.copy(alpha = 0.15f)
                     ) {
-                        val maghribNotice = if (hijriDate.isAfterMaghrib) " • After Maghrib" else ""
+                        val statusText = if (hijriDate.isAfterMaghrib) "Today • After Maghrib" else "Today"
                         Text(
-                            text = "Today: ${hijriDate.day} ${hijriDate.monthName}$maghribNotice",
+                            text = statusText,
                             style = MaterialTheme.typography.labelLarge,
                             color = Color.semanticPrimaryAccent,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
@@ -231,7 +247,7 @@ fun CalendarScreen(
                     )
 
                     MoonPhaseIndicatorRow(
-                        moonPhase = islamicDateState.moonPhase,
+                        moonPhase = liveMoonPhase,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

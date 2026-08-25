@@ -488,7 +488,9 @@ fun HomeScreen(
     prayerTimes: List<PrayerItem>,
     allPrayerLogs: List<PrayerLogEntity> = emptyList(),
     qadaCounts: Map<PrayerName, Int> = emptyMap(),
+    qadaEverAdded: Map<PrayerName, Boolean> = emptyMap(),
     onUpdateQadaCount: (PrayerName, Int) -> Unit = { _, _ -> },
+    onMakeUpQadaPrayer: (PrayerName) -> Unit = {},
     countdownFormatted: String,
     selectedCity: CityLocation,
     hijriDate: HijriDate,
@@ -976,7 +978,9 @@ fun HomeScreen(
             todayLog = todayLog,
             allPrayerLogs = allPrayerLogs,
             qadaCounts = qadaCounts,
+            qadaEverAdded = qadaEverAdded,
             onUpdateQadaCount = onUpdateQadaCount,
+            onMakeUpQadaPrayer = onMakeUpQadaPrayer,
             onSetPrayerStatus = { pName, dStr, pStatus ->
                 onSetPrayerStatusWithDate(pName, dStr, pStatus)
             },

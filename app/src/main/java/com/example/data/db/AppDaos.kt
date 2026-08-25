@@ -21,6 +21,9 @@ interface PrayerLogDao {
     @Query("SELECT * FROM prayer_logs ORDER BY date DESC")
     fun getAllPrayerLogs(): Flow<List<PrayerLogEntity>>
 
+    @Query("SELECT * FROM prayer_logs ORDER BY date ASC")
+    suspend fun getAllPrayerLogsDirectAsc(): List<PrayerLogEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdatePrayerLog(log: PrayerLogEntity)
 }

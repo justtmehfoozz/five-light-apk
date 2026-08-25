@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import android.content.Context
+import android.content.SharedPreferences
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
@@ -16,8 +18,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -46,7 +51,9 @@ import com.example.data.util.GlobalSearchEngine
 import com.example.data.util.QuranData
 import com.example.ui.screens.AdhkarItem
 import com.example.ui.screens.eveningAdhkar
+import com.example.ui.screens.getSavedDuaBookmarks
 import com.example.ui.screens.morningAdhkar
+import com.example.ui.screens.toggleDuaBookmark
 import com.example.ui.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -86,6 +93,7 @@ fun DockSearchResultsPanel(
     modifier: Modifier = Modifier
 ) {
     val keyboardController = LocalSoftwareKeyboardController.current
+    val context = LocalContext.current
 
     val cardBg = if (isDark) Color(0xFF1C1C1E) else Color.semanticBackground
     val borderColor = if (isDark) Color.White.copy(alpha = 0.12f) else LightBorder.copy(alpha = 0.35f)
@@ -93,6 +101,24 @@ fun DockSearchResultsPanel(
     val textSecondary = if (isDark) Color(0xFFA8A8A2) else LightMutedText.copy(alpha = 0.8f)
     val accentGold = if (isDark) Color(0xFFE8DCC4) else Color.semanticPrimaryAccent
     val sectionHeaderColor = if (isDark) Color(0xFFA8A8A2) else Color.semanticMutedText
+    val activeBookmarkColor = if (isDark) Color(0xFF494556) else Color(0xFF8D6B1E)
+
+    // Reactive observation of saved Dua bookmarks from the single source of truth
+    var bookmarkedDuaIds by remember { mutableStateOf(getSavedDuaBookmarks(context)) }
+
+    DisposableEffect(context) {
+        val prefs = context.getSharedPreferences("dua_bookmarks_prefs", Context.MODE_PRIVATE)
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "bookmarked_dua_ids") {
+                bookmarkedDuaIds = getSavedDuaBookmarks(context)
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        bookmarkedDuaIds = getSavedDuaBookmarks(context)
+        onDispose {
+            prefs.unregisterOnSharedPreferenceChangeListener(listener)
+        }
+    }
 
     val cleanQuery = searchQuery.trim()
     val isQueryBlank = cleanQuery.isBlank()
@@ -458,6 +484,16 @@ fun DockSearchResultsPanel(
                             }
                             // Daily Duas
                             itemsIndexed(matchingDailyDuas, key = { _, d -> "daily_dua_${d.id}" }) { _, dua ->
+                                val matchedDuaItem = remember(dua) {
+                                    val normAr = GlobalSearchEngine.normalizeArabic(dua.arabic)
+                                    DuaData.ALL_DUAS.find {
+                                        GlobalSearchEngine.normalizeArabic(it.arabic) == normAr ||
+                                        it.translation.contains(dua.translation, ignoreCase = true) ||
+                                        dua.translation.contains(it.translation, ignoreCase = true)
+                                    }
+                                }
+                                val isBookmarked = matchedDuaItem?.let { bookmarkedDuaIds.contains(it.id) } ?: false
+
                                 Row(
                                     modifier = Modifier
                                         .animateItem(
@@ -471,16 +507,26 @@ fun DockSearchResultsPanel(
                                             keyboardController?.hide()
                                             onSelectDua(dua)
                                         }
-                                        .padding(vertical = 10.dp, horizontal = 8.dp),
+                                        .padding(vertical = 6.dp, horizontal = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Bookmark,
-                                        contentDescription = null,
-                                        tint = accentGold,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
+                                    IconButton(
+                                        onClick = {
+                                            matchedDuaItem?.let { item ->
+                                                toggleDuaBookmark(context, item.id)
+                                                bookmarkedDuaIds = getSavedDuaBookmarks(context)
+                                            }
+                                        },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                                            contentDescription = if (isBookmarked) "Remove bookmark" else "Bookmark dua",
+                                            tint = if (isBookmarked) activeBookmarkColor else textSecondary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = dua.transliteration.removeSurrounding("\""),
@@ -502,6 +548,8 @@ fun DockSearchResultsPanel(
                             }
                             // Library Duas
                             itemsIndexed(matchingLibraryDuas, key = { _, d -> "lib_dua_${d.title}_${d.category}" }) { _, dua ->
+                                val isBookmarked = bookmarkedDuaIds.contains(dua.id)
+
                                 Row(
                                     modifier = Modifier
                                         .animateItem(
@@ -515,16 +563,24 @@ fun DockSearchResultsPanel(
                                             keyboardController?.hide()
                                             onSelectDuaItem(dua)
                                         }
-                                        .padding(vertical = 10.dp, horizontal = 8.dp),
+                                        .padding(vertical = 6.dp, horizontal = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Bookmark,
-                                        contentDescription = null,
-                                        tint = accentGold,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
+                                    IconButton(
+                                        onClick = {
+                                            toggleDuaBookmark(context, dua.id)
+                                            bookmarkedDuaIds = getSavedDuaBookmarks(context)
+                                        },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                                            contentDescription = if (isBookmarked) "Remove bookmark" else "Bookmark dua",
+                                            tint = if (isBookmarked) activeBookmarkColor else textSecondary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = dua.title,

@@ -1278,7 +1278,9 @@ fun PersonalLogSheet(
     todayLog: com.example.data.db.PrayerLogEntity?,
     allPrayerLogs: List<com.example.data.db.PrayerLogEntity>,
     qadaCounts: Map<com.example.data.model.PrayerName, Int>,
+    qadaEverAdded: Map<com.example.data.model.PrayerName, Boolean> = emptyMap(),
     onUpdateQadaCount: (com.example.data.model.PrayerName, Int) -> Unit,
+    onMakeUpQadaPrayer: (com.example.data.model.PrayerName) -> Unit = {},
     onSetPrayerStatus: (com.example.data.model.PrayerName, String, com.example.data.model.PrayerStatus) -> Unit,
     onSavePrayerNote: (com.example.data.model.PrayerName, String, String?) -> Unit = { _, _, _ -> },
     onAddPrayerToQada: (com.example.data.model.PrayerName, String) -> Unit = { _, _ -> },
@@ -1388,7 +1390,10 @@ fun PersonalLogSheet(
                             PersonalLogTab.QADA -> {
                                 PersonalLogQadaContent(
                                     qadaCounts = qadaCounts,
-                                    onUpdateQadaCount = onUpdateQadaCount
+                                    qadaEverAdded = qadaEverAdded,
+                                    allPrayerLogs = allPrayerLogs,
+                                    onUpdateQadaCount = onUpdateQadaCount,
+                                    onMakeUpQadaPrayer = onMakeUpQadaPrayer
                                 )
                             }
                             PersonalLogTab.INSIGHTS -> {
@@ -2462,10 +2467,19 @@ fun InsightCard(title: String, value: String, modifier: Modifier = Modifier) {
     }
 }
 
+enum class QadaPrayerState {
+    NO_QADA,
+    ACTIVE,
+    COMPLETED
+}
+
 @Composable
 fun PersonalLogQadaContent(
     qadaCounts: Map<com.example.data.model.PrayerName, Int>,
-    onUpdateQadaCount: (com.example.data.model.PrayerName, Int) -> Unit
+    qadaEverAdded: Map<com.example.data.model.PrayerName, Boolean> = emptyMap(),
+    allPrayerLogs: List<com.example.data.db.PrayerLogEntity> = emptyList(),
+    onUpdateQadaCount: (com.example.data.model.PrayerName, Int) -> Unit,
+    onMakeUpQadaPrayer: (com.example.data.model.PrayerName) -> Unit = {}
 ) {
     val isDarkTheme = MaterialTheme.colorScheme.background.run { (red * 0.299f + green * 0.587f + blue * 0.114f) < 0.5f }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -2485,12 +2499,27 @@ fun PersonalLogQadaContent(
             com.example.data.model.PrayerName.ISHA
         ).forEach { prayer ->
             val count = qadaCounts[prayer] ?: 0
+            val hadEverInDb = remember(allPrayerLogs, prayer) {
+                allPrayerLogs.any { it.isQadaAdded(prayer) }
+            }
+            val hasEver = (qadaEverAdded[prayer] == true) || hadEverInDb || (count > 0)
+            val state = when {
+                count > 0 -> QadaPrayerState.ACTIVE
+                hasEver -> QadaPrayerState.COMPLETED
+                else -> QadaPrayerState.NO_QADA
+            }
+
             QadaRow(
                 name = prayer.name.lowercase().replaceFirstChar { it.uppercase() },
                 count = count,
+                state = state,
                 onIncrement = { onUpdateQadaCount(prayer, count + 1) },
                 onDecrement = { if (count > 0) onUpdateQadaCount(prayer, count - 1) },
-                onComplete = { if (count > 0) onUpdateQadaCount(prayer, count - 1) }
+                onComplete = {
+                    if (count > 0) {
+                        onMakeUpQadaPrayer(prayer)
+                    }
+                }
             )
         }
         Spacer(modifier = Modifier.height(56.dp))
@@ -2501,10 +2530,14 @@ fun PersonalLogQadaContent(
 fun QadaRow(
     name: String,
     count: Int,
+    state: QadaPrayerState,
     onIncrement: () -> Unit,
     onDecrement: () -> Unit,
     onComplete: () -> Unit
 ) {
+    var isProcessing by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+
     val cardBg = Color.semanticControl
     val cardBorder = BorderStroke(1.dp, Color.semanticBorder)
     val titleColor = Color.semanticPrimaryText
@@ -2531,13 +2564,32 @@ fun QadaRow(
                     color = titleColor,
                     maxLines = 1
                 )
-                Text(
-                    text = if (count > 0) "$count remaining" else "Completed",
-                    fontFamily = com.example.ui.theme.SpaceGrotesk,
-                    fontSize = 12.sp,
-                    color = if (count > 0) Color.semanticError else Color.semanticSuccess,
-                    maxLines = 1
-                )
+                AnimatedContent(
+                    targetState = state,
+                    transitionSpec = {
+                        fadeIn(animationSpec = androidx.compose.animation.core.tween(220)) togetherWith
+                                fadeOut(animationSpec = androidx.compose.animation.core.tween(160))
+                    },
+                    label = "qadaSubtitleTransition"
+                ) { targetState ->
+                    val subtitleText = when (targetState) {
+                        QadaPrayerState.ACTIVE -> "$count remaining"
+                        QadaPrayerState.COMPLETED -> "Completed"
+                        QadaPrayerState.NO_QADA -> "No Qada"
+                    }
+                    val subtitleColor = when (targetState) {
+                        QadaPrayerState.ACTIVE -> Color.semanticError
+                        QadaPrayerState.COMPLETED -> Color.semanticSuccess
+                        QadaPrayerState.NO_QADA -> Color.semanticSecondaryText.copy(alpha = 0.75f)
+                    }
+                    Text(
+                        text = subtitleText,
+                        fontFamily = com.example.ui.theme.SpaceGrotesk,
+                        fontSize = 12.sp,
+                        color = subtitleColor,
+                        maxLines = 1
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(8.dp))
@@ -2547,48 +2599,103 @@ fun QadaRow(
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 IconButton(
-                    onClick = onDecrement,
-                    enabled = count > 0,
+                    onClick = {
+                        if (count > 0 && !isProcessing) {
+                            onDecrement()
+                        }
+                    },
+                    enabled = count > 0 && !isProcessing,
                     modifier = Modifier.size(32.dp)
                 ) {
-                    Text("-", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = if (count > 0) Color.semanticSecondaryText else Color.semanticMutedText)
+                    Text(
+                        "-",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (count > 0) Color.semanticSecondaryText else Color.semanticMutedText
+                    )
                 }
-                Text(
-                    text = count.toString(),
-                    fontFamily = com.example.ui.theme.SpaceGrotesk,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    color = Color.semanticPrimaryText,
-                    modifier = Modifier.widthIn(min = 28.dp)
-                )
+                AnimatedContent(
+                    targetState = count,
+                    transitionSpec = {
+                        fadeIn(animationSpec = androidx.compose.animation.core.tween(180)) togetherWith
+                                fadeOut(animationSpec = androidx.compose.animation.core.tween(140))
+                    },
+                    label = "qadaCountNumberTransition"
+                ) { num ->
+                    Text(
+                        text = num.toString(),
+                        fontFamily = com.example.ui.theme.SpaceGrotesk,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        color = if (count > 0) Color.semanticPrimaryText else Color.semanticSecondaryText.copy(alpha = 0.75f),
+                        modifier = Modifier.widthIn(min = 28.dp)
+                    )
+                }
                 IconButton(
-                    onClick = onIncrement,
+                    onClick = {
+                        if (!isProcessing) {
+                            onIncrement()
+                        }
+                    },
+                    enabled = !isProcessing,
                     modifier = Modifier.size(32.dp)
                 ) {
                     Text("+", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.semanticSecondaryText)
                 }
                 Spacer(modifier = Modifier.width(6.dp))
                 Button(
-                    onClick = onComplete,
-                    enabled = count > 0,
+                    onClick = {
+                        if (state == QadaPrayerState.ACTIVE && count > 0 && !isProcessing) {
+                            isProcessing = true
+                            onComplete()
+                            coroutineScope.launch {
+                                kotlinx.coroutines.delay(350L)
+                                isProcessing = false
+                            }
+                        }
+                    },
+                    enabled = state == QadaPrayerState.ACTIVE && count > 0 && !isProcessing,
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = buttonBg,
                         contentColor = buttonFg,
-                        disabledContainerColor = Color.semanticControl,
-                        disabledContentColor = Color.semanticMutedText
-                    )
+                        disabledContainerColor = if (state == QadaPrayerState.COMPLETED) {
+                            Color.semanticControl
+                        } else {
+                            Color.semanticControl.copy(alpha = 0.5f)
+                        },
+                        disabledContentColor = if (state == QadaPrayerState.COMPLETED) {
+                            Color.semanticSuccess
+                        } else {
+                            Color.semanticMutedText
+                        }
+                    ),
+                    modifier = Modifier.testTag("btn_qada_makeup_${name.lowercase()}")
                 ) {
-                    Text(
-                        text = "Make up",
-                        fontFamily = com.example.ui.theme.SpaceGrotesk,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        softWrap = false
-                    )
+                    AnimatedContent(
+                        targetState = state,
+                        transitionSpec = {
+                            fadeIn(animationSpec = androidx.compose.animation.core.tween(220)) togetherWith
+                                    fadeOut(animationSpec = androidx.compose.animation.core.tween(160))
+                        },
+                        label = "qadaButtonTextTransition"
+                    ) { targetState ->
+                        val btnLabel = when (targetState) {
+                            QadaPrayerState.ACTIVE -> "Make up"
+                            QadaPrayerState.COMPLETED -> "✓ Completed"
+                            QadaPrayerState.NO_QADA -> "—"
+                        }
+                        Text(
+                            text = btnLabel,
+                            fontFamily = com.example.ui.theme.SpaceGrotesk,
+                            fontSize = 12.sp,
+                            fontWeight = if (targetState == QadaPrayerState.ACTIVE) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
             }
         }

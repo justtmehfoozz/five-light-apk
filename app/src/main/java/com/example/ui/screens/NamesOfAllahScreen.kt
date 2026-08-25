@@ -41,6 +41,7 @@ import com.example.ui.theme.*
 @Composable
 fun NamesOfAllahScreen(
     onBack: () -> Unit,
+    initialNameNumber: Int? = null,
     modifier: Modifier = Modifier
 ) {
     val isDark = MaterialTheme.colorScheme.background.run { (red * 0.299f + green * 0.587f + blue * 0.114f) < 0.5f }
@@ -49,7 +50,24 @@ fun NamesOfAllahScreen(
     val textSecondary = if (isDark) Color(0xFFA8A8A2) else Color.semanticSecondaryText
     val accentColor = Color.semanticPrimaryAccent
     val borderStrokeColor = if (isDark) MaterialTheme.colorScheme.outline else Color.semanticBorder
-    val namesListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+
+    val initialIndex = remember(initialNameNumber) {
+        if (initialNameNumber != null) {
+            NamesOfAllahData.NAMES.indexOfFirst { it.number == initialNameNumber }.coerceAtLeast(0)
+        } else {
+            0
+        }
+    }
+    val namesListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState(firstVisibleItemIndex = initialIndex) }
+
+    LaunchedEffect(initialNameNumber) {
+        if (initialNameNumber != null) {
+            val targetIndex = NamesOfAllahData.NAMES.indexOfFirst { it.number == initialNameNumber }
+            if (targetIndex >= 0) {
+                namesListState.animateScrollToItem(targetIndex)
+            }
+        }
+    }
 
     Column(
         modifier = modifier

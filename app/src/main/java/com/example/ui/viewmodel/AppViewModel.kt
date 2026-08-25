@@ -136,15 +136,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
     private val _qadaCounts = MutableStateFlow<Map<PrayerName, Int>>(emptyMap())
     val qadaCounts: StateFlow<Map<PrayerName, Int>> = _qadaCounts
 
+    private val _qadaEverAdded = MutableStateFlow<Map<PrayerName, Boolean>>(emptyMap())
+    val qadaEverAdded: StateFlow<Map<PrayerName, Boolean>> = _qadaEverAdded
+
     private val _dailyQuranGoal = MutableStateFlow(0)
     val dailyQuranGoal: StateFlow<Int> = _dailyQuranGoal
     
     fun refreshQadaCounts() {
-        val map = mutableMapOf<PrayerName, Int>()
+        val countMap = mutableMapOf<PrayerName, Int>()
+        val everMap = mutableMapOf<PrayerName, Boolean>()
         listOf(PrayerName.FAJR, PrayerName.DHUHR, PrayerName.ASR, PrayerName.MAGHRIB, PrayerName.ISHA).forEach {
-            map[it] = repository.getQadaCount(it)
+            val count = repository.getQadaCount(it)
+            countMap[it] = count
+            val hadEver = repository.hasEverHadQada(it) || count > 0
+            everMap[it] = hadEver
         }
-        _qadaCounts.value = map
+        _qadaCounts.value = countMap
+        _qadaEverAdded.value = everMap
     }
     
     fun updateQadaCount(prayerName: PrayerName, count: Int) {
@@ -717,6 +725,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
     ) {
         viewModelScope.launch {
             repository.setPrayerStatus(prayerName, dateString, status)
+            refreshQadaCounts()
+        }
+    }
+
+    fun makeUpQadaPrayer(prayerName: PrayerName) {
+        viewModelScope.launch {
+            repository.makeUpQadaPrayer(prayerName)
+            refreshQadaCounts()
         }
     }
 

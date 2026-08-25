@@ -7,8 +7,10 @@ import com.example.data.util.DuaData
 import com.example.data.util.QuranData
 import com.example.ui.screens.allDuas
 import com.example.ui.screens.categoryList
+import com.example.ui.screens.getSavedDuaBookmarks
 import com.example.ui.screens.toDuaEntity
 import com.example.ui.screens.toDuaItem
+import com.example.ui.screens.toggleDuaBookmark
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -339,5 +341,30 @@ class QuranAndDuaDiagnosticTestSuite {
                 testedCategories.contains(catTitle)
             )
         }
+    }
+
+    @Test
+    fun testDuaBookmarkPersistenceAndSearchSync() {
+        // Clear prefs before testing
+        val prefs = context.getSharedPreferences("dua_bookmarks_prefs", Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+
+        val initialBookmarks = getSavedDuaBookmarks(context)
+        assertTrue("Initial bookmarks should be empty", initialBookmarks.isEmpty())
+
+        val testDuaId = allDuas.first().id
+
+        // Check that testDua is initially not bookmarked
+        assertFalse("Dua should not be bookmarked initially", initialBookmarks.contains(testDuaId))
+
+        // Toggle bookmark ON
+        toggleDuaBookmark(context, testDuaId)
+        val updatedBookmarks = getSavedDuaBookmarks(context)
+        assertTrue("Dua should be bookmarked after toggling", updatedBookmarks.contains(testDuaId))
+
+        // Toggle bookmark OFF
+        toggleDuaBookmark(context, testDuaId)
+        val finalBookmarks = getSavedDuaBookmarks(context)
+        assertFalse("Dua should not be bookmarked after toggling off", finalBookmarks.contains(testDuaId))
     }
 }

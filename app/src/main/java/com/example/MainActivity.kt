@@ -84,6 +84,11 @@ class MainActivity : ComponentActivity() {
                 var dockFifthSlotMode by remember { mutableStateOf("more") }
                 var exploreSubRoute by remember { mutableStateOf("main") }
 
+                var targetDuaCategory by remember { mutableStateOf<String?>(null) }
+                var targetDuaId by remember { mutableStateOf<String?>(null) }
+                var targetAdhkarTitle by remember { mutableStateOf<String?>(null) }
+                var targetNameNumber by remember { mutableStateOf<Int?>(null) }
+
                 // Top-level tab navigation stack history
                 val tabStack = remember { androidx.compose.runtime.mutableStateListOf(0) }
 
@@ -187,6 +192,7 @@ class MainActivity : ComponentActivity() {
                                 val lastReadPosition by viewModel.lastReadPosition.collectAsStateWithLifecycle()
                                 val allPrayerLogs by viewModel.allPrayerLogs.collectAsStateWithLifecycle()
                                 val qadaCounts by viewModel.qadaCounts.collectAsStateWithLifecycle()
+                                val qadaEverAdded by viewModel.qadaEverAdded.collectAsStateWithLifecycle()
                                 val homeFeaturesPreferences by viewModel.homeFeaturesPreferences.collectAsStateWithLifecycle()
                                 val recentlyReadList by viewModel.recentlyReadList.collectAsStateWithLifecycle()
                                 val prayerJourneyNodes by viewModel.prayerJourneyNodes.collectAsStateWithLifecycle()
@@ -196,7 +202,9 @@ class MainActivity : ComponentActivity() {
                                     nextPrayer = nextPrayer,
                                     prayerTimes = prayerTimes,
                                     qadaCounts = qadaCounts,
+                                    qadaEverAdded = qadaEverAdded,
                                     onUpdateQadaCount = { p, c -> viewModel.updateQadaCount(p, c) },
+                                    onMakeUpQadaPrayer = { pName -> viewModel.makeUpQadaPrayer(pName) },
                                     countdownFormatted = countdownFormatted,
                                     selectedCity = selectedCity,
                                     hijriDate = hijriDate,
@@ -369,7 +377,19 @@ class MainActivity : ComponentActivity() {
                                     hijriDate = hijriDate,
                                     islamicDateState = islamicDateState,
                                     activeSubRoute = exploreSubRoute,
-                                    onSubRouteChange = { exploreSubRoute = it }
+                                    onSubRouteChange = { 
+                                        exploreSubRoute = it
+                                        if (it == "main") {
+                                            targetDuaCategory = null
+                                            targetDuaId = null
+                                            targetAdhkarTitle = null
+                                            targetNameNumber = null
+                                        }
+                                    },
+                                    targetDuaCategory = targetDuaCategory,
+                                    targetDuaId = targetDuaId,
+                                    targetAdhkarTitle = targetAdhkarTitle,
+                                    targetNameNumber = targetNameNumber
                                 )
                             }
                         }
@@ -448,6 +468,7 @@ class MainActivity : ComponentActivity() {
                         searchScope = exploreSearchScope,
                         onSelectSurah = { surah ->
                             showSearchOverlay = false
+                            openQuranReadingDirectly = true
                             viewModel.selectSurah(surah)
                             coroutineScope.launch {
                                 pagerState.animateScrollToPage(2)
@@ -455,6 +476,19 @@ class MainActivity : ComponentActivity() {
                         },
                         onSelectDua = { dua ->
                             showSearchOverlay = false
+                            val normAr = com.example.data.util.GlobalSearchEngine.normalizeArabic(dua.arabic)
+                            val matchedDuaItem = com.example.data.util.DuaData.ALL_DUAS.find {
+                                com.example.data.util.GlobalSearchEngine.normalizeArabic(it.arabic) == normAr ||
+                                it.translation.contains(dua.translation, ignoreCase = true) ||
+                                dua.translation.contains(it.translation, ignoreCase = true)
+                            }
+                            if (matchedDuaItem != null) {
+                                targetDuaCategory = matchedDuaItem.category
+                                targetDuaId = matchedDuaItem.id
+                            } else {
+                                targetDuaCategory = "Daily Life & Home"
+                                targetDuaId = null
+                            }
                             exploreSubRoute = "dua"
                             coroutineScope.launch {
                                 pagerState.animateScrollToPage(4)
@@ -462,6 +496,8 @@ class MainActivity : ComponentActivity() {
                         },
                         onSelectDuaItem = { duaItem ->
                             showSearchOverlay = false
+                            targetDuaCategory = duaItem.category
+                            targetDuaId = duaItem.id
                             exploreSubRoute = "dua"
                             coroutineScope.launch {
                                 pagerState.animateScrollToPage(4)
@@ -476,6 +512,7 @@ class MainActivity : ComponentActivity() {
                         },
                         onSelectAdhkarItem = { adhkarItem ->
                             showSearchOverlay = false
+                            targetAdhkarTitle = adhkarItem.title
                             exploreSubRoute = "adhkar"
                             coroutineScope.launch {
                                 pagerState.animateScrollToPage(4)
@@ -483,6 +520,7 @@ class MainActivity : ComponentActivity() {
                         },
                         onSelectNameOfAllah = { name ->
                             showSearchOverlay = false
+                            targetNameNumber = name.number
                             exploreSubRoute = "names"
                             coroutineScope.launch {
                                 pagerState.animateScrollToPage(4)

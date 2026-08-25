@@ -186,13 +186,24 @@ fun copyDuaText(context: Context, clipboardManager: ClipboardManager, dua: DuaIt
 @Composable
 fun DuaLibraryScreen(
     onBack: () -> Unit,
-    initialCategory: String? = null
+    initialCategory: String? = null,
+    initialDuaId: String? = null
 ) {
     var activeCategory by rememberSaveable { mutableStateOf(initialCategory) }
+    var targetDuaId by remember { mutableStateOf(initialDuaId) }
     var selectedCategoryTab by rememberSaveable { mutableIntStateOf(0) } // 0: All, 1: Bookmarks
     var arabicFontSizeSp by rememberSaveable { mutableFloatStateOf(26f) }
     var showFontControls by rememberSaveable { mutableStateOf(false) }
     var inspectedDuaForSource by remember { mutableStateOf<DuaItem?>(null) }
+
+    LaunchedEffect(initialCategory, initialDuaId) {
+        if (initialCategory != null) {
+            activeCategory = initialCategory
+        }
+        if (initialDuaId != null) {
+            targetDuaId = initialDuaId
+        }
+    }
 
     val context = LocalContext.current
     var bookmarkedIds by remember { mutableStateOf(getSavedDuaBookmarks(context)) }
@@ -210,6 +221,7 @@ fun DuaLibraryScreen(
                 showFontControls = false
             } else if (activeCategory != null) {
                 activeCategory = null
+                targetDuaId = null
             }
         }
     )
@@ -255,7 +267,10 @@ fun DuaLibraryScreen(
         if (category == null) {
             DuaLibraryMainContent(
                 onBack = onBack,
-                onCategoryClick = { activeCategory = it },
+                onCategoryClick = { 
+                    targetDuaId = null
+                    activeCategory = it 
+                },
                 bookmarkedIds = bookmarkedIds,
                 onToggleBookmark = { id ->
                     toggleDuaBookmark(context, id)
@@ -273,7 +288,10 @@ fun DuaLibraryScreen(
             DuaCategoryDetailScreen(
                 categoryTitle = category,
                 arabicFontSizeSp = arabicFontSizeSp,
-                onBack = { activeCategory = null },
+                onBack = { 
+                    activeCategory = null 
+                    targetDuaId = null
+                },
                 bookmarkedIds = bookmarkedIds,
                 onToggleBookmark = { id ->
                     toggleDuaBookmark(context, id)
@@ -282,7 +300,8 @@ fun DuaLibraryScreen(
                 showFontControls = showFontControls,
                 onToggleFontControls = { showFontControls = !showFontControls },
                 onFontSizeChange = { arabicFontSizeSp = it },
-                onInspectSource = { inspectedDuaForSource = it }
+                onInspectSource = { inspectedDuaForSource = it },
+                initialDuaId = targetDuaId
             )
         }
     }
@@ -1005,7 +1024,8 @@ fun DuaCategoryDetailScreen(
     showFontControls: Boolean,
     onToggleFontControls: () -> Unit,
     onFontSizeChange: (Float) -> Unit,
-    onInspectSource: (DuaItem) -> Unit
+    onInspectSource: (DuaItem) -> Unit,
+    initialDuaId: String? = null
 ) {
     val isDark = isAppInDarkTheme()
     val bgColor = MaterialTheme.colorScheme.background
@@ -1019,11 +1039,29 @@ fun DuaCategoryDetailScreen(
         allDuas.filter { it.category == categoryTitle }
     }
 
+    val initialIndex = remember(categoryTitle, initialDuaId) {
+        if (initialDuaId != null) {
+            categoryDuas.indexOfFirst { it.id == initialDuaId }.coerceAtLeast(0)
+        } else {
+            0
+        }
+    }
+
     var isFocusCarouselMode by rememberSaveable { mutableStateOf(true) }
-    val detailListState = rememberSaveable(categoryTitle, saver = LazyListState.Saver) { LazyListState() }
-    val pagerState = rememberPagerState(pageCount = { categoryDuas.size.coerceAtLeast(1) })
+    val detailListState = rememberSaveable(categoryTitle, saver = LazyListState.Saver) { LazyListState(firstVisibleItemIndex = initialIndex) }
+    val pagerState = rememberPagerState(initialPage = initialIndex, pageCount = { categoryDuas.size.coerceAtLeast(1) })
     val coroutineScope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+
+    LaunchedEffect(initialDuaId, categoryDuas) {
+        if (initialDuaId != null) {
+            val targetIndex = categoryDuas.indexOfFirst { it.id == initialDuaId }
+            if (targetIndex >= 0) {
+                pagerState.scrollToPage(targetIndex)
+                detailListState.scrollToItem(targetIndex)
+            }
+        }
+    }
 
     // PART 7: Gentle Entrance Animation
     var isEntered by remember(categoryTitle) { mutableStateOf(false) }

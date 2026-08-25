@@ -17,7 +17,9 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -344,7 +346,10 @@ val eveningAdhkar = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AdhkarScreen(onBack: () -> Unit) {
+fun AdhkarScreen(
+    onBack: () -> Unit,
+    initialItemTitle: String? = null
+) {
     val isDark = isAppInDarkTheme()
     val haptic = LocalHapticFeedback.current
 
@@ -361,6 +366,28 @@ fun AdhkarScreen(onBack: () -> Unit) {
     val handleTabSelect = { index: Int ->
         AdhkarSessionState.manualSelectedTab = index
         selectedTab = index
+    }
+
+    val adhkarListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+
+    LaunchedEffect(initialItemTitle) {
+        if (initialItemTitle != null) {
+            val isMorning = morningAdhkar.any { it.title.equals(initialItemTitle, ignoreCase = true) }
+            val isEvening = eveningAdhkar.any { it.title.equals(initialItemTitle, ignoreCase = true) }
+            if (isMorning) {
+                handleTabSelect(0)
+                val targetIndex = morningAdhkar.indexOfFirst { it.title.equals(initialItemTitle, ignoreCase = true) }
+                if (targetIndex >= 0) {
+                    adhkarListState.animateScrollToItem(targetIndex)
+                }
+            } else if (isEvening) {
+                handleTabSelect(1)
+                val targetIndex = eveningAdhkar.indexOfFirst { it.title.equals(initialItemTitle, ignoreCase = true) }
+                if (targetIndex >= 0) {
+                    adhkarListState.animateScrollToItem(targetIndex)
+                }
+            }
+        }
     }
 
     val morningProgressMap = remember { mutableStateMapOf<Int, Int>() }
@@ -491,6 +518,7 @@ fun AdhkarScreen(onBack: () -> Unit) {
         }
 
         LazyColumn(
+            state = adhkarListState,
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxSize()
