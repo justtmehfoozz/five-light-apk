@@ -1,9 +1,34 @@
 package com.example.data.util
 
+import android.content.Context
+import android.util.Log
+import androidx.compose.runtime.Immutable
 import com.example.data.model.Surah
 import com.example.data.model.Verse
 
+@Immutable
+data class QuranIntegrityIssue(
+    val verseKey: String,
+    val surahNumber: Int,
+    val verseNumber: Int,
+    val issueType: String,
+    val details: String
+)
+
+@Immutable
+data class QuranIntegrityReport(
+    val isValid: Boolean,
+    val totalSurahsChecked: Int,
+    val totalVersesChecked: Int,
+    val issues: List<QuranIntegrityIssue>,
+    val summary: String
+)
+
 object QuranData {
+
+    const val BISMILLAH_ARABIC = "بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ"
+    const val BISMILLAH_ENGLISH = "In the name of Allah, the Entirely Merciful, the Especially Merciful."
+    const val BISMILLAH_AUDIO_URL = "https://cdn.islamic.network/quran/audio/128/ar.alafasy/1.mp3"
 
     val SURAHS_DIRECTORY: List<Surah> = listOf(
         Surah(1, "Al-Fatihah", "الفاتحة", "The Opening", 7, "Meccan"),
@@ -122,86 +147,382 @@ object QuranData {
         Surah(114, "An-Nas", "الناس", "Mankind", 6, "Meccan")
     )
 
-    private val FEATURED_VERSES = mapOf(
-        1 to listOf(
-            Verse(1, 1, "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "In the name of Allah, the Entirely Merciful, the Especially Merciful.", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/1.mp3"),
-            Verse(1, 2, "الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ", "[All] praise is due to Allah, Lord of the worlds -", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/2.mp3"),
-            Verse(1, 3, "الرَّحْمَٰنِ الرَّحِيمِ", "The Entirely Merciful, the Especially Merciful,", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/3.mp3"),
-            Verse(1, 4, "مَالِكِ يَوْمِ الدِّينِ", "Sovereign of the Day of Recompense.", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/4.mp3"),
-            Verse(1, 5, "إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ", "It is You we worship and You we ask for help.", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/5.mp3"),
-            Verse(1, 6, "اهْدِنَا الصِّرَاطَ الْمُسْتَقِيمَ", "Guide us to the straight path -", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6.mp3"),
-            Verse(1, 7, "صِرَاطَ الَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ الْمَغْضُوبِ عَلَيْهِمْ وَلَا الضَّالِّينَ", "The path of those upon whom You have bestowed favor, not of those who have evoked [Your] anger or of those who are astray.", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/7.mp3")
-        ),
-        112 to listOf(
-            Verse(112, 1, "قُلْ هُوَ اللَّهُ أَحَدٌ", "Say, 'He is Allah, [who is] One,", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6222.mp3"),
-            Verse(112, 2, "اللَّهُ الصَّمَدُ", "Allah, the Eternal Refuge.", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6223.mp3"),
-            Verse(112, 3, "لَمْ يَلِدْ وَلَمْ يُولَدْ", "He neither begets nor is born,", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6224.mp3"),
-            Verse(112, 4, "وَلَمْ يَكُن لَّهُ كُفُوًا أَحَدٌ", "Nor is there to Him any equivalent.'", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6225.mp3")
-        ),
-        113 to listOf(
-            Verse(113, 1, "قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ", "Say, 'I seek refuge in the Lord of daybreak", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6226.mp3"),
-            Verse(113, 2, "مِن شَرِّ مَا خَلَقَ", "From the evil of that which He created", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6227.mp3"),
-            Verse(113, 3, "وَمِن شَرِّ غَاسِقٍ إِذَا وَقَبَ", "And from the evil of darkness when it settles", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6228.mp3"),
-            Verse(113, 4, "وَمِن شَرِّ النَّفَّاثَاتِ فِي الْعُقَدِ", "And from the evil of the blowers in knots", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6229.mp3"),
-            Verse(113, 5, "وَمِن شَرِّ حَاسِدٍ إِذَا حَسَدَ", "And from the evil of an envier when he envies.'", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6230.mp3")
-        ),
-        114 to listOf(
-            Verse(114, 1, "قُلْ أَعُوذُ بِرَبِّ النَّاسِ", "Say, 'I seek refuge in the Lord of mankind,", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6231.mp3"),
-            Verse(114, 2, "مَلِكِ النَّاسِ", "The Sovereign of mankind.", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6232.mp3"),
-            Verse(114, 3, "إِلَٰهِ النَّاسِ", "The God of mankind,", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6233.mp3"),
-            Verse(114, 4, "مِن شَرِّ الْوَسْوَاسِ الْخَنَّاسِ", "From the evil of the retreating whisperer -", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6234.mp3"),
-            Verse(114, 5, "الَّذِي يُوَسْوِسُ فِي صُدُورِ النَّاسِ", "Who whispers [evil] into the breasts of mankind -", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6235.mp3"),
-            Verse(114, 6, "مِنَ الْجِنَّةِ وَالنَّاسِ", "From among the jinn and mankind.'", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/6236.mp3")
-        ),
-        67 to listOf(
-            Verse(67, 1, "تَبَارَكَ الَّذِي بِيَدِهِ الْمُلْكُ وَهُوَ عَلَىٰ كُلِّ شَيْءٍ قَدِيرٌ", "Blessed is He in whose hand is dominion, and He is over all things competent -", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/5242.mp3"),
-            Verse(67, 2, "الَّذِي خَلَقَ الْمَوْتَ وَالْحَيَاةَ لِيَبْلُوَكُمْ أَيُّكُمْ أَحْسَنُ عَمَلًا ۚ وَهُوَ الْعَزِيزُ الْغَفُورُ", "[He] who created death and life to test you as to which of you is best in deed - and He is the Exalted in Might, the Forgiving -", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/5243.mp3"),
-            Verse(67, 3, "الَّذِي خَلَقَ سَبْعَ سَمَاوَاتٍ طِبَاقًا ۖ مَّا تَرَىٰ فِي خَلْقِ الرَّحْمَٰنِ مِن تَفَاوُتٍ", "[And] who created seven heavens in layers. You do not see in the creation of the Most Merciful any inconsistency.", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/5244.mp3")
-        ),
-        36 to listOf(
-            Verse(36, 1, "يس", "Ya, Seen.", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/3706.mp3"),
-            Verse(36, 2, "وَالْقُرْآنِ الْحَكِيمِ", "By the wise Qur'an,", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/3707.mp3"),
-            Verse(36, 3, "إِنَّكَ لَمِنَ الْمُرْسَلِينَ", "Indeed you, [O Muhammad], are from among the messengers,", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/3708.mp3"),
-            Verse(36, 4, "عَلَىٰ صِرَاطٍ مُّسْتَقِيمٍ", "On a straight path.", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/3709.mp3"),
-            Verse(36, 5, "تَنزِيلَ الْعَزِيزِ الرَّحِيمِ", "[This is] a revelation of the Exalted in Might, the Merciful,", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/3710.mp3")
-        ),
-        18 to listOf(
-            Verse(18, 1, "الْحَمْدُ لِلَّهِ الَّذِي أَنزَلَ عَلَىٰ عَبْدِهِ الْكِتَابَ وَلَمْ يَجْعَل لَّهُ عِوَجًا", "[All] praise is due to Allah, who has sent down upon His Servant the Book and has not made therein any deviance.", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/2141.mp3"),
-            Verse(18, 2, "قَيِّمًا لِّيُنذِرَ بَأْسًا شَدِيدًا مِّن لَّدُنْهُ وَيُبَشِّرَ الْمُؤْمِنِينَ الَّذِينَ يَعْمَلُونَ الصَّالِحَاتِ أَنَّ لَهُمْ أَجْرًا حَسَنًا", "[He has made it] straight, to warn of severe punishment from Him and to give good tidings to the believers who do righteous deeds that they will have a good reward", "https://cdn.islamic.network/quran/audio/128/ar.alafasy/2142.mp3")
+    @Volatile
+    private var cachedVersesMap: Map<Int, List<Verse>>? = null
+
+    @Volatile
+    private var cachedVerseIdentityMap: Map<String, Verse>? = null
+
+    @Volatile
+    private var cachedTranslationIdentityMap: Map<String, String>? = null
+
+    fun getSurahById(surahNumber: Int): Surah? {
+        return SURAHS_DIRECTORY.find { it.number == surahNumber }
+    }
+
+    @Synchronized
+    private fun ensureDataLoaded(context: Context) {
+        if (cachedVersesMap == null || cachedVerseIdentityMap == null || cachedTranslationIdentityMap == null) {
+            val (surahMap, identityMap, transMap) = loadAllVersesFromAssets(context)
+            cachedVersesMap = surahMap
+            cachedVerseIdentityMap = identityMap
+            cachedTranslationIdentityMap = transMap
+        }
+    }
+
+    fun getVersesForSurah(context: Context, surahNumber: Int): List<Verse> {
+        ensureDataLoaded(context)
+        return cachedVersesMap?.get(surahNumber) ?: emptyList()
+    }
+
+    /**
+     * Authoritative identity-based lookup for a Verse by "surahNumber:ayahNumber".
+     * Returns null if key is not found (never silently falls back to Bismillah).
+     */
+    fun getVerseByKey(context: Context, verseKey: String): Verse? {
+        ensureDataLoaded(context)
+        return cachedVerseIdentityMap?.get(verseKey)
+    }
+
+    fun getVerse(context: Context, surahNumber: Int, verseNumber: Int): Verse? {
+        return getVerseByKey(context, "$surahNumber:$verseNumber")
+    }
+
+    /**
+     * Authoritative identity-based translation lookup.
+     * KEY = "surahNumber:ayahNumber", VALUE = Saheeh International translation text.
+     * Returns null if not found (never silently falls back to Bismillah).
+     */
+    fun getTranslationByKey(context: Context, verseKey: String): String? {
+        ensureDataLoaded(context)
+        return cachedTranslationIdentityMap?.get(verseKey)
+    }
+
+    fun getTranslation(context: Context, surahNumber: Int, verseNumber: Int): String? {
+        return getTranslationByKey(context, "$surahNumber:$verseNumber")
+    }
+
+    /**
+     * Standalone Surah-level Bismillah metadata.
+     * Returns null for Surah At-Tawbah (9).
+     * For Surahs 2..114, returns the Bismillah header entity with verseNumber = 0 and verseKey = "$surahNumber:0".
+     */
+    fun getSurahBismillah(surahNumber: Int): Verse? {
+        if (surahNumber == 9) return null
+        return Verse(
+            surahNumber = surahNumber,
+            verseNumber = 0,
+            textArabic = BISMILLAH_ARABIC,
+            textEnglish = BISMILLAH_ENGLISH,
+            audioUrl = BISMILLAH_AUDIO_URL,
+            verseKey = "$surahNumber:0"
         )
+    }
+
+    private data class ParsedQuranData(
+        val surahMap: Map<Int, List<Verse>>,
+        val identityVerseMap: Map<String, Verse>,
+        val identityTranslationMap: Map<String, String>
     )
 
-    fun getVersesForSurah(surahNumber: Int): List<Verse> {
-        val featured = FEATURED_VERSES[surahNumber]
-        if (featured != null) return featured
+    private fun loadAllVersesFromAssets(context: Context): ParsedQuranData {
+        val surahMap = HashMap<Int, List<Verse>>(114)
+        val identityVerseMap = HashMap<String, Verse>(6250)
+        val identityTranslationMap = HashMap<String, String>(6250)
 
-        val surahInfo = SURAHS_DIRECTORY.find { it.number == surahNumber } ?: SURAHS_DIRECTORY[0]
-        val list = mutableListOf<Verse>()
-        
-        // Always include Bismillah unless Surah 9
-        if (surahNumber != 9 && surahNumber != 1) {
-            list.add(
-                Verse(
-                    surahNumber = surahNumber,
-                    verseNumber = 0,
-                    textArabic = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
-                    textEnglish = "In the name of Allah, the Entirely Merciful, the Especially Merciful."
+        try {
+            context.assets.open("quran_complete.json").use { inputStream ->
+                android.util.JsonReader(java.io.InputStreamReader(inputStream, "UTF-8")).use { reader ->
+                    reader.beginObject()
+                    while (reader.hasNext()) {
+                        val surahKey = reader.nextName()
+                        val surahNum = surahKey.toIntOrNull() ?: 0
+                        reader.beginArray()
+                        val versesList = ArrayList<Verse>()
+                        while (reader.hasNext()) {
+                            reader.beginObject()
+                            var sNum = surahNum
+                            var vNum = 0
+                            var textAr = ""
+                            var textEn = ""
+                            var audio = ""
+                            while (reader.hasNext()) {
+                                when (reader.nextName()) {
+                                    "surahNumber" -> sNum = reader.nextInt()
+                                    "verseNumber" -> vNum = reader.nextInt()
+                                    "textArabic" -> textAr = reader.nextString()
+                                    "textEnglish" -> textEn = reader.nextString()
+                                    "audioUrl" -> audio = reader.nextString()
+                                    else -> reader.skipValue()
+                                }
+                            }
+                            reader.endObject()
+                            
+                            val verseKey = "$sNum:$vNum"
+                            val verse = Verse(
+                                surahNumber = sNum,
+                                verseNumber = vNum,
+                                textArabic = textAr,
+                                textEnglish = textEn,
+                                audioUrl = audio,
+                                verseKey = verseKey
+                            )
+                            versesList.add(verse)
+                            identityVerseMap[verseKey] = verse
+                            identityTranslationMap[verseKey] = textEn
+                        }
+                        reader.endArray()
+                        if (surahNum > 0) {
+                            surahMap[surahNum] = versesList
+                        }
+                    }
+                    reader.endObject()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("QuranData", "Error parsing quran_complete.json: ${e.message}", e)
+        }
+
+        return ParsedQuranData(surahMap, identityVerseMap, identityTranslationMap)
+    }
+
+    /**
+     * Diagnostic utility to validate the entire 114 Surahs / 6,236 Ayahs.
+     * Verifies strict ID identity, non-empty translations, and absence of Bismillah leakage.
+     * Does NOT falsely flag legitimate duplicate translations across different Ayahs.
+     */
+    fun validateIntegrity(context: Context): QuranIntegrityReport {
+        ensureDataLoaded(context)
+        val issues = mutableListOf<QuranIntegrityIssue>()
+        var totalSurahs = 0
+        var totalVerses = 0
+
+        for (surahMeta in SURAHS_DIRECTORY) {
+            val surahNum = surahMeta.number
+            val verses = getVersesForSurah(context, surahNum)
+            totalSurahs++
+
+            if (verses.isEmpty()) {
+                issues.add(
+                    QuranIntegrityIssue(
+                        verseKey = "$surahNum:0",
+                        surahNumber = surahNum,
+                        verseNumber = 0,
+                        issueType = "MISSING_SURAH_DATA",
+                        details = "Surah ${surahMeta.nameEnglish} ($surahNum) has 0 loaded verses. Expected ${surahMeta.versesCount}."
+                    )
                 )
+                continue
+            }
+
+            if (verses.size != surahMeta.versesCount) {
+                issues.add(
+                    QuranIntegrityIssue(
+                        verseKey = "$surahNum:0",
+                        surahNumber = surahNum,
+                        verseNumber = 0,
+                        issueType = "SURAH_COUNT_MISMATCH",
+                        details = "Surah ${surahMeta.nameEnglish} ($surahNum) loaded ${verses.size} verses, expected ${surahMeta.versesCount}."
+                    )
+                )
+            }
+
+            for ((idx, verse) in verses.withIndex()) {
+                totalVerses++
+                val expectedVerseNum = idx + 1
+                val expectedKey = "$surahNum:$expectedVerseNum"
+
+                // 1. Identity match check
+                if (verse.surahNumber != surahNum) {
+                    issues.add(
+                        QuranIntegrityIssue(
+                            verseKey = verse.verseKey,
+                            surahNumber = surahNum,
+                            verseNumber = verse.verseNumber,
+                            issueType = "SURAH_NUMBER_MISMATCH",
+                            details = "Verse has surahNumber ${verse.surahNumber} instead of $surahNum."
+                        )
+                    )
+                }
+
+                if (verse.verseNumber != expectedVerseNum) {
+                    issues.add(
+                        QuranIntegrityIssue(
+                            verseKey = verse.verseKey,
+                            surahNumber = surahNum,
+                            verseNumber = verse.verseNumber,
+                            issueType = "VERSE_NUMBER_MISMATCH",
+                            details = "Verse at index $idx has verseNumber ${verse.verseNumber} instead of $expectedVerseNum."
+                        )
+                    )
+                }
+
+                // 2. Authoritative identity mapping resolution
+                val mappedVerse = getVerseByKey(context, expectedKey)
+                val mappedTranslation = getTranslationByKey(context, expectedKey)
+
+                if (mappedVerse == null) {
+                    issues.add(
+                        QuranIntegrityIssue(
+                            verseKey = expectedKey,
+                            surahNumber = surahNum,
+                            verseNumber = expectedVerseNum,
+                            issueType = "MISSING_IDENTITY_MAPPING",
+                            details = "getVerseByKey('$expectedKey') returned null."
+                        )
+                    )
+                }
+
+                if (mappedTranslation.isNullOrBlank()) {
+                    issues.add(
+                        QuranIntegrityIssue(
+                            verseKey = expectedKey,
+                            surahNumber = surahNum,
+                            verseNumber = expectedVerseNum,
+                            issueType = "MISSING_TRANSLATION",
+                            details = "getTranslationByKey('$expectedKey') is null or empty."
+                        )
+                    )
+                } else if (mappedVerse != null && mappedTranslation != mappedVerse.textEnglish) {
+                    issues.add(
+                        QuranIntegrityIssue(
+                            verseKey = expectedKey,
+                            surahNumber = surahNum,
+                            verseNumber = expectedVerseNum,
+                            issueType = "TRANSLATION_MAPPING_DESYNC",
+                            details = "mappedTranslation != mappedVerse.textEnglish for $expectedKey."
+                        )
+                    )
+                }
+
+                // 3. Content completeness
+                if (verse.textArabic.isBlank()) {
+                    issues.add(
+                        QuranIntegrityIssue(
+                            verseKey = expectedKey,
+                            surahNumber = surahNum,
+                            verseNumber = expectedVerseNum,
+                            issueType = "EMPTY_ARABIC_TEXT",
+                            details = "Arabic text is blank for $expectedKey."
+                        )
+                    )
+                }
+
+                if (verse.textEnglish.isBlank()) {
+                    issues.add(
+                        QuranIntegrityIssue(
+                            verseKey = expectedKey,
+                            surahNumber = surahNum,
+                            verseNumber = expectedVerseNum,
+                            issueType = "EMPTY_ENGLISH_TEXT",
+                            details = "English text is blank for $expectedKey."
+                        )
+                    )
+                }
+
+                // 4. Bismillah Leakage Detection
+                // Note: Surah 1:1 is Bismillah. Surah 27:30 contains Bismillah in letter from Solomon.
+                // All other Ayahs (including 62:1, 109:1, 114:1) MUST NOT have the Bismillah translation.
+                if (surahNum != 1 && !(surahNum == 27 && expectedVerseNum == 30)) {
+                    if (verse.textEnglish.startsWith("In the name of Allah, the Entirely Merciful", ignoreCase = true)) {
+                        issues.add(
+                            QuranIntegrityIssue(
+                                verseKey = expectedKey,
+                                surahNumber = surahNum,
+                                verseNumber = expectedVerseNum,
+                                issueType = "BISMILLAH_LEAKAGE",
+                                details = "Ayah $expectedKey improperly contains Bismillah translation: '${verse.textEnglish}'"
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        val isValid = issues.isEmpty()
+        val summary = if (isValid) {
+            "Qur'an Data Integrity Verified: 114 Surahs, $totalVerses Verses checked with 0 issues."
+        } else {
+            "Qur'an Data Integrity FAILED with ${issues.size} issues across $totalSurahs Surahs."
+        }
+
+        Log.i("QuranDataIntegrity", summary)
+        if (!isValid) {
+            for (issue in issues.take(10)) {
+                Log.e("QuranDataIntegrity", "Issue: [${issue.issueType}] ${issue.verseKey}: ${issue.details}")
+            }
+        }
+
+        return QuranIntegrityReport(
+            isValid = isValid,
+            totalSurahsChecked = totalSurahs,
+            totalVersesChecked = totalVerses,
+            issues = issues,
+            summary = summary
+        )
+    }
+
+    fun normalizeArabic(text: String): String {
+        return text.replace(Regex("[\u064B-\u065F\u0670\u0671]"), "")
+            .replace('أ', 'ا')
+            .replace('إ', 'ا')
+            .replace('آ', 'ا')
+            .replace('ٱ', 'ا')
+            .replace('ى', 'ي')
+            .replace('ة', 'ه')
+    }
+
+    fun getQuranLensInfoForVerse(context: Context, surahNumber: Int, verseNumber: Int): com.example.data.model.QuranLensInfo {
+        val verse = getVerse(context, surahNumber, verseNumber)
+        val surah = SURAHS_DIRECTORY.find { it.number == surahNumber }
+
+        if (verse == null) {
+            return com.example.data.model.QuranLensInfo(
+                arabicWordOrPhrase = "رَحْمَة",
+                transliteration = "Rahmah",
+                meaning = "Divine Mercy & Compassion",
+                occurrencesCount = 0,
+                occurrences = emptyList()
             )
         }
 
-        val sampleVersesCount = surahInfo.versesCount.coerceAtMost(12)
-        for (i in 1..sampleVersesCount) {
-            list.add(
-                Verse(
-                    surahNumber = surahNumber,
-                    verseNumber = i,
-                    textArabic = "وَإِذَا قُرِئَ الْقُرْآنُ فَاسْتَمِعُوا لَهُ وَأَنصِتُوا لَعَلَّكُمْ تُرْحَمُونَ ($i)",
-                    textEnglish = "So when the Qur'an is recited, then listen to it and pay attention that you may receive mercy. (Verse $i)",
-                    audioUrl = "https://cdn.islamic.network/quran/audio/128/ar.alafasy/1.mp3"
-                )
-            )
+        val words = verse.textArabic.split(" ")
+            .map { it.trim() }
+            .filter { it.length >= 3 }
+
+        val mainWord = words.getOrNull(0) ?: verse.textArabic
+        val cleanKeyword = normalizeArabic(mainWord)
+
+        ensureDataLoaded(context)
+        val allMap = cachedVersesMap ?: emptyMap()
+        val occurrences = mutableListOf<com.example.data.model.VerseOccurrence>()
+
+        for ((sNum, vList) in allMap) {
+            val sMeta = SURAHS_DIRECTORY.find { it.number == sNum } ?: continue
+            for (v in vList) {
+                if (normalizeArabic(v.textArabic).contains(cleanKeyword)) {
+                    occurrences.add(
+                        com.example.data.model.VerseOccurrence(
+                            surahNumber = sNum,
+                            surahNameEnglish = sMeta.nameEnglish,
+                            surahNameArabic = sMeta.nameArabic,
+                            verseNumber = v.verseNumber,
+                            textArabic = v.textArabic,
+                            textEnglish = v.textEnglish
+                        )
+                    )
+                    if (occurrences.size >= 12) break
+                }
+            }
+            if (occurrences.size >= 12) break
         }
-        return list
+
+        return com.example.data.model.QuranLensInfo(
+            arabicWordOrPhrase = mainWord,
+            transliteration = "${surah?.nameEnglish ?: "Surah"} $surahNumber:$verseNumber",
+            meaning = verse.textEnglish,
+            occurrencesCount = occurrences.size,
+            occurrences = occurrences
+        )
     }
 }

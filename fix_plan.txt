@@ -1,0 +1,2 @@
+1. We need to fix `playVerseAudio` so that it doesn't get confused by `playVerseByNumber`.
+Instead of `playVerseByNumber` calling `playVerseAudio`, it should just call `reloadAndPlayVerse` directly!

@@ -20,15 +20,24 @@ import kotlin.math.tan
 
 object PrayerCalc {
 
+    var activeTimeZone: TimeZone = TimeZone.getDefault()
+
     fun calculatePrayerTimes(
         latitude: Double,
         longitude: Double,
         date: Date = Date(),
         method: CalcMethod = CalcMethod.MWL,
         madhab: Madhab = Madhab.STANDARD,
-        timeZoneOffsetHours: Double = Math.round(longitude / 15.0).toDouble()
+        timeZoneOffsetHours: Double = Math.round(longitude / 15.0).toDouble(),
+        is24Hour: Boolean = false
     ): List<PrayerItem> {
-        val calendar = Calendar.getInstance().apply { time = date }
+        val offsetMillis = (timeZoneOffsetHours * 3600000).toInt()
+        val offsetHours = offsetMillis / 3600000
+        val offsetMins = Math.abs((offsetMillis / 60000) % 60)
+        val tzId = String.format(java.util.Locale.US, "GMT%+03d:%02d", offsetHours, offsetMins)
+        val cityTz = java.util.SimpleTimeZone(offsetMillis, tzId)
+        activeTimeZone = cityTz
+        val calendar = Calendar.getInstance(cityTz).apply { time = date }
         val dayOfYear = calendar.get(Calendar.DAY_OF_YEAR)
         val year = calendar.get(Calendar.YEAR)
 
@@ -79,7 +88,7 @@ object PrayerCalc {
         }
 
         // Convert double hours to Epoch Millis for today
-        val baseCal = Calendar.getInstance().apply {
+        val baseCal = Calendar.getInstance(cityTz).apply {
             time = date
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
@@ -119,25 +128,12 @@ object PrayerCalc {
             items.add(
                 PrayerItem(
                     name = pName,
-                    timeFormatted = formatPrayerTime(pName, timeHours),
+                    timeFormatted = formatPrayerTime(pName, timeHours, is24Hour),
                     timeMillis = pMillis,
                     isNext = isNext,
                     isPassed = isPassed
                 )
             )
-        }
-
-        // Fallback: If all prayers for today have passed, Fajr of tomorrow is next
-        if (!foundNext) {
-            val updatedList = items.map {
-                if (it.name == PrayerName.FAJR) {
-                    it.copy(
-                        isNext = true,
-                        timeMillis = it.timeMillis + (24 * 3600 * 1000L)
-                    )
-                } else it
-            }
-            return updatedList
         }
 
         return items
@@ -185,10 +181,14 @@ object PrayerCalc {
         return hour
     }
 
-    fun formatPrayerTime(prayerName: PrayerName, decimalHours: Double): String {
+    fun formatPrayerTime(prayerName: PrayerName, decimalHours: Double, is24Hour: Boolean = false): String {
         val totalMinutes = (decimalHours * 60).toInt()
         var hour24 = (totalMinutes / 60) % 24
         val minutes = totalMinutes % 60
+
+        if (is24Hour) {
+            return String.format(Locale.US, "%02d:%02d", hour24, minutes)
+        }
 
         // Strict astronomical check for Fajr and Sunrise: pre-noon morning AM hours
         if (prayerName == PrayerName.FAJR || prayerName == PrayerName.SUNRISE) {
@@ -210,8 +210,63 @@ object PrayerCalc {
         return String.format(Locale.US, "%02d:%02d %s", displayHour, minutes, amPm)
     }
 
-    fun formatTime(timeMillis: Long): String {
-        val sdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
+    fun formatTime(timeMillis: Long, is24Hour: Boolean = false, timeZone: TimeZone? = activeTimeZone): String {
+        val pattern = if (is24Hour) "HH:mm" else "hh:mm a"
+        val sdf = SimpleDateFormat(pattern, Locale.US)
+        if (timeZone != null) {
+            sdf.timeZone = timeZone
+        }
         return sdf.format(Date(timeMillis))
     }
+
+    fun calculateTahajjudWindow(
+        fardPrayers: List<PrayerItem>,
+        is24Hour: Boolean = false,
+        nowMillis: Long = System.currentTimeMillis()
+    ): TahajjudWindow? {
+        val maghrib = fardPrayers.find { it.name == PrayerName.MAGHRIB } ?: return null
+        val fajr = fardPrayers.find { it.name == PrayerName.FAJR } ?: return null
+
+        // Handle overnight timeline
+        val (nightMaghribMillis, nightFajrMillis) = if (nowMillis < fajr.timeMillis) {
+            // Early morning before Fajr (between 00:00 midnight and Fajr): night belongs to yesterday Maghrib -> today Fajr
+            Pair(maghrib.timeMillis - 24 * 3600 * 1000L, fajr.timeMillis)
+        } else {
+            // Daytime or evening: night belongs to today Maghrib -> tomorrow Fajr
+            val adjustedFajr = if (fajr.timeMillis <= maghrib.timeMillis) {
+                fajr.timeMillis + 24 * 3600 * 1000L
+            } else {
+                fajr.timeMillis
+            }
+            Pair(maghrib.timeMillis, adjustedFajr)
+        }
+
+        val nightDuration = (nightFajrMillis - nightMaghribMillis).coerceAtLeast(1000L)
+        val tahajjudStartMillis = nightFajrMillis - (nightDuration / 3)
+        val tahajjudEndMillis = nightFajrMillis
+
+        val startStr = formatTime(tahajjudStartMillis, is24Hour, activeTimeZone)
+        val fajrStr = formatTime(nightFajrMillis, is24Hour, activeTimeZone)
+        val windowStr = "$startStr – $fajrStr"
+        val isCurrent = nowMillis in tahajjudStartMillis..<nightFajrMillis
+
+        return TahajjudWindow(
+            startMillis = tahajjudStartMillis,
+            endMillis = tahajjudEndMillis,
+            startFormatted = startStr,
+            endFormatted = fajrStr,
+            windowFormatted = windowStr,
+            isCurrent = isCurrent
+        )
+    }
 }
+
+data class TahajjudWindow(
+    val startMillis: Long,
+    val endMillis: Long,
+    val startFormatted: String,
+    val endFormatted: String,
+    val windowFormatted: String,
+    val isCurrent: Boolean
+)
+

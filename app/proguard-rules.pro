@@ -1,21 +1,60 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# FiveLight Project R8 / ProGuard Rules
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Preserve Kotlin Metadata and Attributes
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,SourceFile,LineNumberTable
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Room Database & Generated Implementations
+-dontwarn androidx.room.paging.**
+-keep class androidx.room.RoomDatabase
+-keep class * extends androidx.room.RoomDatabase {
+    <init>(...);
+}
+-keep @androidx.room.Entity class * { *; }
+-keep @androidx.room.Dao interface * { *; }
+-keep class * extends androidx.room.RoomOpenHelper
+-keepclassmembers class * extends androidx.room.RoomDatabase {
+    public abstract *;
+}
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Domain & Data Models (Room Entities, Content Repositories, ViewModels, Enums)
+-keep class com.example.data.model.** { *; }
+-keep class com.example.data.db.** { *; }
+-keep class com.example.data.util.** { *; }
+-keep class com.example.data.reminder.** { *; }
+-keep class com.example.data.repository.** { *; }
+
+# Preserve Enums for reflection/serialization
+-keepclassmembers enum * {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+
+# Android Architecture Components & ViewModels
+-keepclassmembers class * extends androidx.lifecycle.ViewModel {
+    <init>(...);
+}
+-keepclassmembers class * extends androidx.lifecycle.AndroidViewModel {
+    <init>(...);
+}
+
+# Broadcast Receivers declared in Manifest
+-keep class com.example.data.reminder.PrayerReminderReceiver { *; }
+-keep class com.example.data.reminder.SmartPrayerNotificationReceiver { *; }
+-keep class com.example.data.reminder.BootReceiver { *; }
+
+# Retrofit, OkHttp, Moshi
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-dontwarn retrofit2.**
+-dontwarn com.squareup.moshi.**
+-keepclassmembers,allowobfuscation interface * {
+    @retrofit2.http.* <methods>;
+}
+
+# Coroutines
+-dontwarn kotlinx.coroutines.**
+-keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
+-keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
+
+# Desugar JDK Libs
+-dontwarn java.time.**

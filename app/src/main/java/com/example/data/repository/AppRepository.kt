@@ -4,6 +4,9 @@ import android.content.Context
 import com.example.data.db.AppDatabase
 import com.example.data.db.BookmarkEntity
 import com.example.data.db.DhikrHistoryEntity
+import com.example.data.db.DuaCategoryEntity
+import com.example.data.db.DuaCategoryWithDuas
+import com.example.data.db.DuaEntity
 import com.example.data.db.PrayerLogEntity
 import com.example.data.model.AppearanceMode
 import com.example.data.model.CalcMethod
@@ -12,6 +15,7 @@ import com.example.data.model.DhikrPreset
 import com.example.data.model.Madhab
 import com.example.data.model.PrayerItem
 import com.example.data.model.PrayerName
+import com.example.data.model.TimeFormat
 import com.example.data.util.PrayerCalc
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,7 +68,37 @@ class AppRepository(
         DhikrPreset("salawat", "Salawat upon Prophet", "اللَّهُمَّ صَلِّ عَلَىٰ مُحَمَّدٍ", "O Allah, send blessings upon Muhammad", 100)
     )
 
-    // User Preferences state with SharedPreferences restoration
+    // Downloaded Audio Repository Methods
+    val allDownloadedAudio: Flow<List<com.example.data.db.DownloadedAudioEntity>> = db.downloadedAudioDao().getAllDownloadedAudio()
+
+    suspend fun recordDownloadedAudio(
+        surahNumber: Int,
+        reciterId: String = "ar.alafasy",
+        status: String,
+        totalVerses: Int,
+        downloadedVerses: Int,
+        sizeBytes: Long
+    ) {
+        db.downloadedAudioDao().insertOrUpdate(
+            com.example.data.db.DownloadedAudioEntity(
+                surahNumber = surahNumber,
+                reciterId = reciterId,
+                status = status,
+                totalVerses = totalVerses,
+                downloadedVerses = downloadedVerses,
+                sizeBytes = sizeBytes
+            )
+        )
+    }
+
+    suspend fun removeDownloadedAudioRecord(surahNumber: Int, reciterId: String = "ar.alafasy") {
+        db.downloadedAudioDao().deleteAudio(surahNumber, reciterId)
+    }
+
+    suspend fun clearAllDownloadedAudioRecords(reciterId: String = "ar.alafasy") {
+        db.downloadedAudioDao().deleteAllAudio(reciterId)
+    }
+
     private val savedCityName = prefs?.getString("selected_city_name", null)
     private val initialCity = PREDEFINED_CITIES.find { it.cityName == savedCityName } ?: PREDEFINED_CITIES[0]
     private val _selectedCity = MutableStateFlow(initialCity)
@@ -85,14 +119,273 @@ class AppRepository(
     private val _appearanceMode = MutableStateFlow(initialAppearance)
     val appearanceMode: StateFlow<AppearanceMode> = _appearanceMode
 
+    private val savedTimeFormat = prefs?.getString("time_format", null)
+    private val initialTimeFormat = TimeFormat.fromName(savedTimeFormat)
+    private val _timeFormat = MutableStateFlow(initialTimeFormat)
+    val timeFormat: StateFlow<TimeFormat> = _timeFormat
+
+    private val savedTasbeehSoundId = prefs?.getString("tasbeeh_sound", null)
+    private val _tasbeehSound = MutableStateFlow(com.example.data.model.TasbeehSound.fromId(savedTasbeehSoundId))
+    val tasbeehSound: StateFlow<com.example.data.model.TasbeehSound> = _tasbeehSound
+
+    private val savedVibrationEnabled = prefs?.getBoolean("vibration_enabled", true) ?: true
+    private val _vibrationEnabled = MutableStateFlow(savedVibrationEnabled)
+    val vibrationEnabled: StateFlow<Boolean> = _vibrationEnabled
+
+    private val savedHijriMethod = prefs?.getString("hijri_date_method", null)
+    private val initialHijriMethod = com.example.data.model.HijriDateMethod.entries.find { it.name == savedHijriMethod }
+        ?: com.example.data.model.HijriDateMethod.REGIONAL_INDIA
+    private val _hijriDateMethod = MutableStateFlow(initialHijriMethod)
+    val hijriDateMethod: StateFlow<com.example.data.model.HijriDateMethod> = _hijriDateMethod
+
+    private val savedCustomHijriOffset = prefs?.getInt("custom_hijri_offset", 0) ?: 0
+    private val _customHijriOffset = MutableStateFlow(savedCustomHijriOffset)
+    val customHijriOffset: StateFlow<Int> = _customHijriOffset
+
+    val islamicDateRepository: IslamicDateRepository = IslamicDateRepository.getInstance(context).apply {
+        updateLocation(_selectedCity.value)
+        updateCalcMethod(_calcMethod.value)
+        updateHijriMethod(_hijriDateMethod.value)
+        updateCustomOffset(_customHijriOffset.value)
+    }
+
+    private val savedNaflOrderStr = prefs?.getString("nafl_prayer_order", null)
+    private val initialNaflOrder = if (!savedNaflOrderStr.isNullOrEmpty()) {
+        val parsed = savedNaflOrderStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        val missing = com.example.data.model.NaflPreferences.DEFAULT_NAFL_ORDER.filter { !parsed.contains(it) }
+        parsed + missing
+    } else {
+        com.example.data.model.NaflPreferences.DEFAULT_NAFL_ORDER
+    }
+
+    private val initialNaflPrefs = com.example.data.model.NaflPreferences(
+        tahajjudEnabled = prefs?.getBoolean("nafl_tahajjud_enabled", false) ?: false,
+        ishraqEnabled = prefs?.getBoolean("nafl_ishraq_enabled", false) ?: false,
+        duhaEnabled = prefs?.getBoolean("nafl_duha_enabled", false) ?: false,
+        awwabinEnabled = prefs?.getBoolean("nafl_awwabin_enabled", false) ?: false,
+        naflOrder = initialNaflOrder
+    )
+    private val _naflPreferences = MutableStateFlow(initialNaflPrefs)
+    val naflPreferences: StateFlow<com.example.data.model.NaflPreferences> = _naflPreferences
+
+    // Home Features Preferences
+    private val savedFeatureOrderStr = prefs?.getString("home_feature_order", null)
+    private val initialFeatureOrder = if (!savedFeatureOrderStr.isNullOrEmpty()) {
+        val parsed = savedFeatureOrderStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        val missing = com.example.data.model.HomeFeaturesPreferences.DEFAULT_FEATURE_ORDER.filter { !parsed.contains(it) }
+        parsed + missing
+    } else {
+        com.example.data.model.HomeFeaturesPreferences.DEFAULT_FEATURE_ORDER
+    }
+
+    private val initialHomeFeatures = com.example.data.model.HomeFeaturesPreferences(
+        continueReadingEnabled = prefs?.getBoolean("feat_continue_reading", true) ?: true,
+        rightNowEnabled = prefs?.getBoolean("feat_right_now", true) ?: true,
+        tonightEnabled = prefs?.getBoolean("feat_tonight", true) ?: true,
+        nextOpportunityEnabled = prefs?.getBoolean("feat_next_opportunity", true) ?: true,
+        prayerPrepEnabled = prefs?.getBoolean("feat_prayer_prep", true) ?: true,
+        weeklyOverviewEnabled = prefs?.getBoolean("feat_weekly_overview", true) ?: true,
+        momentsEnabled = prefs?.getBoolean("feat_moments", true) ?: true,
+        quietModeEnabled = prefs?.getBoolean("feat_quiet_mode", false) ?: false,
+        prayerJourneyEnabled = prefs?.getBoolean("feat_prayer_journey", true) ?: true,
+        recentlyReadEnabled = prefs?.getBoolean("feat_recently_read", true) ?: true,
+        quranLensEnabled = prefs?.getBoolean("feat_quran_lens", true) ?: true,
+        nightIsComingEnabled = prefs?.getBoolean("feat_night_is_coming", true) ?: true,
+        featureOrder = initialFeatureOrder
+    )
+    private val _homeFeaturesPreferences = MutableStateFlow(initialHomeFeatures)
+    val homeFeaturesPreferences: StateFlow<com.example.data.model.HomeFeaturesPreferences> = _homeFeaturesPreferences
+
+    // Quran Last Read Position
+    private val initialLastRead: com.example.data.model.QuranLastRead? = run {
+        val surahNum = prefs?.getInt("last_read_surah", -1) ?: -1
+        if (surahNum > 0) {
+            com.example.data.model.QuranLastRead(
+                surahNumber = surahNum,
+                surahNameEnglish = prefs?.getString("last_read_surah_en", "") ?: "",
+                surahNameArabic = prefs?.getString("last_read_surah_ar", "") ?: "",
+                verseNumber = prefs?.getInt("last_read_verse", 1) ?: 1,
+                verseIndex = prefs?.getInt("last_read_verse_index", 0) ?: 0,
+                timestamp = prefs?.getLong("last_read_timestamp", System.currentTimeMillis()) ?: System.currentTimeMillis()
+            )
+        } else null
+    }
+    private val _lastReadPosition = MutableStateFlow<com.example.data.model.QuranLastRead?>(initialLastRead)
+    val lastReadPosition: StateFlow<com.example.data.model.QuranLastRead?> = _lastReadPosition
+
+    // Recently Read History (Last 7 Verses)
+    private val _recentlyReadList = MutableStateFlow<List<com.example.data.model.QuranLastRead>>(loadRecentlyReadFromPrefs())
+    val recentlyReadList: StateFlow<List<com.example.data.model.QuranLastRead>> = _recentlyReadList
+
+    private fun loadRecentlyReadFromPrefs(): List<com.example.data.model.QuranLastRead> {
+        val jsonString = prefs?.getString("recently_read_json", null) ?: return initialLastRead?.let { listOf(it) } ?: emptyList()
+        return try {
+            val array = org.json.JSONArray(jsonString)
+            val list = mutableListOf<com.example.data.model.QuranLastRead>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(
+                    com.example.data.model.QuranLastRead(
+                        surahNumber = obj.getInt("surahNumber"),
+                        surahNameEnglish = obj.optString("surahNameEnglish", ""),
+                        surahNameArabic = obj.optString("surahNameArabic", ""),
+                        verseNumber = obj.optInt("verseNumber", 1),
+                        verseIndex = obj.optInt("verseIndex", 0),
+                        timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                    )
+                )
+            }
+            list.take(7)
+        } catch (e: Exception) {
+            initialLastRead?.let { listOf(it) } ?: emptyList()
+        }
+    }
+
+    private fun saveRecentlyReadToPrefs(list: List<com.example.data.model.QuranLastRead>) {
+        val array = org.json.JSONArray()
+        list.forEach { item ->
+            val obj = org.json.JSONObject()
+            obj.put("surahNumber", item.surahNumber)
+            obj.put("surahNameEnglish", item.surahNameEnglish)
+            obj.put("surahNameArabic", item.surahNameArabic)
+            obj.put("verseNumber", item.verseNumber)
+            obj.put("verseIndex", item.verseIndex)
+            obj.put("timestamp", item.timestamp)
+            array.put(obj)
+        }
+        prefs?.edit()?.putString("recently_read_json", array.toString())?.apply()
+    }
+
+    // Custom Dhikrs Persistence
+    private val _customDhikrs = MutableStateFlow<List<DhikrPreset>>(loadCustomDhikrs())
+    val customDhikrs: StateFlow<List<DhikrPreset>> = _customDhikrs
+
+    private fun loadCustomDhikrs(): List<DhikrPreset> {
+        val jsonString = prefs?.getString("custom_dhikrs_json", null) ?: return emptyList()
+        return try {
+            val jsonArray = org.json.JSONArray(jsonString)
+            val list = mutableListOf<DhikrPreset>()
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.getJSONObject(i)
+                list.add(
+                    DhikrPreset(
+                        id = obj.getString("id"),
+                        nameEnglish = obj.getString("nameEnglish"),
+                        nameArabic = obj.optString("nameArabic", ""),
+                        translation = obj.optString("translation", ""),
+                        defaultTarget = obj.optInt("defaultTarget", 33),
+                        isCustom = true
+                    )
+                )
+            }
+            list
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveCustomDhikrsToPrefs(list: List<DhikrPreset>) {
+        val jsonArray = org.json.JSONArray()
+        list.forEach { preset ->
+            val obj = org.json.JSONObject()
+            obj.put("id", preset.id)
+            obj.put("nameEnglish", preset.nameEnglish)
+            obj.put("nameArabic", preset.nameArabic)
+            obj.put("translation", preset.translation)
+            obj.put("defaultTarget", preset.defaultTarget)
+            jsonArray.put(obj)
+        }
+        prefs?.edit()?.putString("custom_dhikrs_json", jsonArray.toString())?.apply()
+    }
+
+    fun addCustomDhikr(preset: DhikrPreset) {
+        val updated = _customDhikrs.value + preset
+        _customDhikrs.value = updated
+        saveCustomDhikrsToPrefs(updated)
+    }
+
+    fun updateCustomDhikr(preset: DhikrPreset) {
+        val updated = _customDhikrs.value.map { if (it.id == preset.id) preset else it }
+        _customDhikrs.value = updated
+        saveCustomDhikrsToPrefs(updated)
+    }
+
+    fun deleteCustomDhikr(presetId: String) {
+        val updated = _customDhikrs.value.filterNot { it.id == presetId }
+        _customDhikrs.value = updated
+        saveCustomDhikrsToPrefs(updated)
+        prefs?.edit()?.remove("dhikr_count_$presetId")?.remove("dhikr_target_$presetId")?.apply()
+    }
+
+    // Custom Targets Persistence
+    val BUILT_IN_TARGETS = listOf(33, 99, 100)
+    private val _customTargets = MutableStateFlow<List<Int>>(loadCustomTargets())
+    val customTargets: StateFlow<List<Int>> = _customTargets
+
+    private fun loadCustomTargets(): List<Int> {
+        val jsonString = prefs?.getString("custom_targets_json", null) ?: return emptyList()
+        return try {
+            val jsonArray = org.json.JSONArray(jsonString)
+            val list = mutableListOf<Int>()
+            for (i in 0 until jsonArray.length()) {
+                val target = jsonArray.getInt(i)
+                if (target > 0 && !BUILT_IN_TARGETS.contains(target) && !list.contains(target)) {
+                    list.add(target)
+                }
+            }
+            list
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveCustomTargetsToPrefs(list: List<Int>) {
+        val jsonArray = org.json.JSONArray()
+        list.forEach { jsonArray.put(it) }
+        prefs?.edit()?.putString("custom_targets_json", jsonArray.toString())?.apply()
+    }
+
+    fun addCustomTarget(target: Int) {
+        if (target <= 0 || BUILT_IN_TARGETS.contains(target) || _customTargets.value.contains(target)) return
+        val updated = _customTargets.value + target
+        _customTargets.value = updated
+        saveCustomTargetsToPrefs(updated)
+    }
+
+    fun deleteCustomTarget(target: Int) {
+        if (BUILT_IN_TARGETS.contains(target)) return
+        val updated = _customTargets.value.filterNot { it == target }
+        _customTargets.value = updated
+        saveCustomTargetsToPrefs(updated)
+    }
+
+    // Per-Dhikr Count & Target Persistence
+    fun getSavedDhikrCount(presetId: String): Int {
+        return prefs?.getInt("dhikr_count_$presetId", 0) ?: 0
+    }
+
+    fun saveDhikrCount(presetId: String, count: Int) {
+        prefs?.edit()?.putInt("dhikr_count_$presetId", count)?.apply()
+    }
+
+    fun getSavedDhikrTarget(presetId: String, defaultTarget: Int): Int {
+        return prefs?.getInt("dhikr_target_$presetId", defaultTarget) ?: defaultTarget
+    }
+
+    fun saveDhikrTarget(presetId: String, target: Int) {
+        prefs?.edit()?.putInt("dhikr_target_$presetId", target)?.apply()
+    }
+
     fun setCity(city: CityLocation) {
         _selectedCity.value = city
         prefs?.edit()?.putString("selected_city_name", city.cityName)?.apply()
+        islamicDateRepository.updateLocation(city)
     }
 
     fun setCalcMethod(method: CalcMethod) {
         _calcMethod.value = method
         prefs?.edit()?.putString("calc_method", method.name)?.apply()
+        islamicDateRepository.updateCalcMethod(method)
     }
 
     fun setMadhab(m: Madhab) {
@@ -105,6 +398,65 @@ class AppRepository(
         prefs?.edit()?.putString("appearance_mode", mode.name)?.apply()
     }
 
+    fun setTimeFormat(format: TimeFormat) {
+        _timeFormat.value = format
+        prefs?.edit()?.putString("time_format", format.name)?.apply()
+    }
+
+    fun setTasbeehSound(sound: com.example.data.model.TasbeehSound) {
+        _tasbeehSound.value = sound
+        prefs?.edit()?.putString("tasbeeh_sound", sound.id)?.apply()
+    }
+
+    fun setVibrationEnabled(enabled: Boolean) {
+        _vibrationEnabled.value = enabled
+        prefs?.edit()?.putBoolean("vibration_enabled", enabled)?.apply()
+    }
+
+    fun setHijriDateMethod(method: com.example.data.model.HijriDateMethod) {
+        _hijriDateMethod.value = method
+        prefs?.edit()?.putString("hijri_date_method", method.name)?.apply()
+        islamicDateRepository.updateHijriMethod(method)
+    }
+
+    fun setCustomHijriOffset(offset: Int) {
+        _customHijriOffset.value = offset
+        prefs?.edit()?.putInt("custom_hijri_offset", offset)?.apply()
+        islamicDateRepository.updateCustomOffset(offset)
+    }
+
+    fun setNaflPreference(
+        tahajjud: Boolean = _naflPreferences.value.tahajjudEnabled,
+        ishraq: Boolean = _naflPreferences.value.ishraqEnabled,
+        duha: Boolean = _naflPreferences.value.duhaEnabled,
+        awwabin: Boolean = _naflPreferences.value.awwabinEnabled
+    ) {
+        val updated = com.example.data.model.NaflPreferences(
+            tahajjudEnabled = tahajjud,
+            ishraqEnabled = ishraq,
+            duhaEnabled = duha,
+            awwabinEnabled = awwabin,
+            naflOrder = _naflPreferences.value.naflOrder
+        )
+        _naflPreferences.value = updated
+        prefs?.edit()
+            ?.putBoolean("nafl_tahajjud_enabled", tahajjud)
+            ?.putBoolean("nafl_ishraq_enabled", ishraq)
+            ?.putBoolean("nafl_duha_enabled", duha)
+            ?.putBoolean("nafl_awwabin_enabled", awwabin)
+            ?.apply()
+    }
+
+    fun setNaflOrder(newOrder: List<String>) {
+        val updated = _naflPreferences.value.copy(naflOrder = newOrder)
+        _naflPreferences.value = updated
+        prefs?.edit()?.putString("nafl_prayer_order", newOrder.joinToString(","))?.apply()
+    }
+
+    fun resetNaflOrder() {
+        setNaflOrder(com.example.data.model.NaflPreferences.DEFAULT_NAFL_ORDER)
+    }
+
     fun getTodayPrayerTimes(): List<PrayerItem> {
         val city = _selectedCity.value
         return PrayerCalc.calculatePrayerTimes(
@@ -113,13 +465,168 @@ class AppRepository(
             date = Date(),
             method = _calcMethod.value,
             madhab = _madhab.value,
-            timeZoneOffsetHours = city.timezoneOffsetHours
+            timeZoneOffsetHours = city.timezoneOffsetHours,
+            is24Hour = _timeFormat.value.is24Hour
         )
     }
 
+    fun setHomeFeaturesPreference(
+        continueReading: Boolean = _homeFeaturesPreferences.value.continueReadingEnabled,
+        rightNow: Boolean = _homeFeaturesPreferences.value.rightNowEnabled,
+        tonight: Boolean = _homeFeaturesPreferences.value.tonightEnabled,
+        nextOpportunity: Boolean = _homeFeaturesPreferences.value.nextOpportunityEnabled,
+        prayerPrep: Boolean = _homeFeaturesPreferences.value.prayerPrepEnabled,
+        weeklyOverview: Boolean = _homeFeaturesPreferences.value.weeklyOverviewEnabled,
+        moments: Boolean = _homeFeaturesPreferences.value.momentsEnabled,
+        quietMode: Boolean = _homeFeaturesPreferences.value.quietModeEnabled,
+        prayerJourney: Boolean = _homeFeaturesPreferences.value.prayerJourneyEnabled,
+        recentlyRead: Boolean = _homeFeaturesPreferences.value.recentlyReadEnabled,
+        quranLens: Boolean = _homeFeaturesPreferences.value.quranLensEnabled,
+        nightIsComing: Boolean = _homeFeaturesPreferences.value.nightIsComingEnabled
+    ) {
+        val updated = com.example.data.model.HomeFeaturesPreferences(
+            continueReadingEnabled = continueReading,
+            rightNowEnabled = rightNow,
+            tonightEnabled = tonight,
+            nextOpportunityEnabled = nextOpportunity,
+            prayerPrepEnabled = prayerPrep,
+            weeklyOverviewEnabled = weeklyOverview,
+            momentsEnabled = moments,
+            quietModeEnabled = quietMode,
+            prayerJourneyEnabled = prayerJourney,
+            recentlyReadEnabled = recentlyRead,
+            quranLensEnabled = quranLens,
+            nightIsComingEnabled = nightIsComing,
+            featureOrder = _homeFeaturesPreferences.value.featureOrder
+        )
+        _homeFeaturesPreferences.value = updated
+        prefs?.edit()
+            ?.putBoolean("feat_continue_reading", continueReading)
+            ?.putBoolean("feat_right_now", rightNow)
+            ?.putBoolean("feat_tonight", tonight)
+            ?.putBoolean("feat_next_opportunity", nextOpportunity)
+            ?.putBoolean("feat_prayer_prep", prayerPrep)
+            ?.putBoolean("feat_weekly_overview", weeklyOverview)
+            ?.putBoolean("feat_moments", moments)
+            ?.putBoolean("feat_quiet_mode", quietMode)
+            ?.putBoolean("feat_prayer_journey", prayerJourney)
+            ?.putBoolean("feat_recently_read", recentlyRead)
+            ?.putBoolean("feat_quran_lens", quranLens)
+            ?.putBoolean("feat_night_is_coming", nightIsComing)
+            ?.apply()
+    }
+
+    fun setHomeFeatureOrder(newOrder: List<String>) {
+        val updated = _homeFeaturesPreferences.value.copy(featureOrder = newOrder)
+        _homeFeaturesPreferences.value = updated
+        prefs?.edit()?.putString("home_feature_order", newOrder.joinToString(","))?.apply()
+    }
+
+    fun resetHomeFeatureOrder() {
+        setHomeFeatureOrder(com.example.data.model.HomeFeaturesPreferences.DEFAULT_FEATURE_ORDER)
+    }
+
+    fun saveLastReadPosition(
+        surahNumber: Int,
+        surahNameEn: String,
+        surahNameAr: String,
+        verseNumber: Int,
+        verseIndex: Int
+    ) {
+        val lastRead = com.example.data.model.QuranLastRead(
+            surahNumber = surahNumber,
+            surahNameEnglish = surahNameEn,
+            surahNameArabic = surahNameAr,
+            verseNumber = verseNumber,
+            verseIndex = verseIndex,
+            timestamp = System.currentTimeMillis()
+        )
+        _lastReadPosition.value = lastRead
+
+        // Update recently read list (max 7 items, deduplicated)
+        val currentList = _recentlyReadList.value.filterNot {
+            it.surahNumber == surahNumber && it.verseNumber == verseNumber
+        }.toMutableList()
+        currentList.add(0, lastRead)
+        val trimmed = currentList.take(7)
+        _recentlyReadList.value = trimmed
+        saveRecentlyReadToPrefs(trimmed)
+
+        prefs?.edit()
+            ?.putInt("last_read_surah", surahNumber)
+            ?.putString("last_read_surah_en", surahNameEn)
+            ?.putString("last_read_surah_ar", surahNameAr)
+            ?.putInt("last_read_verse", verseNumber)
+            ?.putInt("last_read_verse_index", verseIndex)
+            ?.putLong("last_read_timestamp", lastRead.timestamp)
+            ?.apply()
+    }
+
+    fun getPrayerLogsForDates(dates: List<String>): Flow<List<PrayerLogEntity>> {
+        return db.prayerLogDao().getPrayerLogsForDates(dates)
+    }
+    // Qada Persistence
+    fun getQadaCount(prayerName: com.example.data.model.PrayerName): Int {
+        return prefs?.getInt("qada_${prayerName.name}", 0) ?: 0
+    }
+
+    fun setQadaCount(prayerName: com.example.data.model.PrayerName, count: Int) {
+        val safeCount = Math.max(0, count)
+        prefs?.edit()?.putInt("qada_${prayerName.name}", safeCount)?.apply()
+    }
+    
+    // Quran Goal Persistence
+    fun getDailyQuranGoal(): Int {
+        return prefs?.getInt("daily_quran_goal", 0) ?: 0
+    }
+    
+    fun setDailyQuranGoal(pages: Int) {
+        val safePages = Math.max(0, pages)
+        prefs?.edit()?.putInt("daily_quran_goal", safePages)?.apply()
+    }
+
+    // Surah Playback Progress Persistence
+    fun getSurahPlaybackProgressMap(): Map<Int, Float> {
+        val result = mutableMapOf<Int, Float>()
+        val all = prefs?.all ?: emptyMap()
+        for ((key, value) in all) {
+            if (key.startsWith("surah_audio_prog_")) {
+                val sNum = key.removePrefix("surah_audio_prog_").toIntOrNull()
+                val prog = when (value) {
+                    is Float -> value
+                    is Double -> value.toFloat()
+                    is Int -> value.toFloat()
+                    is String -> value.toFloatOrNull() ?: 0f
+                    else -> 0f
+                }
+                if (sNum != null && prog > 0f) {
+                    result[sNum] = prog
+                }
+            }
+        }
+        return result
+    }
+
+    fun setSurahPlaybackProgress(surahNumber: Int, progress: Float) {
+        val clamped = progress.coerceIn(0f, 1f)
+        prefs?.edit()?.putFloat("surah_audio_prog_$surahNumber", clamped)?.apply()
+    }
+
+    fun getAllPrayerLogs(): kotlinx.coroutines.flow.Flow<List<com.example.data.db.PrayerLogEntity>> {
+        return db.prayerLogDao().getAllPrayerLogs()
+    }
+
+
     // Room DB integrations
     fun getTodayDateString(): String {
+        val city = _selectedCity.value
+        val offsetMillis = (city.timezoneOffsetHours * 3600000).toInt()
+        val offsetHours = offsetMillis / 3600000
+        val offsetMins = Math.abs((offsetMillis / 60000) % 60)
+        val tzId = String.format(java.util.Locale.US, "GMT%+03d:%02d", offsetHours, offsetMins)
+        val cityTz = java.util.SimpleTimeZone(offsetMillis, tzId)
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        sdf.timeZone = cityTz
         return sdf.format(Date())
     }
 
@@ -127,18 +634,97 @@ class AppRepository(
         return db.prayerLogDao().getPrayerLogForDate(getTodayDateString())
     }
 
-    suspend fun togglePrayerCompleted(prayerName: PrayerName, currentLog: PrayerLogEntity?) {
-        val date = getTodayDateString()
-        val existing = currentLog ?: PrayerLogEntity(date = date)
+    suspend fun getPrayerLogForDateDirect(dateString: String): PrayerLogEntity? {
+        return db.prayerLogDao().getPrayerLogForDateDirect(dateString)
+    }
+
+    suspend fun savePrayerNote(
+        prayerName: PrayerName,
+        dateString: String = getTodayDateString(),
+        note: String?
+    ): Boolean {
+        if (prayerName == PrayerName.SUNRISE) return false
+        val existing = db.prayerLogDao().getPrayerLogForDateDirect(dateString) ?: PrayerLogEntity(date = dateString)
+        val updated = existing.withNote(prayerName, note)
+        db.prayerLogDao().insertOrUpdatePrayerLog(updated)
+        return true
+    }
+
+    suspend fun setPrayerQadaAdded(
+        prayerName: PrayerName,
+        dateString: String = getTodayDateString(),
+        added: Boolean
+    ): Boolean {
+        if (prayerName == PrayerName.SUNRISE) return false
+        val existing = db.prayerLogDao().getPrayerLogForDateDirect(dateString) ?: PrayerLogEntity(date = dateString)
+        val updated = existing.withQadaAdded(prayerName, added)
+        db.prayerLogDao().insertOrUpdatePrayerLog(updated)
+        return true
+    }
+
+    suspend fun setPrayerStatus(
+        prayerName: PrayerName,
+        dateString: String = getTodayDateString(),
+        status: com.example.data.model.PrayerStatus
+    ): Boolean {
+        if (prayerName == PrayerName.SUNRISE) return false
+
+        val todayStr = getTodayDateString()
+        if (dateString > todayStr && (status == com.example.data.model.PrayerStatus.PRAYED || status == com.example.data.model.PrayerStatus.MISSED)) {
+            return false // Future dates cannot be marked Prayed or Missed
+        }
+
+        val isToday = dateString == todayStr
+        if (isToday && (status == com.example.data.model.PrayerStatus.PRAYED || status == com.example.data.model.PrayerStatus.MISSED)) {
+            val todayTimes = getTodayPrayerTimes()
+            val prayerItem = todayTimes.find { it.name == prayerName }
+            if (prayerItem != null && System.currentTimeMillis() < prayerItem.timeMillis) {
+                return false // Future prayer times cannot be marked Prayed or Missed
+            }
+        }
+
+        val existing = db.prayerLogDao().getPrayerLogForDateDirect(dateString) ?: PrayerLogEntity(date = dateString)
+        val isCompleted = status == com.example.data.model.PrayerStatus.PRAYED
+        val isMissed = status == com.example.data.model.PrayerStatus.MISSED
+
         val updated = when (prayerName) {
-            PrayerName.FAJR -> existing.copy(fajrCompleted = !existing.fajrCompleted)
-            PrayerName.DHUHR -> existing.copy(dhuhrCompleted = !existing.dhuhrCompleted)
-            PrayerName.ASR -> existing.copy(asrCompleted = !existing.asrCompleted)
-            PrayerName.MAGHRIB -> existing.copy(maghribCompleted = !existing.maghribCompleted)
-            PrayerName.ISHA -> existing.copy(ishaCompleted = !existing.ishaCompleted)
+            PrayerName.FAJR -> existing.copy(fajrCompleted = isCompleted, fajrMissed = isMissed)
+            PrayerName.DHUHR -> existing.copy(dhuhrCompleted = isCompleted, dhuhrMissed = isMissed)
+            PrayerName.ASR -> existing.copy(asrCompleted = isCompleted, asrMissed = isMissed)
+            PrayerName.MAGHRIB -> existing.copy(maghribCompleted = isCompleted, maghribMissed = isMissed)
+            PrayerName.ISHA -> existing.copy(ishaCompleted = isCompleted, ishaMissed = isMissed)
             PrayerName.SUNRISE -> existing
         }
         db.prayerLogDao().insertOrUpdatePrayerLog(updated)
+        return true
+    }
+
+    suspend fun setPrayerCompleted(
+        prayerName: PrayerName,
+        dateString: String = getTodayDateString(),
+        completed: Boolean
+    ): Boolean {
+        val status = if (completed) com.example.data.model.PrayerStatus.PRAYED else com.example.data.model.PrayerStatus.NEEDS_INPUT
+        return setPrayerStatus(prayerName, dateString, status)
+    }
+
+    suspend fun togglePrayerCompleted(
+        prayerName: PrayerName,
+        currentLog: PrayerLogEntity?,
+        dateString: String = getTodayDateString()
+    ): Boolean {
+        if (prayerName == PrayerName.SUNRISE) return false
+
+        val date = dateString
+        val existing = currentLog ?: db.prayerLogDao().getPrayerLogForDateDirect(date) ?: PrayerLogEntity(date = date)
+        val isCurrentlyCompleted = existing.isCompleted(prayerName)
+
+        val targetStatus = if (isCurrentlyCompleted) {
+            com.example.data.model.PrayerStatus.NEEDS_INPUT
+        } else {
+            com.example.data.model.PrayerStatus.PRAYED
+        }
+        return setPrayerStatus(prayerName, date, targetStatus)
     }
 
     // Dhikr History
@@ -182,6 +768,33 @@ class AppRepository(
                 verseTextTranslation = textEn
             )
             db.bookmarkDao().addBookmark(bookmark)
+        }
+    }
+
+    // Dua Library DAO Integration (One-to-Many Collections)
+    val allCategoriesWithDuas: Flow<List<DuaCategoryWithDuas>> = db.duaDao().getCategoriesWithDuas()
+    val allDuasFlow: Flow<List<DuaEntity>> = db.duaDao().getAllDuas()
+    val allCategoriesFlow: Flow<List<DuaCategoryEntity>> = db.duaDao().getAllCategories()
+
+    fun getDuasForCategory(categoryIdOrTitle: String): Flow<List<DuaEntity>> {
+        return db.duaDao().getDuasByCategory(categoryIdOrTitle)
+    }
+
+    fun getCategoryWithDuas(categoryIdOrTitle: String): Flow<DuaCategoryWithDuas?> {
+        return db.duaDao().getCategoryWithDuas(categoryIdOrTitle)
+    }
+
+    suspend fun getDuasForCategoryDirect(categoryIdOrTitle: String): List<DuaEntity> {
+        return db.duaDao().getDuasByCategoryDirect(categoryIdOrTitle)
+    }
+
+    suspend fun ensureDuaDataPopulated(
+        categories: List<DuaCategoryEntity>,
+        duas: List<DuaEntity>
+    ) {
+        if (db.duaDao().getCategoryCount() == 0 || db.duaDao().getDuaCount() == 0) {
+            db.duaDao().insertCategories(categories)
+            db.duaDao().insertDuas(duas)
         }
     }
 }

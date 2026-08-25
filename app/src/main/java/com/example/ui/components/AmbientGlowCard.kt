@@ -1,5 +1,17 @@
 package com.example.ui.components
 
+import com.example.ui.theme.semanticPrimaryAccent
+import com.example.ui.theme.semanticSuccess
+import com.example.ui.theme.semanticError
+import com.example.ui.theme.semanticSurface
+import com.example.ui.theme.semanticSurfaceElevated
+import com.example.ui.theme.semanticPrimaryText
+import com.example.ui.theme.semanticMutedText
+import com.example.ui.theme.semanticBorder
+import com.example.ui.theme.semanticBackground
+import com.example.ui.theme.semanticWarning
+
+
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -41,6 +53,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,6 +70,7 @@ fun AmbientGlowHeroCard(
     countdownFormatted: String,
     cityName: String,
     hijriDate: HijriDate,
+    islamicDateState: com.example.data.model.IslamicDateState = com.example.data.model.IslamicDateState(),
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -102,7 +116,10 @@ fun AmbientGlowHeroCard(
             Canvas(
                 modifier = Modifier
                     .matchParentSize()
-                    .scale(scaleGlow)
+                    .graphicsLayer {
+                        scaleX = scaleGlow
+                        scaleY = scaleGlow
+                    }
             ) {
                 val centerOffset = Offset(size.width * 0.5f, size.height * 0.45f)
                 val radius = size.width * 0.55f
@@ -170,16 +187,6 @@ fun AmbientGlowHeroCard(
                 }
 
                 Spacer(modifier = Modifier.height(18.dp))
-
-                // Hijri Date Label
-                Text(
-                    text = HijriCalc.formatHijriString(hijriDate),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Medium
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
 
                 // Next Prayer Title
                 val nextPrayerName = nextPrayer?.name?.displayName ?: "Next Prayer"

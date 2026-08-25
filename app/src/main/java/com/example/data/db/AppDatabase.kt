@@ -9,15 +9,22 @@ import androidx.room.RoomDatabase
     entities = [
         PrayerLogEntity::class,
         DhikrHistoryEntity::class,
-        BookmarkEntity::class
+        BookmarkEntity::class,
+        DuaCategoryEntity::class,
+        DuaEntity::class,
+        DownloadedAudioEntity::class,
+        HijriCacheEntity::class
     ],
-    version = 1,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun prayerLogDao(): PrayerLogDao
     abstract fun dhikrHistoryDao(): DhikrHistoryDao
     abstract fun bookmarkDao(): BookmarkDao
+    abstract fun duaDao(): DuaDao
+    abstract fun downloadedAudioDao(): DownloadedAudioDao
+    abstract fun hijriCacheDao(): HijriCacheDao
 
     companion object {
         @Volatile
@@ -29,7 +36,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "fivelight_db"
-                ).fallbackToDestructiveMigration().build()
+                ).fallbackToDestructiveMigration(dropAllTables = true).build()
                 INSTANCE = instance
                 instance
             }

@@ -1,5 +1,17 @@
 package com.example.ui.theme
 
+import com.example.ui.theme.semanticPrimaryAccent
+import com.example.ui.theme.semanticSuccess
+import com.example.ui.theme.semanticError
+import com.example.ui.theme.semanticSurface
+import com.example.ui.theme.semanticSurfaceElevated
+import com.example.ui.theme.semanticPrimaryText
+import com.example.ui.theme.semanticMutedText
+import com.example.ui.theme.semanticBorder
+import com.example.ui.theme.semanticBackground
+import com.example.ui.theme.semanticWarning
+
+
 import androidx.compose.material3.Text
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
@@ -15,6 +27,7 @@ import androidx.compose.ui.unit.sp
 // Typography definitions
 val InstrumentSerifItalic = FontFamily.Serif
 val SerifHeaderFont = InstrumentSerifItalic
+val InstrumentSerif = SerifHeaderFont
 val SpaceGrotesk = FontFamily.SansSerif
 val AmiriFont = FontFamily.Serif
 
