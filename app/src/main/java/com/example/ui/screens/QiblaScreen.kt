@@ -368,8 +368,17 @@ fun QiblaScreen(
         if (dt in 15..400 && abs(dAngle) > 0.4f && abs(dAngle) < 45f) {
             val speed = abs(dAngle) / (dt / 1000f) // degrees per second
             if (speed > 5f) {
-                // Sweep opposite to needle rotation: trails along the portion of the ring where needle has just moved (-dAngle)
-                val targetSweep = (-dAngle * 1.5f).coerceIn(-28f, 28f)
+                // Qibla-relative side determination:
+                // userDelta: Negative = Left-side deviation, Positive = Right-side deviation
+                val userDelta = shortestSignedAngle(compassHeading - qiblaAngle)
+
+                // Continuous mapping across 0 to avoid teleporting.
+                // The trail smoothly crosses 0 when aligned, and flips at 180 via shortest path.
+                val qiblaSweep = userDelta.coerceIn(-28f, 28f)
+                
+                // Scale magnitude slightly by movement speed to preserve the dynamic trail feel
+                val speedFactor = (speed / 20f).coerceIn(0.4f, 1f)
+                val targetSweep = qiblaSweep * speedFactor
                 val targetAlpha = (abs(dAngle) * 0.08f + 0.16f).coerceIn(0.14f, 0.35f)
 
                 trailSweepAnim.snapTo(targetSweep)
@@ -567,26 +576,26 @@ private fun SoftArcCompass(
 
             // Part 1: Warmth-Based Qibla Proximity Glow (Contained radial glow growing small -> large)
             if (proximityGlow > 0.001f) {
-                // Glow radius grows smoothly from small (0.28 * radius) to max (0.88 * radius)
+                // Glow radius grows smoothly from small (0.22 * radius) to max (0.84 * radius)
                 // Leaving a clear transparent margin so it NEVER touches the compass ring at radius
-                val minGlowRadius = radius * 0.28f
-                val maxGlowRadius = radius * 0.88f
+                val minGlowRadius = radius * 0.22f
+                val maxGlowRadius = radius * 0.84f
                 val ambientGlowRadius = minGlowRadius + (maxGlowRadius - minGlowRadius) * proximityGlow
                 val glowBaseColor = if (isDark) Color(0xFF494556) else Color(0xFF8D6B1E)
-                val peakOpacity = if (isDark) 0.24f else 0.20f
+                val peakOpacity = if (isDark) 0.32f else 0.26f
                 val finalOpacity = (peakOpacity * proximityGlow).coerceIn(0f, 1f)
 
-                // Safety circular clipping boundary at 0.92 * radius inside the compass circle
+                // Safety circular clipping boundary at 0.90 * radius inside the compass circle
                 val clipCirclePath = Path().apply {
-                    addOval(Rect(center = center, radius = radius * 0.92f))
+                    addOval(Rect(center = center, radius = radius * 0.90f))
                 }
                 clipPath(clipCirclePath) {
                     drawCircle(
                         brush = Brush.radialGradient(
                             0.00f to glowBaseColor.copy(alpha = finalOpacity),
-                            0.35f to glowBaseColor.copy(alpha = finalOpacity * 0.90f),
-                            0.65f to glowBaseColor.copy(alpha = finalOpacity * 0.50f),
-                            0.88f to glowBaseColor.copy(alpha = finalOpacity * 0.12f),
+                            0.35f to glowBaseColor.copy(alpha = finalOpacity * 0.85f),
+                            0.65f to glowBaseColor.copy(alpha = finalOpacity * 0.45f),
+                            0.85f to glowBaseColor.copy(alpha = finalOpacity * 0.10f),
                             1.00f to Color.Transparent,
                             center = center,
                             radius = ambientGlowRadius
