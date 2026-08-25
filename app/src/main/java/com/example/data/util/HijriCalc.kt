@@ -519,7 +519,7 @@ object HijriCalc {
                 connectTimeout = 5000
                 readTimeout = 5000
                 requestMethod = "GET"
-                setRequestProperty("User-Agent", "FiveLight-IslamicApp/1.5")
+                setRequestProperty("User-Agent", "FiveLight-IslamicApp/1.6")
             }
 
             if (connection.responseCode == 200) {
