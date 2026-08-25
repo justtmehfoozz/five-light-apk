@@ -847,8 +847,8 @@ fun ReflectionOfTheDayCard(
     var totalDragX by remember { mutableStateOf(0f) }
 
     val isDarkTheme = MaterialTheme.colorScheme.background.run { (red * 0.299f + green * 0.587f + blue * 0.114f) < 0.5f }
-    val cardBg = if (isDarkTheme) Color(0xFF1B1A19) else Color.semanticSurface
-    val cardBorder = if (isDarkTheme) BorderStroke(1.dp, Color(0xFF3A3836)) else BorderStroke(1.dp, Color(0xFFD5D1C9))
+    val cardBg = MaterialTheme.colorScheme.surface
+    val cardBorder = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
 
     Card(
         modifier = modifier
@@ -1030,8 +1030,8 @@ fun WeeklyWorshipOverviewCard(
     modifier: Modifier = Modifier
 ) {
     val isDarkTheme = MaterialTheme.colorScheme.background.run { (red * 0.299f + green * 0.587f + blue * 0.114f) < 0.5f }
-    val cardBg = if (isDarkTheme) Color(0xFF1B1A19) else Color.semanticSurface
-    val cardBorder = if (isDarkTheme) BorderStroke(1.dp, Color(0xFF3A3836)) else BorderStroke(1.dp, Color(0xFFD5D1C9))
+    val cardBg = MaterialTheme.colorScheme.surface
+    val cardBorder = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
 
     Card(
         modifier = modifier

@@ -100,6 +100,7 @@ import com.example.data.model.CityLocation
 import com.example.data.model.HijriDate
 import com.example.data.util.HijriCalc
 import com.example.ui.theme.SpaceGrotesk
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -224,11 +225,6 @@ fun QiblaScreen(
         label = "animated_kaaba_glow"
     )
 
-    // Part 1: Continuous Warmth-based ambient Qibla proximity glow behind entire compass ring
-    // Continuous angular difference interpolation: 180° away (0.0) to 0° facing Qibla (1.0)
-    // Formula: intensity = (180 - angularDifference) / 180, smoothly clamped to [0.0, 1.0]
-    val proximityGlow = if (isSensorAvailable) ((180f - absDiff) / 180f).coerceIn(0f, 1f) else 0f
-
     // Subtle breathing pulse at Kaaba when closely aligned (< 5°)
     val infiniteTransition = rememberInfiniteTransition(label = "kaaba_breathing_transition")
     val rawBreathingValue by infiniteTransition.animateFloat(
@@ -248,19 +244,46 @@ fun QiblaScreen(
     val isAligned = isSensorAvailable && absDiff <= facingThreshold
     var wasAligned by remember { mutableStateOf(false) }
 
+    // Subtle 200ms alignment settle hold state
+    var isSettleHolding by remember { mutableStateOf(false) }
+
+    // Part 1: Continuous Warmth-based ambient Qibla proximity glow behind entire compass ring
+    // Raw proximity calculation: 180° away (0.0) to 0° facing Qibla (1.0)
+    val rawProximityGlow = if (isSensorAvailable) ((180f - absDiff) / 180f).coerceIn(0f, 1f) else 0f
+    val effectiveRawGlow = if (isSettleHolding) 1.0f else rawProximityGlow
+    val easedProximityGlow = smoothstep(effectiveRawGlow)
+
+    // Smooth visual intensity to prevent sensor-induced flicker
+    val proximityGlow by animateFloatAsState(
+        targetValue = easedProximityGlow,
+        animationSpec = tween(
+            durationMillis = 200,
+            easing = FastOutSlowInEasing
+        ),
+        label = "animated_proximity_glow"
+    )
+
     // Qibla-Lock Ring Pulse Animation (Animates 0f -> 1f -> 0f over ~400ms)
     val ringPulseAnim = remember { Animatable(0f) }
     val coroutineScope = rememberCoroutineScope()
 
     val isVibrationEnabled = LocalVibrationEnabled.current
 
-    // Edge-triggered haptic feedback & Ring Pulse: Triggered ONCE upon entering alignment threshold
+    // Edge-triggered haptic feedback, Ring Pulse & Glow Settle: Triggered ONCE upon entering alignment threshold
     LaunchedEffect(isAligned, isActive) {
         if (!isActive) {
             wasAligned = false
+            isSettleHolding = false
             return@LaunchedEffect
         }
         if (isAligned && !wasAligned) {
+            // Trigger 150-250ms visual settle hold for ambient glow
+            coroutineScope.launch {
+                isSettleHolding = true
+                delay(200)
+                isSettleHolding = false
+            }
+
             // Trigger Ring pulse animation
             coroutineScope.launch {
                 ringPulseAnim.snapTo(0f)
@@ -547,17 +570,19 @@ private fun SoftArcCompass(
 
             // Part 1: Warmth-Based Qibla Proximity Glow (Radial accent glow behind compass ring)
             if (proximityGlow > 0.001f) {
-                val ambientGlowRadius = radius * 1.40f
+                val ambientGlowRadius = radius * 1.80f
                 val glowBaseColor = if (isDark) Color(0xFF494556) else Color(0xFF8D6B1E)
                 val peakOpacity = if (isDark) 0.24f else 0.20f
                 val finalOpacity = (peakOpacity * proximityGlow).coerceIn(0f, 1f)
 
                 drawCircle(
                     brush = Brush.radialGradient(
-                        0.0f to glowBaseColor.copy(alpha = finalOpacity),
-                        0.45f to glowBaseColor.copy(alpha = finalOpacity * 0.65f),
-                        0.80f to glowBaseColor.copy(alpha = finalOpacity * 0.22f),
-                        1.0f to Color.Transparent,
+                        0.00f to glowBaseColor.copy(alpha = finalOpacity),
+                        0.35f to glowBaseColor.copy(alpha = finalOpacity * 0.95f),
+                        0.55f to glowBaseColor.copy(alpha = finalOpacity * 0.80f),
+                        0.75f to glowBaseColor.copy(alpha = finalOpacity * 0.35f),
+                        0.90f to glowBaseColor.copy(alpha = finalOpacity * 0.10f),
+                        1.00f to Color.Transparent,
                         center = center,
                         radius = ambientGlowRadius
                     ),
@@ -1264,4 +1289,12 @@ private fun calculateDistanceToKaabaKm(lat: Double, lng: Double): Int {
     val c = 2 * atan2(sqrt(a), sqrt(1 - a))
     val r = 6371.0 // Earth radius in km
     return (r * c).toInt()
+}
+
+/**
+ * Smoothstep interpolation for soft visual easing (Hermite curve S(x) = x^2 * (3 - 2x)).
+ */
+private fun smoothstep(x: Float): Float {
+    val clamped = x.coerceIn(0f, 1f)
+    return clamped * clamped * (3f - 2f * clamped)
 }
