@@ -365,12 +365,12 @@ fun QiblaScreen(
         lastHeadingForTrail = compassHeading
         lastHeadingTimeForTrail = now
 
-        if (dt in 20..350 && abs(dAngle) > 0.6f && abs(dAngle) < 35f) {
+        if (dt in 15..400 && abs(dAngle) > 0.4f && abs(dAngle) < 45f) {
             val speed = abs(dAngle) / (dt / 1000f) // degrees per second
-            if (speed > 8f) {
-                // Sweep opposite to needle rotation: trails along the portion of the ring where needle has just moved
-                val targetSweep = (dAngle * 1.5f).coerceIn(-24f, 24f)
-                val targetAlpha = (abs(dAngle) * 0.08f + 0.16f).coerceIn(0.14f, 0.32f)
+            if (speed > 5f) {
+                // Sweep opposite to needle rotation: trails along the portion of the ring where needle has just moved (-dAngle)
+                val targetSweep = (-dAngle * 1.5f).coerceIn(-28f, 28f)
+                val targetAlpha = (abs(dAngle) * 0.08f + 0.16f).coerceIn(0.14f, 0.35f)
 
                 trailSweepAnim.snapTo(targetSweep)
                 trailAlphaAnim.snapTo(targetAlpha)
