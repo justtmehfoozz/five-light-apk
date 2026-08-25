@@ -78,6 +78,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -85,6 +86,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
@@ -314,45 +316,40 @@ fun QiblaScreen(
     }
 
     // Part 3: Haptic Tick at Cardinal Crossings (N:0°, E:90°, S:180°, W:270°)
-    var prevHeadingForHaptic by remember { mutableFloatStateOf(compassHeading) }
-    var lastTriggeredCardinal by remember { mutableStateOf<Int?>(null) }
+    // Tracks cardinal directions that have already triggered a haptic while remaining inside proximity (±5°)
+    val triggeredCardinals = remember { HashSet<Int>() }
 
     LaunchedEffect(compassHeading, isActive) {
-        if (!isActive) return@LaunchedEffect
+        if (!isActive) {
+            triggeredCardinals.clear()
+            return@LaunchedEffect
+        }
         val cardinalAngles = intArrayOf(0, 90, 180, 270)
-        val headingDelta = shortestSignedAngle(compassHeading - prevHeadingForHaptic)
+        for (cardinal in cardinalAngles) {
+            val angularDiff = abs(shortestSignedAngle(compassHeading - cardinal.toFloat()))
+            val isTriggered = triggeredCardinals.contains(cardinal)
 
-        if (abs(headingDelta) < 30f) { // Ignore sensor jumps/resets
-            for (cardinal in cardinalAngles) {
-                val prevDiff = shortestSignedAngle(prevHeadingForHaptic - cardinal.toFloat())
-                val currDiff = shortestSignedAngle(compassHeading - cardinal.toFloat())
-
-                // Detect crossing of cardinal line
-                val crossed = (prevDiff < 0f && currDiff >= 0f) || (prevDiff > 0f && currDiff <= 0f)
-                if (crossed && abs(prevDiff) < 14f && abs(currDiff) < 14f) {
-                    if (lastTriggeredCardinal != cardinal) {
-                        lastTriggeredCardinal = cardinal
-                        if (isVibrationEnabled) {
-                            try {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && vibrator != null && vibrator.hasVibrator()) {
-                                    vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
-                                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vibrator != null && vibrator.hasVibrator()) {
-                                    vibrator.vibrate(VibrationEffect.createOneShot(8L, 50))
-                                } else {
-                                    FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled)
-                                }
-                            } catch (_: Exception) {
-                                FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled)
-                            }
+            if (angularDiff <= 5f && !isTriggered) {
+                // Transition into cardinal proximity zone (±5°) -> trigger haptic ONCE
+                triggeredCardinals.add(cardinal)
+                if (isVibrationEnabled) {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && vibrator != null && vibrator.hasVibrator()) {
+                            vibrator.vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK))
+                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vibrator != null && vibrator.hasVibrator()) {
+                            vibrator.vibrate(VibrationEffect.createOneShot(8L, 50))
+                        } else {
+                            FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled)
                         }
+                    } catch (_: Exception) {
+                        FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled)
                     }
-                } else if (abs(currDiff) > 5f && lastTriggeredCardinal == cardinal) {
-                    // Reset debounce when user moves cleanly away (> 5 degrees)
-                    lastTriggeredCardinal = null
                 }
+            } else if (angularDiff > 7f && isTriggered) {
+                // Re-arm cardinal direction when device rotates past hysteresis boundary (> 7°)
+                triggeredCardinals.remove(cardinal)
             }
         }
-        prevHeadingForHaptic = compassHeading
     }
 
     // Part 2: Motion Trail on Compass Ring during physical rotation
@@ -568,27 +565,36 @@ private fun SoftArcCompass(
             val center = Offset(size.width / 2f, size.height / 2f)
             val radius = size.minDimension * 0.40f
 
-            // Part 1: Warmth-Based Qibla Proximity Glow (Radial accent glow behind compass ring)
+            // Part 1: Warmth-Based Qibla Proximity Glow (Contained radial glow growing small -> large)
             if (proximityGlow > 0.001f) {
-                val ambientGlowRadius = radius * 1.80f
+                // Glow radius grows smoothly from small (0.28 * radius) to max (0.88 * radius)
+                // Leaving a clear transparent margin so it NEVER touches the compass ring at radius
+                val minGlowRadius = radius * 0.28f
+                val maxGlowRadius = radius * 0.88f
+                val ambientGlowRadius = minGlowRadius + (maxGlowRadius - minGlowRadius) * proximityGlow
                 val glowBaseColor = if (isDark) Color(0xFF494556) else Color(0xFF8D6B1E)
                 val peakOpacity = if (isDark) 0.24f else 0.20f
                 val finalOpacity = (peakOpacity * proximityGlow).coerceIn(0f, 1f)
 
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        0.00f to glowBaseColor.copy(alpha = finalOpacity),
-                        0.35f to glowBaseColor.copy(alpha = finalOpacity * 0.95f),
-                        0.55f to glowBaseColor.copy(alpha = finalOpacity * 0.80f),
-                        0.75f to glowBaseColor.copy(alpha = finalOpacity * 0.35f),
-                        0.90f to glowBaseColor.copy(alpha = finalOpacity * 0.10f),
-                        1.00f to Color.Transparent,
-                        center = center,
-                        radius = ambientGlowRadius
-                    ),
-                    radius = ambientGlowRadius,
-                    center = center
-                )
+                // Safety circular clipping boundary at 0.92 * radius inside the compass circle
+                val clipCirclePath = Path().apply {
+                    addOval(Rect(center = center, radius = radius * 0.92f))
+                }
+                clipPath(clipCirclePath) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            0.00f to glowBaseColor.copy(alpha = finalOpacity),
+                            0.35f to glowBaseColor.copy(alpha = finalOpacity * 0.90f),
+                            0.65f to glowBaseColor.copy(alpha = finalOpacity * 0.50f),
+                            0.88f to glowBaseColor.copy(alpha = finalOpacity * 0.12f),
+                            1.00f to Color.Transparent,
+                            center = center,
+                            radius = ambientGlowRadius
+                        ),
+                        radius = ambientGlowRadius,
+                        center = center
+                    )
+                }
             }
 
             // Part 1: Qibla-Lock Ring Pulse brightness interpolation
