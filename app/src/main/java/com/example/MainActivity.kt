@@ -40,6 +40,7 @@ import com.example.ui.components.predictiveBackTransform
 import com.example.ui.components.rememberPredictiveBackState
 import com.example.data.util.DuaItem
 import com.example.ui.components.ExploreSearchScope
+import com.example.ui.components.ExpandedQuranPlayerSheet
 import com.example.ui.components.NavItem
 import com.example.ui.components.SereneBottomNavBar
 import com.example.ui.components.rememberDockSelectorController
@@ -121,18 +122,22 @@ class MainActivity : ComponentActivity() {
 
                 val playingSurahNumber by viewModel.playingSurahNumber.collectAsStateWithLifecycle()
                 val playingVerseNumber by viewModel.playingVerseNumber.collectAsStateWithLifecycle()
+                val playingVerse by viewModel.playingVerse.collectAsStateWithLifecycle()
                 val isPlayingAudio by viewModel.isPlayingAudio.collectAsStateWithLifecycle()
                 val audioProgress by viewModel.audioProgress.collectAsStateWithLifecycle()
                 val showPrayerMode by viewModel.showPrayerMode.collectAsStateWithLifecycle()
+                var showExpandedPlayerSheet by remember { mutableStateOf(false) }
 
                 val mainPredictiveState = rememberPredictiveBackState()
-                val canPopAppLevel = showSearchOverlay || showSettingsSheet || tabStack.size > 1
+                val canPopAppLevel = showSearchOverlay || showSettingsSheet || showExpandedPlayerSheet || tabStack.size > 1
 
                 RegisterPredictiveBackHandler(
                     enabled = canPopAppLevel,
                     backState = mainPredictiveState,
                     onBack = {
-                        if (showSearchOverlay) {
+                        if (showExpandedPlayerSheet) {
+                            showExpandedPlayerSheet = false
+                        } else if (showSearchOverlay) {
                             showSearchOverlay = false
                         } else if (showSettingsSheet) {
                             showSettingsSheet = false
@@ -533,8 +538,47 @@ class MainActivity : ComponentActivity() {
                                 pagerState.animateScrollToPage(4)
                             }
                         },
+                        onExpandPlayer = {
+                            showExpandedPlayerSheet = true
+                        },
                         modifier = Modifier.fillMaxSize()
                     )
+
+                    if (showExpandedPlayerSheet && playingSurahNumber != null) {
+                        val playingSurah = remember(playingSurahNumber) {
+                            com.example.data.util.QuranData.SURAHS_DIRECTORY.find { it.number == playingSurahNumber }
+                        }
+                        val bookmarkedVerses by viewModel.bookmarks.collectAsStateWithLifecycle()
+                        val isCurrentBookmarked = remember(playingSurahNumber, playingVerseNumber, bookmarkedVerses) {
+                            val sNum = playingSurahNumber ?: 0
+                            val vNum = playingVerseNumber ?: 0
+                            bookmarkedVerses.any { it.surahNumber == sNum && it.verseNumber == vNum }
+                        }
+
+                        ExpandedQuranPlayerSheet(
+                            surah = playingSurah,
+                            verse = playingVerse,
+                            currentVerseNumber = playingVerseNumber,
+                            isPlaying = isPlayingAudio,
+                            audioProgress = audioProgress,
+                            isBookmarked = isCurrentBookmarked,
+                            onPlayPause = { viewModel.togglePlayPauseAudio() },
+                            onSkipPrevious = { viewModel.playPreviousVerseAudio() },
+                            onSkipNext = { viewModel.playNextVerseAudio() },
+                            onSeekAudio = { viewModel.seekAudioTo(it) },
+                            onStopAudio = {
+                                viewModel.stopAudio()
+                                showExpandedPlayerSheet = false
+                            },
+                            onToggleBookmark = {
+                                val curV = playingVerse
+                                if (curV != null) {
+                                    viewModel.toggleVerseBookmark(curV)
+                                }
+                            },
+                            onDismiss = { showExpandedPlayerSheet = false }
+                        )
+                    }
 
                     if (showSettingsSheet) {
                         val selectedCity by viewModel.selectedCity.collectAsStateWithLifecycle()

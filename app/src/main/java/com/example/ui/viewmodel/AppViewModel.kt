@@ -294,6 +294,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
     private val _playingVerseNumber = MutableStateFlow<Int?>(null)
     val playingVerseNumber: StateFlow<Int?> = _playingVerseNumber.asStateFlow()
 
+    private val _playingVerse = MutableStateFlow<Verse?>(null)
+    val playingVerse: StateFlow<Verse?> = _playingVerse.asStateFlow()
+
     private val _isPlayingAudio = MutableStateFlow(false)
     val isPlayingAudio: StateFlow<Boolean> = _isPlayingAudio.asStateFlow()
 
@@ -412,6 +415,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
                     )
                 }
             }
+        }
+    }
+
+    fun toggleVerseBookmark(verse: Verse, surah: Surah? = null) {
+        viewModelScope.launch {
+            val isBookmarked = bookmarks.value.any { it.surahNumber == verse.surahNumber && it.verseNumber == verse.verseNumber }
+            val resolvedSurah = surah ?: QuranData.SURAHS_DIRECTORY.find { it.number == verse.surahNumber }
+            val nameEn = resolvedSurah?.nameEnglish ?: "Surah ${verse.surahNumber}"
+            val nameAr = resolvedSurah?.nameArabic ?: ""
+            repository.toggleBookmark(
+                surahNumber = verse.surahNumber,
+                verseNumber = verse.verseNumber,
+                surahNameEn = nameEn,
+                surahNameAr = nameAr,
+                textAr = verse.textArabic,
+                textEn = verse.textEnglish,
+                currentlyBookmarked = isBookmarked
+            )
         }
     }
 
@@ -1057,6 +1078,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
     private fun reloadAndPlayVerse(verse: Verse) {
         _playingSurahNumber.value = verse.surahNumber
         _playingVerseNumber.value = verse.verseNumber
+        _playingVerse.value = verse
         _audioProgress.value = 0f
         _playbackError.value = null
 
@@ -1137,6 +1159,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
                             _isPlayingAudio.value = false
                             _playingSurahNumber.value = null
                             _playingVerseNumber.value = null
+                            _playingVerse.value = null
                             _audioProgress.value = 0f
                             progressJob?.cancel()
                         }
@@ -1274,6 +1297,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         _isPlayingAudio.value = false
         _playingSurahNumber.value = null
         _playingVerseNumber.value = null
+        _playingVerse.value = null
         _audioProgress.value = 0f
         progressJob?.cancel()
     }

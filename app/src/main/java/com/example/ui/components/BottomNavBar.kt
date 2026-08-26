@@ -292,6 +292,7 @@ fun SereneBottomNavBar(
     allDhikrs: List<DhikrPreset> = emptyList(),
     dockFifthSlotMode: String = "more",
     onFifthSlotMoreTap: () -> Unit = {},
+    onExpandPlayer: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val currentRouteState by rememberUpdatedState(currentRoute)
@@ -318,7 +319,11 @@ fun SereneBottomNavBar(
 
     val targetDockBorderColor = when (morphState) {
         DockMorphState.SEARCH -> if (isDark) Color.semanticPrimaryAccent else lightSearchBorderColor
-        DockMorphState.MUSIC -> if (isDark) Color.semanticPrimaryAccent.copy(alpha = 0.5f) else Color.semanticDockBorder
+        DockMorphState.MUSIC -> if (isPlaying) {
+            Color.semanticPrimaryAccent.copy(alpha = if (isDark) 0.70f else 0.60f)
+        } else {
+            Color.semanticPrimaryAccent.copy(alpha = if (isDark) 0.30f else 0.25f)
+        }
         DockMorphState.DOCK -> Color.semanticDockBorder
     }
     val dockBorderColor by animateColorAsState(targetValue = targetDockBorderColor, animationSpec = DOCK_SPRING_COLOR, label = "dockBorderColor")
@@ -361,6 +366,22 @@ fun SereneBottomNavBar(
                 repeatMode = RepeatMode.Reverse
             ),
             label = "idlePulse"
+        )
+    }
+
+    // Active music player breathing pulse for subtle accent glow when playing
+    val musicPulseTransition = rememberInfiniteTransition(label = "musicPlayerPulse")
+    val musicPulseFraction by if (isReducedMotion || !isPlaying) {
+        remember(isPlaying) { mutableFloatStateOf(0f) }
+    } else {
+        musicPulseTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1800, easing = CubicBezierEasing(0.4f, 0.0f, 0.2f, 1.0f)),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "musicPulse"
         )
     }
 
@@ -723,6 +744,39 @@ fun SereneBottomNavBar(
             }
         }
 
+        // Active Player Glow Shadow when reciting
+        if (isPlaybackMode && !isSearchActive) {
+            val accentColor = Color.semanticPrimaryAccent
+            val basePulseAlpha = if (isPlaying && !isReducedMotion) {
+                androidx.compose.ui.util.lerp(0.08f, 0.22f, musicPulseFraction)
+            } else if (isPlaying) {
+                0.14f
+            } else {
+                0.04f
+            }
+            val pulseSpread = if (isPlaying && !isReducedMotion) {
+                androidx.compose.ui.unit.lerp(2.dp, 6.dp, musicPulseFraction)
+            } else {
+                2.dp
+            }
+
+            Box(
+                modifier = Modifier
+                    .padding(bottom = 24.dp)
+                    .navigationBarsPadding()
+                    .offset(y = currentTranslateY)
+                    .width(currentWidthDp + pulseSpread * 2)
+                    .height(dockHeight + pulseSpread * 2)
+                    .drawBehind {
+                        val glow = accentColor.copy(alpha = basePulseAlpha)
+                        drawRoundRect(
+                            color = glow,
+                            cornerRadius = CornerRadius((animatedCornerRadius + pulseSpread).toPx(), (animatedCornerRadius + pulseSpread).toPx())
+                        )
+                    }
+            )
+        }
+
         // SINGLE CONTINUOUS LIQUID GLASS MORPHING CONTAINER
         LiquidGlassSurface(
             modifier = Modifier
@@ -1052,7 +1106,7 @@ fun SereneBottomNavBar(
                                     .padding(horizontal = 6.dp, vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Left artwork/track identity badge
+                                // Left artwork/track identity badge (tap to expand full player)
                                 Box(
                                     modifier = Modifier
                                         .size(38.dp)
@@ -1062,12 +1116,13 @@ fun SereneBottomNavBar(
                                             scaleY = flankScale.value
                                         }
                                         .clip(CircleShape)
-                                        .background(Color.semanticPrimaryAccent.copy(alpha = 0.16f)),
+                                        .background(Color.semanticPrimaryAccent.copy(alpha = 0.16f))
+                                        .clickable { onExpandPlayer() },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Filled.GraphicEq,
-                                        contentDescription = "Audio Recitation",
+                                        contentDescription = "Expand Full Player",
                                         tint = Color.semanticPrimaryAccent,
                                         modifier = Modifier.size(20.dp)
                                     )
@@ -1089,9 +1144,12 @@ fun SereneBottomNavBar(
                                         horizontalArrangement = Arrangement.SpaceBetween,
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        // Track label
+                                        // Track label (tap to expand full player)
                                         Column(
-                                            modifier = Modifier.weight(1f).padding(end = 4.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .padding(end = 4.dp)
+                                                .clickable { onExpandPlayer() },
                                             verticalArrangement = Arrangement.Center
                                         ) {
                                             Text(
@@ -1105,7 +1163,7 @@ fun SereneBottomNavBar(
                                                 overflow = TextOverflow.Ellipsis
                                             )
                                             Text(
-                                                text = if (playingVerseNumber != null) "Verse $playingVerseNumber" else (playingSurah?.nameArabic ?: "Surah Recitation"),
+                                                text = if (playingVerseNumber != null) "Verse $playingVerseNumber • Tap for details" else (playingSurah?.nameArabic ?: "Surah Recitation"),
                                                 style = MaterialTheme.typography.bodySmall.copy(
                                                     color = inactiveIconColor,
                                                     fontSize = 10.sp
