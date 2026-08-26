@@ -579,6 +579,7 @@ fun QuranScreen(
                                 if (readerLayout.bismillahHeader != null) {
                                     item(key = "bismillah_header_${selectedSurah.number}") {
                                         val bismillahVerse = readerLayout.bismillahHeader
+                                        val isBismillahBookmarked = bookmarkedKeys.contains("${bismillahVerse.surahNumber}_${bismillahVerse.verseNumber}")
                                         val isBismillahActive = (playingSurahNumber == selectedSurah.number) &&
                                                 (playingVerseNumber == bismillahVerse.verseNumber || (selectedSurah.number == 1 && playingVerseNumber == 1) || playingVerseNumber == 0)
 
@@ -587,7 +588,10 @@ fun QuranScreen(
                                             fontSizeSp = fontSizeSp,
                                             showTranslation = showEnglishTranslation,
                                             isPlaying = isBismillahActive && isPlayingAudio,
+                                            isBookmarked = isBismillahBookmarked,
                                             isVerseActive = isBismillahActive,
+                                            onPlayAudio = { onPlayVerseAudio(bismillahVerse) },
+                                            onToggleBookmark = { onToggleBookmark(bismillahVerse, isBismillahBookmarked) },
                                             onOpenLens = { activeLensVerse = bismillahVerse },
                                             onLongClick = {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -1517,7 +1521,10 @@ fun BismillahHeader(
     fontSizeSp: Float,
     showTranslation: Boolean,
     isPlaying: Boolean,
+    isBookmarked: Boolean,
     isVerseActive: Boolean,
+    onPlayAudio: () -> Unit,
+    onToggleBookmark: () -> Unit,
     onOpenLens: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
@@ -1646,7 +1653,91 @@ fun BismillahHeader(
             )
         }
 
-        Spacer(modifier = Modifier.height(22.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Action Icons Hierarchy (Play, Lens/Search, Bookmark)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Play Button
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clickable(onClick = onPlayAudio),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isPlaying) accent
+                            else if (isDark) Color(0xFF24222C) else accent.copy(alpha = 0.12f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AnimatedContent(
+                        targetState = isPlaying,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(180)) togetherWith
+                                    fadeOut(animationSpec = tween(140))
+                        },
+                        label = "bismillahPlayPauseAnim"
+                    ) { activePlaying ->
+                        Icon(
+                            imageVector = if (activePlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (activePlaying) "Pause Audio" else "Play Audio",
+                            tint = if (activePlaying) Color.White else textPrimary.copy(alpha = 0.75f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            // Lens / Search Button
+            if (onOpenLens != null) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clickable(onClick = onOpenLens),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = "Quran Lens",
+                        tint = textPrimary.copy(alpha = 0.55f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            // Bookmark Button
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clickable(onClick = onToggleBookmark),
+                contentAlignment = Alignment.Center
+            ) {
+                AnimatedContent(
+                    targetState = isBookmarked,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(180)) togetherWith
+                                fadeOut(animationSpec = tween(140))
+                    },
+                    label = "bismillahBookmarkAnim"
+                ) { activeBookmarked ->
+                    Icon(
+                        imageVector = if (activeBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                        contentDescription = if (activeBookmarked) "Remove Bookmark" else "Bookmark",
+                        tint = if (activeBookmarked) accent else textPrimary.copy(alpha = 0.55f),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
 
         // Ceremonial bottom separator line (tapered divider)
         Box(
