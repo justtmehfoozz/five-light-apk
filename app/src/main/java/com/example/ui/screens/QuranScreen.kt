@@ -338,7 +338,7 @@ fun QuranScreen(
                 } else -1
             }
 
-            // Track user scroll interactions: respect manual scrolling
+            // Track user scroll interactions: respect manual scrolling with robust hysteresis
             LaunchedEffect(listState, currentPlayingIndex) {
                 snapshotFlow {
                     Pair(listState.isScrollInProgress, listState.layoutInfo.visibleItemsInfo.map { it.index })
@@ -347,11 +347,14 @@ fun QuranScreen(
                         if (isScrolling) {
                             if (visibleIndices.isNotEmpty() && !visibleIndices.contains(currentPlayingIndex)) {
                                 val firstVis = visibleIndices.first()
-                                if (kotlin.math.abs(firstVis - currentPlayingIndex) > 1) {
+                                val lastVis = visibleIndices.last()
+                                // Requires scrolling at least 2 items away before separating
+                                if (currentPlayingIndex < firstVis - 1 || currentPlayingIndex > lastVis + 1) {
                                     userPausedAutoScroll = true
                                 }
                             }
                         } else {
+                            // When user scrolls back and active verse enters viewport, reset pause
                             if (visibleIndices.contains(currentPlayingIndex)) {
                                 userPausedAutoScroll = false
                             }
