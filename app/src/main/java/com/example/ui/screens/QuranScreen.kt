@@ -323,18 +323,24 @@ fun QuranScreen(
             var userPausedAutoScroll by remember { mutableStateOf(false) }
             val coroutineScope = rememberCoroutineScope()
 
-            // Find playing item index in the list
-            val hasBismillah = remember(selectedSurah.number, verses) {
-                selectedSurah.number != 9 && selectedSurah.number != 1 && verses.none { it.verseNumber == 0 }
+            // Derive presentation layout: ceremonial Bismillah header + body flow verses
+            val readerLayout = remember(selectedSurah.number, verses) {
+                com.example.data.util.QuranData.getSurahReaderLayout(selectedSurah.number, verses)
             }
-            val currentPlayingIndex = remember(playingVerseNumber, playingSurahNumber, currentSurah.number, verses, hasBismillah) {
-                if (playingSurahNumber == currentSurah.number && playingVerseNumber != null && verses.isNotEmpty()) {
-                    val rawIndex = verses.indexOfFirst { it.verseNumber == playingVerseNumber }
-                    if (rawIndex >= 0) {
-                        if (hasBismillah) rawIndex + 1 else rawIndex
-                    } else if (playingVerseNumber == 0 && hasBismillah) {
+
+            // Find playing item index in the list
+            val currentPlayingIndex = remember(playingVerseNumber, playingSurahNumber, currentSurah.number, readerLayout) {
+                if (playingSurahNumber == currentSurah.number && playingVerseNumber != null) {
+                    val bismillah = readerLayout.bismillahHeader
+                    val hasBismillah = bismillah != null
+                    if (bismillah != null && (playingVerseNumber == bismillah.verseNumber || (currentSurah.number == 1 && playingVerseNumber == 1) || playingVerseNumber == 0)) {
                         0
-                    } else -1
+                    } else {
+                        val rawIndex = readerLayout.flowVerses.indexOfFirst { it.verseNumber == playingVerseNumber }
+                        if (rawIndex >= 0) {
+                            if (hasBismillah) rawIndex + 1 else rawIndex
+                        } else -1
+                    }
                 } else -1
             }
 
@@ -570,30 +576,18 @@ fun QuranScreen(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
-                                if (selectedSurah.number != 9 && selectedSurah.number != 1 && verses.none { it.verseNumber == 0 }) {
+                                if (readerLayout.bismillahHeader != null) {
                                     item(key = "bismillah_header_${selectedSurah.number}") {
-                                        val bismillahVerse = remember(selectedSurah.number) {
-                                            com.example.data.util.QuranData.getSurahBismillah(selectedSurah.number) ?: Verse(
-                                                surahNumber = selectedSurah.number,
-                                                verseNumber = 0,
-                                                textArabic = com.example.data.util.QuranData.BISMILLAH_ARABIC,
-                                                textEnglish = com.example.data.util.QuranData.BISMILLAH_ENGLISH,
-                                                audioUrl = com.example.data.util.QuranData.BISMILLAH_AUDIO_URL,
-                                                verseKey = "${selectedSurah.number}:0"
-                                            )
-                                        }
-                                        val isBismillahBookmarked = bookmarkedKeys.contains("${bismillahVerse.surahNumber}_${bismillahVerse.verseNumber}")
-                                        val isBismillahActive = (playingSurahNumber == bismillahVerse.surahNumber) && (playingVerseNumber == bismillahVerse.verseNumber)
+                                        val bismillahVerse = readerLayout.bismillahHeader
+                                        val isBismillahActive = (playingSurahNumber == selectedSurah.number) &&
+                                                (playingVerseNumber == bismillahVerse.verseNumber || (selectedSurah.number == 1 && playingVerseNumber == 1) || playingVerseNumber == 0)
 
                                         BismillahHeader(
                                             verse = bismillahVerse,
                                             fontSizeSp = fontSizeSp,
                                             showTranslation = showEnglishTranslation,
                                             isPlaying = isBismillahActive && isPlayingAudio,
-                                            isBookmarked = isBismillahBookmarked,
                                             isVerseActive = isBismillahActive,
-                                            onPlayAudio = { onPlayVerseAudio(bismillahVerse) },
-                                            onToggleBookmark = { onToggleBookmark(bismillahVerse, isBismillahBookmarked) },
                                             onOpenLens = { activeLensVerse = bismillahVerse },
                                             onLongClick = {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -603,7 +597,7 @@ fun QuranScreen(
                                     }
                                 }
 
-                                items(verses, key = { it.verseKey }) { verse ->
+                                items(readerLayout.flowVerses, key = { it.verseKey }) { verse ->
                                     val isBookmarked = bookmarkedKeys.contains("${verse.surahNumber}_${verse.verseNumber}")
                                     val isVerseActive = (playingSurahNumber == verse.surahNumber) && (playingVerseNumber == verse.verseNumber)
 
@@ -1523,20 +1517,16 @@ fun BismillahHeader(
     fontSizeSp: Float,
     showTranslation: Boolean,
     isPlaying: Boolean,
-    isBookmarked: Boolean,
     isVerseActive: Boolean,
-    onPlayAudio: () -> Unit,
-    onToggleBookmark: () -> Unit,
     onOpenLens: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isDark = isAppInDarkTheme()
-    val accent = Color.semanticPrimaryAccent
+    val accent = if (isDark) Color(0xFF494556) else Color(0xFF8D6B1E)
     val textPrimary = Color.semanticPrimaryText
     val isReducedMotion = rememberIsReducedMotion()
 
-    // 8. Subtle first-appearance animation in the current reading session
     val hasBeenSeen = rememberSaveable(verse.verseKey) { mutableStateOf(false) }
     val animProgress = remember { Animatable(if (isReducedMotion || hasBeenSeen.value) 1f else 0f) }
 
@@ -1574,7 +1564,7 @@ fun BismillahHeader(
             .clip(RoundedCornerShape(14.dp))
             .drawBehind {
                 if (activeAlpha > 0.005f) {
-                    val bgTint = accent.copy(alpha = (if (isDark) 0.14f else 0.10f) * activeAlpha)
+                    val bgTint = if (isDark) Color(0xFF494556).copy(alpha = 0.20f * activeAlpha) else Color(0xFF8D6B1E).copy(alpha = 0.10f * activeAlpha)
                     drawRoundRect(
                         color = bgTint,
                         cornerRadius = CornerRadius(14.dp.toPx(), 14.dp.toPx())
@@ -1582,38 +1572,38 @@ fun BismillahHeader(
                     val barWidth = 3.5.dp.toPx()
                     val barMargin = 8.dp.toPx()
                     drawRoundRect(
-                        color = accent.copy(alpha = activeAlpha * 0.95f),
+                        color = (if (isDark) Color(0xFFE2E0EC) else Color(0xFF8D6B1E)).copy(alpha = activeAlpha * 0.95f),
                         topLeft = Offset(4.dp.toPx(), barMargin),
                         size = Size(barWidth, (size.height - barMargin * 2).coerceAtLeast(0f)),
                         cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
                     )
                 }
             }
-            .padding(top = 16.dp, bottom = 20.dp, start = if (isVerseActive) 14.dp else 8.dp, end = 8.dp)
+            .padding(top = 20.dp, bottom = 24.dp, start = if (isVerseActive) 14.dp else 12.dp, end = 12.dp)
             .combinedClickable(
                 onClick = { onOpenLens?.invoke() },
                 onLongClick = onLongClick
             ),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // 4. Subtle tapered divider ABOVE Bismillah (approx 1px, 48% screen width, faded edges, tiny diamond)
+        // Ceremonial divider ABOVE Bismillah (tapered gradient line with diamond accent)
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.48f)
-                .height(16.dp),
+                .fillMaxWidth(0.50f)
+                .height(18.dp),
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.fillMaxWidth().height(1.dp)) {
                 val brush = Brush.horizontalGradient(
                     colors = listOf(
                         Color.Transparent,
-                        accent.copy(alpha = if (isDark) 0.6f else 0.5f),
+                        (if (isDark) Color(0xFF8B859D) else Color(0xFF8D6B1E)).copy(alpha = if (isDark) 0.5f else 0.45f),
                         Color.Transparent
                     )
                 )
                 drawRect(brush = brush)
             }
-            Canvas(modifier = Modifier.size(5.dp)) {
+            Canvas(modifier = Modifier.size(6.dp)) {
                 val path = Path().apply {
                     moveTo(size.width / 2f, 0f)
                     lineTo(size.width, size.height / 2f)
@@ -1621,16 +1611,16 @@ fun BismillahHeader(
                     lineTo(0f, size.height / 2f)
                     close()
                 }
-                drawPath(path = path, color = accent.copy(alpha = if (isDark) 0.8f else 0.7f))
+                drawPath(path = path, color = if (isDark) Color(0xFFB0ACC0) else Color(0xFF8D6B1E))
             }
         }
 
-        Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
-        // Dominant Arabic Bismillah text centered, large, prominent
+        // Prominent Arabic Bismillah text centered
         ArabicText(
             text = verse.textArabic,
-            fontSize = (fontSizeSp * 1.06f).sp,
+            fontSize = (fontSizeSp * 1.10f).sp,
             color = textPrimary,
             textAlign = TextAlign.Center,
             modifier = Modifier
@@ -1638,13 +1628,13 @@ fun BismillahHeader(
                 .padding(horizontal = 16.dp)
         )
 
-        // Translation centered if enabled
+        // Translation centered below it if enabled
         if (showTranslation && verse.textEnglish.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             Text(
                 text = verse.textEnglish,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 14.sp,
+                    fontSize = 14.5.sp,
                     lineHeight = 22.sp,
                     letterSpacing = 0.2.sp
                 ),
@@ -1656,102 +1646,18 @@ fun BismillahHeader(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(22.dp))
 
-        // 2. Action Icons Hierarchy
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Play (Prioritized with subtle circular accent background)
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clickable(onClick = onPlayAudio),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isPlaying) accent
-                            else accent.copy(alpha = if (isDark) 0.18f else 0.12f)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    AnimatedContent(
-                        targetState = isPlaying,
-                        transitionSpec = {
-                            fadeIn(animationSpec = tween(180)) togetherWith
-                                    fadeOut(animationSpec = tween(140))
-                        },
-                        label = "bismillahPlayPauseAnim"
-                    ) { activePlaying ->
-                        Icon(
-                            imageVector = if (activePlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = if (activePlaying) "Pause Audio" else "Play Audio",
-                            tint = if (activePlaying) Color.White else accent,
-                            modifier = Modifier.size(17.dp)
-                        )
-                    }
-                }
-            }
-
-            // Lens / Search (Subtle, 50-60% opacity)
-            if (onOpenLens != null) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clickable(onClick = onOpenLens),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Search,
-                        contentDescription = "Quran Lens",
-                        tint = textPrimary.copy(alpha = 0.55f),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            // Bookmark (Accurate state)
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clickable(onClick = onToggleBookmark),
-                contentAlignment = Alignment.Center
-            ) {
-                AnimatedContent(
-                    targetState = isBookmarked,
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(180)) togetherWith
-                                fadeOut(animationSpec = tween(140))
-                    },
-                    label = "bismillahBookmarkAnim"
-                ) { activeBookmarked ->
-                    Icon(
-                        imageVector = if (activeBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                        contentDescription = if (activeBookmarked) "Remove Bookmark" else "Bookmark",
-                        tint = if (activeBookmarked) accent else textPrimary.copy(alpha = 0.55f),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Subtle bottom separator line
+        // Ceremonial bottom separator line (tapered divider)
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.35f)
+                .fillMaxWidth(0.38f)
                 .height(1.dp)
                 .background(
                     Brush.horizontalGradient(
                         colors = listOf(
                             Color.Transparent,
-                            Color.semanticBorder.copy(alpha = if (isDark) 0.35f else 0.45f),
+                            (if (isDark) Color(0xFF8B859D) else Color(0xFF8D6B1E)).copy(alpha = if (isDark) 0.35f else 0.35f),
                             Color.Transparent
                         )
                     )

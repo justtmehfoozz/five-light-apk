@@ -29,14 +29,17 @@ object PrayerCalc {
         method: CalcMethod = CalcMethod.MWL,
         madhab: Madhab = Madhab.STANDARD,
         timeZoneOffsetHours: Double = Math.round(longitude / 15.0).toDouble(),
-        is24Hour: Boolean = false
+        is24Hour: Boolean = false,
+        updateActiveTimeZone: Boolean = true
     ): List<PrayerItem> {
         val offsetMillis = (timeZoneOffsetHours * 3600000).toInt()
         val offsetHours = offsetMillis / 3600000
         val offsetMins = Math.abs((offsetMillis / 60000) % 60)
         val tzId = String.format(java.util.Locale.US, "GMT%+03d:%02d", offsetHours, offsetMins)
         val cityTz = java.util.SimpleTimeZone(offsetMillis, tzId)
-        activeTimeZone = cityTz
+        if (updateActiveTimeZone) {
+            activeTimeZone = cityTz
+        }
         val calendar = Calendar.getInstance(cityTz).apply { time = date }
         val dayOfYear = calendar.get(Calendar.DAY_OF_YEAR)
         val year = calendar.get(Calendar.YEAR)
@@ -246,7 +249,7 @@ object PrayerCalc {
         val tahajjudEndMillis = nightFajrMillis
 
         val startStr = formatTime(tahajjudStartMillis, is24Hour, activeTimeZone)
-        val fajrStr = formatTime(nightFajrMillis, is24Hour, activeTimeZone)
+        val fajrStr = fajr.timeFormatted
         val windowStr = "$startStr – $fajrStr"
         val isCurrent = nowMillis in tahajjudStartMillis..<nightFajrMillis
 

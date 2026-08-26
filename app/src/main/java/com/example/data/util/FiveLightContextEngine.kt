@@ -94,7 +94,7 @@ object FiveLightContextEngine {
         }
 
         val ishaStr = isha.timeFormatted
-        val fajrStr = tahajjudWindow.endFormatted
+        val fajrStr = fajr.timeFormatted
         val lastThirdStartStr = tahajjudWindow.startFormatted
         val tahajjudWindowStr = tahajjudWindow.windowFormatted
 
@@ -119,7 +119,8 @@ object FiveLightContextEngine {
             headerTitle = headerTitle,
             subtitleText = subtitleText,
             ishaTimeMillis = nightIshaMillis,
-            fajrTimeMillis = nightFajrMillis
+            fajrTimeMillis = nightFajrMillis,
+            lastThirdStartMillis = tahajjudWindow.startMillis
         )
     }
 

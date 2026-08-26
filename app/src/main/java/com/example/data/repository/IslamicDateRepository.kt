@@ -204,7 +204,8 @@ class IslamicDateRepository(
             longitude = currentCity.longitude,
             date = date,
             method = currentCalcMethod,
-            timeZoneOffsetHours = currentCity.timezoneOffsetHours
+            timeZoneOffsetHours = currentCity.timezoneOffsetHours,
+            updateActiveTimeZone = false
         )
         return prayerTimes.find { it.name == PrayerName.MAGHRIB }?.timeMillis
     }

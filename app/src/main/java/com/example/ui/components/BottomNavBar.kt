@@ -1469,13 +1469,14 @@ fun SereneBottomNavBar(
             }
         }
 
-        // INTEGRATED JUMP-TO-CURRENT-VERSE MORPH CONTROL
+        // INTEGRATED JUMP-TO-CURRENT-VERSE MORPH CONTROL & REAL ATTACHED SURFACE MORPH
         JumpToCurrentVerseMorphControl(
             visible = isScrolledAwayFromActiveVerse && isPlaybackMode && !isSearchActive && (playingVerseNumber != null),
             playingVerseNumber = playingVerseNumber,
             isDark = isDark,
             isReducedMotion = isReducedMotion,
             dockTranslateY = currentTranslateY,
+            dockWidth = currentWidthDp,
             dockHeight = dockHeight,
             dockBg = dockBg,
             dockBorderColor = dockBorderColor,
@@ -1497,20 +1498,33 @@ enum class JumpMorphState {
     EXITING
 }
 
+// Development-only visual debug flag to inspect exact Path boundaries, anchor & neck geometry
+private const val DEBUG_JUMP_MORPH = false
+
 /**
- * Integrated Jump-to-Current-Verse control that continuously morphs out of the audio player's
- * JUMP_MORPH_ANCHOR (top edge), following the continuous shape-morphing motion principles.
+ * Integrated Jump-to-Current-Verse control that physically morphs out of the Audio Player's
+ * JUMP_MORPH_ANCHOR (top edge), following the material separation and absorption principles.
  *
- * Architecture:
- * 1. JUMP_MORPH_ANCHOR: Positioned strictly at the TOP EDGE of the audio player dock.
- * 2. Shared Coordinate Space: Jump control and player edge participate in coordinated geometry.
- * 3. Continuous Morph Interpolation (750ms forward / 700ms reverse):
- *    - Width: 26dp -> 24dp (tension) -> 34dp (spherical bubble) -> 168dp (final pill)
- *    - Height: 20dp -> 36dp (vertical stretch) -> 34dp (spherical bubble / pill)
- *    - Corner Radius: height / 2 (continuously rounded)
- *    - Local Edge Deformation: Subtle, temporary organic bulge on player's top boundary
- *    - Clean Detached Separation: Clean 12dp air gap with zero permanent lines or stems.
- * 4. State Transition Safety: Bi-directional smooth interruption without snapping or flickering.
+ * Sequence of Physical Material Stages:
+ * 1. 0.00: Attached to JUMP_MORPH_ANCHOR (top edge of Audio Player dock). No gap.
+ * 2. 0.00 -> 0.28: Local Player Edge Upward Deformation (organic bulge) + Emerging Protrusion
+ *    - Protrusion height grows (0dp -> 26dp), width is compact (30dp -> 26dp).
+ *    - Continuous material neck connects the player top edge to the emerging protrusion.
+ * 3. 0.28 -> 0.48: Material Separation & Pinch-off
+ *    - Neck thins and detaches cleanly.
+ *    - Separated shape relaxes to a 34dp spherical bubble.
+ *    - Player edge bulge smoothly relaxes back to flat baseline.
+ *    - 12dp clean air gap opens between the sphere and player top edge.
+ * 4. 0.48 -> 0.85: Continuous Geometric Expansion & Delayed Content Reveal
+ *    - Sphere continuously widens from 34dp into a 168dp pill (cornerRadius = height / 2).
+ *    - From ~50% to ~80%, play icon and "Jump to Verse X" text smoothly fade in.
+ * 5. 0.85 -> 1.00: Settling into Independent Pill
+ *    - Resting with a clean 12dp gap above the Audio Player.
+ *
+ * Reversible Symmetrical Absorption:
+ * On exit, the sequence executes in exact reverse along the identical cubic-bezier easing curve,
+ * contracting the pill to a sphere, descending to JUMP_MORPH_ANCHOR, bulging the player edge to meet it,
+ * and seamlessly absorbing the material back into the Audio Player surface.
  */
 @Composable
 fun JumpToCurrentVerseMorphControl(
@@ -1519,6 +1533,7 @@ fun JumpToCurrentVerseMorphControl(
     isDark: Boolean,
     isReducedMotion: Boolean,
     dockTranslateY: Dp,
+    dockWidth: Dp,
     dockHeight: Dp,
     dockBg: Color,
     dockBorderColor: Color,
@@ -1527,15 +1542,17 @@ fun JumpToCurrentVerseMorphControl(
 ) {
     val transition = updateTransition(targetState = visible, label = "jumpToVerseContinuousMorph")
 
-    // Shared continuous material cubic-bezier easing for perfect geometric symmetry
-    val continuousMorphEasing = remember { CubicBezierEasing(0.22f, 0.0f, 0.12f, 1.0f) }
+    // Shared continuous material cubic-bezier easing with smooth viscous acceleration and soft deceleration
+    // Entry: surface formation -> stretch -> release
+    // Exit: magnetic approach -> stretch -> contact -> absorption
+    val continuousMorphEasing = remember { CubicBezierEasing(0.20f, 0.0f, 0.10f, 1.0f) }
 
     val morphProgress by transition.animateFloat(
         transitionSpec = {
             if (isReducedMotion) {
                 snap()
             } else {
-                // Symmetrical 750ms continuous geometric morphing for both entry & exit
+                // Deliberate 750ms viscous material morphing for both entry & magnetic exit
                 tween(durationMillis = 750, easing = continuousMorphEasing)
             }
         },
@@ -1554,84 +1571,120 @@ fun JumpToCurrentVerseMorphControl(
     }
 
     if (currentMorphState != JumpMorphState.HIDDEN || visible) {
-        val accentColor = Color.semanticPrimaryAccent
+        // Semantic accent colors: Light mode uses classic warm gold, Dark mode uses refined high-contrast muted violet (#C5BED4 on dark surface)
+        val jumpAccentColor = if (isDark) {
+            Color(0xFFD4CCE6) // High-readability muted-violet tint for dark mode icon/text
+        } else {
+            Color.semanticPrimaryAccentLight // Warm gold (#8D6B1E) for light mode
+        }
+
+        // Dedicated surface & border styling matching Audio Player material in both themes
+        val jumpSurfaceBg = if (isDark) {
+            // Refined deep surface with subtle #494556 violet tint (elevated against pitch-black background)
+            Color(0xFF222129)
+        } else {
+            dockBg
+        }
+
+        val jumpBorderColor = if (isDark) {
+            // Clearly defined, crisp #494556 edge definition with subtle luminescence
+            Color(0xFF6B657D)
+        } else {
+            dockBorderColor.copy(alpha = 0.40f)
+        }
+
         val verseText = if (playingVerseNumber == 0) "Jump to Bismillah" else "Jump to Verse ${playingVerseNumber ?: 1}"
 
         val targetPillWidth = 168.dp
         val circleSize = 34.dp
         val finalAirGap = 12.dp
 
-        // Continuous geometric interpolation across morphProgress (0.00 -> 1.00):
-        // 1. Separation Travel (0.00 -> 0.38): moves from player top edge to resting gap
-        val separationFraction = (morphProgress / 0.38f).coerceIn(0f, 1f)
-
-        // 2. Horizontal Expansion (0.38 -> 0.82): morphs from 34dp sphere to 168dp pill
-        val expandFraction = ((morphProgress - 0.38f) / 0.44f).coerceIn(0f, 1f)
-
-        // 3. Delayed Content Reveal (50% -> 80%):
-        // Between 0% and 50%, focus entirely on the pure geometric morph.
-        // At ~50%, begin gradually revealing the icon and text as the pill widens to its final state.
-        val iconAlphaFraction = ((morphProgress - 0.50f) / 0.28f).coerceIn(0f, 1f)
-        val textAlphaFraction = ((morphProgress - 0.58f) / 0.26f).coerceIn(0f, 1f)
-
-        // Dynamic width: starts at 26dp on player top edge, stretches to 24dp under tension,
-        // relaxes to 34dp sphere at detachment, then continuously widens to 168dp pill
+        // Dynamic width:
+        // - At 0.00: 32dp (attached protrusion base on player top edge)
+        // - 0.00 -> 0.28: narrows to 26dp under upward pulling tension (stretch release)
+        // - 0.28 -> 0.48: relaxes to 34dp sphere upon separation
+        // - 0.48 -> 0.85: continuously expands to 168dp pill
         val currentWidth = if (isReducedMotion) {
             if (visible) targetPillWidth else circleSize
         } else {
-            if (morphProgress < 0.20f) {
-                val t = (morphProgress / 0.20f).coerceIn(0f, 1f)
-                lerp(26.dp, 24.dp, t)
-            } else if (morphProgress < 0.38f) {
-                val t = ((morphProgress - 0.20f) / 0.18f).coerceIn(0f, 1f)
-                lerp(24.dp, 34.dp, t)
-            } else {
-                lerp(34.dp, targetPillWidth, expandFraction)
+            when {
+                morphProgress < 0.28f -> {
+                    val t = (morphProgress / 0.28f).coerceIn(0f, 1f)
+                    lerp(32.dp, 26.dp, t)
+                }
+                morphProgress < 0.48f -> {
+                    val t = ((morphProgress - 0.28f) / 0.20f).coerceIn(0f, 1f)
+                    lerp(26.dp, 34.dp, t)
+                }
+                else -> {
+                    val t = ((morphProgress - 0.48f) / 0.37f).coerceIn(0f, 1f)
+                    lerp(34.dp, targetPillWidth, t)
+                }
             }
         }
 
-        // Dynamic height: starts at 20dp at player edge, elongates to 36dp under vertical tension,
-        // relaxes to 34dp sphere at detachment, and remains 34dp
+        // Dynamic height with anchor-directed elongation during proximity (magnetic stretch):
+        // - At 0.00: 0dp (fully embedded inside player top edge)
+        // - 0.00 -> 0.28: rises out of player top edge, elongating to 36dp (vertical stretch)
+        // - 0.28 -> 0.48: smoothly transitions between elongated form (36dp) and spherical bubble (34dp)
+        // - 0.48 -> 1.00: standard 34dp pill height
         val currentHeight = if (isReducedMotion) {
             34.dp
         } else {
-            if (morphProgress < 0.20f) {
-                val t = (morphProgress / 0.20f).coerceIn(0f, 1f)
-                lerp(20.dp, 36.dp, t)
-            } else if (morphProgress < 0.38f) {
-                val t = ((morphProgress - 0.20f) / 0.18f).coerceIn(0f, 1f)
-                lerp(36.dp, 34.dp, t)
-            } else {
-                34.dp
+            when {
+                morphProgress < 0.28f -> {
+                    val t = (morphProgress / 0.28f).coerceIn(0f, 1f)
+                    // Viscous elongation toward anchor during proximity
+                    lerp(4.dp, 37.dp, t)
+                }
+                morphProgress < 0.48f -> {
+                    val t = ((morphProgress - 0.28f) / 0.20f).coerceIn(0f, 1f)
+                    lerp(37.dp, 34.dp, t)
+                }
+                else -> 34.dp
             }
         }
 
         val currentCornerRadius = currentHeight / 2
 
-        // Air gap distance from player's top edge (JUMP_MORPH_ANCHOR)
+        // Air gap from player's top edge (JUMP_MORPH_ANCHOR):
+        // Features smooth non-linear magnetic approach curve as the mass enters proximity (0.28 -> 0.00):
+        // - 0.00 -> 0.28: 0dp (attached to player top edge, continuous material neck)
+        // - 0.28 -> 0.48: 0dp -> 12dp with subtle magnetic attraction curve (smooth acceleration into anchor on exit)
+        // - 0.48 -> 1.00: 12dp (resting gap)
         val currentAirGap = if (isReducedMotion) {
             finalAirGap
         } else {
-            lerp(0.dp, finalAirGap, separationFraction)
+            if (morphProgress < 0.28f) {
+                0.dp
+            } else {
+                val t = ((morphProgress - 0.28f) / 0.20f).coerceIn(0f, 1f)
+                // Quadratic easing in proximity zone to provide smooth, gentle magnetic attraction
+                // without bounce or recoil
+                val magneticT = t * t * (3f - 2f * t)
+                lerp(0.dp, finalAirGap, magneticT)
+            }
         }
+
+        // Delayed Content Reveal (50% -> 80%):
+        // 0% to 50% is 100% geometric shape morph.
+        // Content gently fades in between 50% and 80%.
+        val iconAlphaFraction = ((morphProgress - 0.50f) / 0.28f).coerceIn(0f, 1f)
+        val textAlphaFraction = ((morphProgress - 0.58f) / 0.26f).coerceIn(0f, 1f)
 
         val controlAlpha = if (isReducedMotion) {
             if (visible) 1f else 0f
         } else {
-            (morphProgress / 0.10f).coerceIn(0f, 1f)
+            (morphProgress / 0.04f).coerceIn(0f, 1f)
         }
 
         val iconAlpha = if (isReducedMotion) {
             if (visible) 1f else 0f
-        } else {
-            iconAlphaFraction
-        }
+        } else iconAlphaFraction
 
         val textAlpha = if (isReducedMotion) {
             if (visible) 1f else 0f
-        } else {
-            textAlphaFraction
-        }
+        } else textAlphaFraction
 
         // JUMP_MORPH_ANCHOR is positioned strictly at the TOP EDGE of the audio player dock:
         // dockTopBaseline = 24.dp (dock bottom margin) + dockHeight
@@ -1639,127 +1692,168 @@ fun JumpToCurrentVerseMorphControl(
 
         Box(
             modifier = modifier
-                .padding(bottom = dockTopBaseline + currentAirGap)
+                .padding(bottom = dockTopBaseline)
                 .offset(y = dockTranslateY)
                 .graphicsLayer {
                     alpha = controlAlpha
                 }
-                .zIndex(35f), // Highest stacking order: always above the audio player & reader text
+                .zIndex(35f), // Highest stacking order: always cleanly visible above player & reader text
             contentAlignment = Alignment.BottomCenter
         ) {
-            // ORGANIC PLAYER EDGE BULGE & CONNECTING MENISCUS
-            // Active ONLY during initial separation / final absorption (0.01 .. 0.38 progress).
-            // Completely transparent once detached (progress > 0.38), ensuring an absolutely clean air gap!
-            if (!isReducedMotion && morphProgress in 0.01f..0.38f) {
-                val detachPhase = ((morphProgress - 0.01f) / 0.37f).coerceIn(0f, 1f)
-                val meniscusAlpha = (1f - (detachPhase * 1.25f)).coerceIn(0f, 1f)
+            // UNIFIED GEOMETRIC MORPH CONTAINER (Player Top-Edge Deformation + Organic Material Neck)
+            // Active strictly during attachment & separation phase (0.00 <= morphProgress <= 0.48).
+            // Exactly matches the organic fluid neck in the reference screenshots.
+            // Once separated (morphProgress > 0.48), disappears completely leaving a pristine clean gap!
+            if (!isReducedMotion && morphProgress in 0.001f..0.48f) {
+                val separationPhase = (morphProgress / 0.48f).coerceIn(0f, 1f)
+                val neckAlpha = (1f - ((morphProgress - 0.26f) / 0.22f)).coerceIn(0f, 1f)
 
-                // Bulge on player's top edge peaks at detachPhase ~0.30, then smoothly relaxes to 0
-                val bulgeRise = if (detachPhase < 0.35f) {
-                    (detachPhase / 0.35f).coerceIn(0f, 1f)
+                // Player top-edge bulge height: rises organically around JUMP_MORPH_ANCHOR
+                val bulgeProgress = if (morphProgress < 0.22f) {
+                    (morphProgress / 0.22f).coerceIn(0f, 1f)
                 } else {
-                    (1f - ((detachPhase - 0.35f) / 0.65f)).coerceIn(0f, 1f)
+                    (1f - ((morphProgress - 0.22f) / 0.26f)).coerceIn(0f, 1f)
                 }
+                val maxBulgeHeightPx = 10.dp
 
                 Canvas(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .offset(y = currentAirGap + (currentHeight / 2))
-                        .width(72.dp)
-                        .height(36.dp)
-                        .graphicsLayer { alpha = meniscusAlpha }
+                        .width(dockWidth.coerceAtLeast(140.dp))
+                        .height(currentAirGap + currentHeight + 20.dp)
+                        .graphicsLayer { alpha = neckAlpha }
                 ) {
                     val w = size.width
                     val h = size.height
                     val centerX = w / 2f
+                    val playerTopY = h - 2.dp.toPx() // exact top edge baseline of audio player
 
-                    val topNeckHalfWidth = lerp(10.dp, 1.dp, detachPhase).toPx()
-                    val playerBulgeHalfWidth = lerp(26.dp, 10.dp, detachPhase).toPx()
-                    val bulgeTopY = h * (1f - (bulgeRise * 0.40f))
+                    val bulgeRisePx = bulgeProgress * maxBulgeHeightPx.toPx()
+                    val baseHalfWidth = lerp(34.dp, 12.dp, separationPhase).toPx()
 
-                    val continuousMorphPath = Path().apply {
-                        // Top neck connection meeting bottom of emerging bubble
-                        moveTo(centerX - topNeckHalfWidth, 0f)
-                        // Smooth organic S-curve into the player's top edge bulge
+                    val bubbleBottomY = playerTopY - currentAirGap.toPx()
+                    val neckTopY = bubbleBottomY + (currentHeight.toPx() * 0.35f).coerceAtLeast(2.dp.toPx())
+                    val neckTopHalfWidth = (currentWidth.toPx() * 0.42f).coerceAtLeast(4.dp.toPx())
+
+                    // Dynamic waist narrowing as the bubble pulls upward under fluid surface tension
+                    val waistFrac = (morphProgress / 0.42f).coerceIn(0f, 1f)
+                    val waistFactor = 0.85f * (1f - waistFrac) + 0.25f * waistFrac
+                    val waistHalfWidth = (neckTopHalfWidth * waistFactor).coerceAtLeast(1.5.dp.toPx())
+
+                    val neckFillPath = Path().apply {
+                        moveTo(centerX - baseHalfWidth, playerTopY)
+                        // Left concave organic curve upward to neck top
                         cubicTo(
-                            centerX - (topNeckHalfWidth * 0.5f), h * 0.35f,
-                            centerX - playerBulgeHalfWidth, bulgeTopY,
-                            centerX - playerBulgeHalfWidth, h
+                            centerX - (baseHalfWidth * 0.70f), playerTopY - (bulgeRisePx * 0.6f) - (playerTopY - neckTopY) * 0.20f,
+                            centerX - (waistHalfWidth * 1.25f), playerTopY - (playerTopY - neckTopY) * 0.65f,
+                            centerX - neckTopHalfWidth, neckTopY
                         )
-                        // Along player top border
-                        lineTo(centerX + playerBulgeHalfWidth, h)
-                        // Smooth organic S-curve back to right side of bubble
+                        // Across neck top inside the bubble
+                        lineTo(centerX + neckTopHalfWidth, neckTopY)
+                        // Right concave organic curve downward to player top edge
                         cubicTo(
-                            centerX + playerBulgeHalfWidth, bulgeTopY,
-                            centerX + (topNeckHalfWidth * 0.5f), h * 0.35f,
-                            centerX + topNeckHalfWidth, 0f
+                            centerX + (waistHalfWidth * 1.25f), playerTopY - (playerTopY - neckTopY) * 0.65f,
+                            centerX + (baseHalfWidth * 0.70f), playerTopY - (bulgeRisePx * 0.6f) - (playerTopY - neckTopY) * 0.20f,
+                            centerX + baseHalfWidth, playerTopY
                         )
+                        // Along player top edge
+                        lineTo(centerX - baseHalfWidth, playerTopY)
                         close()
                     }
 
-                    // Fill continuous material body
-                    drawPath(path = continuousMorphPath, color = dockBg)
+                    val leftOutlinePath = Path().apply {
+                        moveTo(centerX - baseHalfWidth, playerTopY)
+                        cubicTo(
+                            centerX - (baseHalfWidth * 0.70f), playerTopY - (bulgeRisePx * 0.6f) - (playerTopY - neckTopY) * 0.20f,
+                            centerX - (waistHalfWidth * 1.25f), playerTopY - (playerTopY - neckTopY) * 0.65f,
+                            centerX - neckTopHalfWidth, neckTopY
+                        )
+                    }
 
-                    // Draw organic material border stroke
-                    drawPath(
-                        path = continuousMorphPath,
-                        color = dockBorderColor.copy(alpha = if (isDark) 0.55f * meniscusAlpha else 0.40f * meniscusAlpha),
-                        style = Stroke(width = 1.2.dp.toPx())
-                    )
+                    val rightOutlinePath = Path().apply {
+                        moveTo(centerX + neckTopHalfWidth, neckTopY)
+                        cubicTo(
+                            centerX + (waistHalfWidth * 1.25f), playerTopY - (playerTopY - neckTopY) * 0.65f,
+                            centerX + (baseHalfWidth * 0.70f), playerTopY - (bulgeRisePx * 0.6f) - (playerTopY - neckTopY) * 0.20f,
+                            centerX + baseHalfWidth, playerTopY
+                        )
+                    }
+
+                    // Fill continuous organic material body matching player dock & jump bubble
+                    drawPath(path = neckFillPath, color = jumpSurfaceBg)
+
+                    // Draw organic material border stroke exclusively along the curved outer flanks
+                    val strokeColor = jumpBorderColor.copy(alpha = if (isDark) 0.85f * neckAlpha else 0.35f * neckAlpha)
+                    drawPath(path = leftOutlinePath, color = strokeColor, style = Stroke(width = 1.2.dp.toPx()))
+                    drawPath(path = rightOutlinePath, color = strokeColor, style = Stroke(width = 1.2.dp.toPx()))
+
+                    // DEVELOPMENT-ONLY DEBUG OVERLAY: Visualize Neck & Deformation Paths in High Contrast
+                    if (DEBUG_JUMP_MORPH) {
+                        drawPath(path = neckFillPath, color = Color.Green.copy(alpha = 0.45f))
+                        drawCircle(color = Color.Yellow, radius = 4.dp.toPx(), center = Offset(centerX, playerTopY))
+                    }
                 }
             }
 
-            // CONTINUOUS MORPHING SURFACE (Bubble -> Pill)
-            Surface(
-                onClick = onClick,
-                shape = RoundedCornerShape(currentCornerRadius),
-                color = dockBg,
-                border = BorderStroke(
-                    1.2.dp,
-                    dockBorderColor.copy(alpha = if (isDark) 0.55f else 0.40f)
-                ),
-                shadowElevation = 8.dp,
+            // MORPHING JUMP CONTROL SURFACE (Attached Protrusion -> Separated Sphere -> Final Pill)
+            Box(
                 modifier = Modifier
+                    .padding(bottom = currentAirGap)
                     .width(currentWidth)
-                    .height(currentHeight)
-                    .testTag("jump_to_current_verse_pill")
+                    .height(currentHeight),
+                contentAlignment = Alignment.Center
             ) {
-                Row(
+                Surface(
+                    onClick = onClick,
+                    shape = RoundedCornerShape(currentCornerRadius),
+                    color = jumpSurfaceBg,
+                    border = BorderStroke(
+                        1.2.dp,
+                        if (DEBUG_JUMP_MORPH) Color.Red else jumpBorderColor
+                    ),
+                    shadowElevation = if (currentAirGap > 1.dp) (if (isDark) 6.dp else 8.dp) else 2.dp,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                        .testTag("jump_to_current_verse_pill")
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.PlayArrow,
-                        contentDescription = "Jump to Verse",
-                        tint = accentColor,
+                    Row(
                         modifier = Modifier
-                            .size(15.dp)
-                            .graphicsLayer {
-                                alpha = iconAlpha
-                            }
-                    )
-
-                    if (textAlpha > 0.01f) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = verseText,
-                            style = MaterialTheme.typography.labelMedium.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                color = accentColor,
-                                fontSize = 12.5.sp
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.graphicsLayer {
-                                alpha = textAlpha
-                            }
+                            .fillMaxSize()
+                            .padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.PlayArrow,
+                            contentDescription = "Jump to Verse",
+                            tint = jumpAccentColor,
+                            modifier = Modifier
+                                .size(15.dp)
+                                .graphicsLayer {
+                                    alpha = iconAlpha
+                                }
                         )
+
+                        if (textAlpha > 0.01f) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = verseText,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = jumpAccentColor,
+                                    fontSize = 12.5.sp
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.graphicsLayer {
+                                    alpha = textAlpha
+                                }
+                            )
+                        }
                     }
                 }
             }
         }
     }
 }
+

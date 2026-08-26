@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import com.example.data.util.PrayerCalc
 import com.example.ui.theme.semanticPrimaryAccent
 import com.example.ui.theme.semanticAccentForeground
 import com.example.ui.theme.isAppInDarkTheme
@@ -22,6 +23,8 @@ import com.example.ui.theme.semanticWarning
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -99,7 +102,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.material3.Text
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.snap
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -379,19 +393,54 @@ fun TonightCard(
     tonight: TonightSummary,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val isDark = MaterialTheme.colorScheme.background.run { (red * 0.299f + green * 0.587f + blue * 0.114f) < 0.5f }
+
+    val isReducedMotion = remember(context) {
+        try {
+            android.provider.Settings.Global.getFloat(
+                context.contentResolver,
+                android.provider.Settings.Global.TRANSITION_ANIMATION_SCALE, 1f
+            ) == 0f
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // 1. Authoritative Real-Time Clock Provider
     var currentMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+
+    // Update on lifecycle RESUME (returns from background / screen unlock / timezone change)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                currentMillis = System.currentTimeMillis()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Live minute updates + timezone/clock shift sync
     LaunchedEffect(Unit) {
         while (true) {
-            delay(60000L)
+            val now = System.currentTimeMillis()
+            currentMillis = now
+            val msToNextMinute = (60000L - (now % 60000L)).coerceIn(1000L, 60000L)
+            delay(msToNextMinute)
             currentMillis = System.currentTimeMillis()
         }
     }
 
     val ishaMillis = tonight.ishaTimeMillis
     val fajrMillis = tonight.fajrTimeMillis
+    val lastThirdMillis = tonight.lastThirdStartMillis
 
-    val nightProgress = remember(currentMillis, ishaMillis, fajrMillis) {
+    // 2. Continuous Night Timeline Progress (Normalized 0f..1f with overnight handling)
+    val targetNightProgress = remember(currentMillis, ishaMillis, fajrMillis) {
         if (ishaMillis > 0L && fajrMillis > ishaMillis) {
             var adjustedNow = currentMillis
             if (adjustedNow < ishaMillis - 12 * 3600 * 1000L) {
@@ -403,15 +452,103 @@ fun TonightCard(
         }
     }
 
+    val animatedNightProgress by animateFloatAsState(
+        targetValue = targetNightProgress,
+        animationSpec = if (isReducedMotion) snap() else tween(durationMillis = 400, easing = FastOutSlowInEasing),
+        label = "nightProgress"
+    )
+
+    val lastThirdProgress = remember(ishaMillis, fajrMillis, lastThirdMillis) {
+        if (ishaMillis > 0L && fajrMillis > ishaMillis && lastThirdMillis >= ishaMillis && lastThirdMillis <= fajrMillis) {
+            ((lastThirdMillis - ishaMillis).toFloat() / (fajrMillis - ishaMillis).toFloat()).coerceIn(0f, 1f)
+        } else if (ishaMillis > 0L && fajrMillis > ishaMillis) {
+            (2f / 3f).coerceIn(0f, 1f)
+        } else {
+            (2f / 3f)
+        }
+    }
+
+    // 3. Last-Third State Detection
+    val isCurrentlyInLastThird = remember(targetNightProgress, lastThirdProgress) {
+        targetNightProgress >= lastThirdProgress
+    }
+
+    // 4. Live Fajr Countdown calculation derived from the single clock source
+    val fajrCountdownText = remember(currentMillis, fajrMillis) {
+        if (fajrMillis > 0L) {
+            var diff = fajrMillis - currentMillis
+            if (diff < 0L && diff > -12 * 3600 * 1000L) {
+                diff = 0L
+            } else if (diff < -12 * 3600 * 1000L) {
+                diff += 24 * 3600 * 1000L
+            }
+
+            val totalMinutes = (diff / 60000L).coerceAtLeast(0L)
+            val hours = totalMinutes / 60
+            val minutes = totalMinutes % 60
+
+            if (totalMinutes <= 0) {
+                "Fajr time has arrived"
+            } else if (hours > 0) {
+                "Fajr begins in ${hours}h ${minutes}m"
+            } else {
+                "Fajr begins in ${minutes}m"
+            }
+        } else {
+            "Fajr at ${tonight.fajrTimeFormatted}"
+        }
+    }
+
+    // 5. Theme Accent: Warm Gold for Light (#8D6B1E), Muted Slate-Violet for Dark (#494556)
+    val accentColor: Color = if (isDark) Color(0xFF494556) else Color(0xFF8D6B1E)
+
+    // 6. One-Time Entrance Animation & Crescent Pulse
+    val cardAlpha = remember { Animatable(if (isReducedMotion) 1f else 0f) }
+    val cardScale = remember { Animatable(if (isReducedMotion) 1f else 0.96f) }
+    val crescentPulse = remember { Animatable(1f) }
+
+    LaunchedEffect(Unit) {
+        if (!isReducedMotion) {
+            cardAlpha.animateTo(1f, animationSpec = tween(350, easing = FastOutSlowInEasing))
+            cardScale.animateTo(1f, animationSpec = tween(350, easing = FastOutSlowInEasing))
+            // One-time subtle crescent accent pulse
+            crescentPulse.animateTo(1.25f, animationSpec = tween(280, easing = FastOutSlowInEasing))
+            crescentPulse.animateTo(1f, animationSpec = tween(320, easing = FastOutSlowInEasing))
+        }
+    }
+
+    // Optional temporary tap feedback for current time marker
+    var showCurrentTimePopup by remember { mutableStateOf(false) }
+    val currentTimeString = remember(currentMillis) {
+        val cal = java.util.Calendar.getInstance(PrayerCalc.activeTimeZone)
+        cal.timeInMillis = currentMillis
+        val hour = cal.get(java.util.Calendar.HOUR).let { if (it == 0) 12 else it }
+        val minute = cal.get(java.util.Calendar.MINUTE)
+        val amPm = if (cal.get(java.util.Calendar.AM_PM) == java.util.Calendar.AM) "AM" else "PM"
+        String.format(java.util.Locale.US, "%02d:%02d %s", hour, minute, amPm)
+    }
+
+    LaunchedEffect(showCurrentTimePopup) {
+        if (showCurrentTimePopup) {
+            delay(1800L)
+            showCurrentTimePopup = false
+        }
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .testTag("tonight_card"),
+            .testTag("tonight_card")
+            .graphicsLayer {
+                alpha = cardAlpha.value
+                scaleX = cardScale.value
+                scaleY = cardScale.value
+            },
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+        border = BorderStroke(1.dp, if (isDark) Color(0xFF494556).copy(alpha = 0.22f) else Color(0xFF8D6B1E).copy(alpha = 0.16f))
     ) {
         Column(
             modifier = Modifier
@@ -419,46 +556,89 @@ fun TonightCard(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            // Header with Crescent & State Transitions
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Outlined.NightsStay,
-                        contentDescription = null,
-                        tint = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .drawBehind {
+                                if (crescentPulse.value > 1f) {
+                                    drawCircle(
+                                        color = accentColor.copy(alpha = (crescentPulse.value - 1f) * 0.4f),
+                                        radius = size.minDimension / 2f * crescentPulse.value
+                                    )
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.NightsStay,
+                            contentDescription = "Night Moon",
+                            tint = accentColor,
+                            modifier = Modifier
+                                .size(20.dp)
+                                .scale(crescentPulse.value)
+                        )
+                    }
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = tonight.headerTitle,
-                        fontFamily = SerifHeaderFont,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onSurface
-                    )
+
+                    AnimatedContent(
+                        targetState = if (isCurrentlyInLastThird) "The Last Third Has Begun" else "The Last Third Is Approaching",
+                        transitionSpec = {
+                            if (isReducedMotion) {
+                                fadeIn(animationSpec = snap()) togetherWith fadeOut(animationSpec = snap())
+                            } else {
+                                fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                            }
+                        },
+                        label = "cardHeaderTitle"
+                    ) { titleText ->
+                        Text(
+                            text = titleText,
+                            fontFamily = SerifHeaderFont,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
                 }
 
-                if (tonight.subtitleText.isNotBlank()) {
+                AnimatedContent(
+                    targetState = if (isCurrentlyInLastThird) "A blessed time for Qiyam al-Layl." else "A blessed time for Qiyam al-Layl is near.",
+                    transitionSpec = {
+                        if (isReducedMotion) {
+                            fadeIn(animationSpec = snap()) togetherWith fadeOut(animationSpec = snap())
+                        } else {
+                            fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
+                        }
+                    },
+                    label = "cardSubtitleText"
+                ) { subText ->
                     Text(
-                        text = tonight.subtitleText,
+                        text = subText,
                         fontFamily = SpaceGrotesk,
                         fontSize = 12.sp,
                         color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 28.dp)
+                        modifier = Modifier.padding(start = 36.dp)
                     )
                 }
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            HorizontalDivider(
+                color = if (isDark) Color(0xFFFFFFFF).copy(alpha = 0.08f) else Color(0xFF8D6B1E).copy(alpha = 0.10f)
+            )
 
+            // Isha, Tahajjud Window, Fajr Times
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 // Isha
-                val isIshaActive = tonight.isIshaActive
+                val isIshaActive = !isCurrentlyInLastThird && tonight.isIshaActive
                 Column {
                     Text(
                         text = "Isha",
@@ -485,14 +665,13 @@ fun TonightCard(
                 }
 
                 // Tahajjud Window
-                val isTahajjudActive = tonight.isTahajjudActive
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = "Tahajjud Window",
                         fontFamily = SpaceGrotesk,
                         fontSize = 12.sp,
-                        fontWeight = if (isTahajjudActive) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isTahajjudActive) {
+                        fontWeight = if (isCurrentlyInLastThird) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isCurrentlyInLastThird) {
                             if (isDark) Color(0xFFB5B5AE) else MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
@@ -503,7 +682,7 @@ fun TonightCard(
                         fontFamily = SpaceGrotesk,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isTahajjudActive) {
+                        color = if (isCurrentlyInLastThird) {
                             if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.onSurface
@@ -539,62 +718,144 @@ fun TonightCard(
                 }
             }
 
-            // PART 2: LIVE POSITION MARKER ON OVERNIGHT TRACK
+            // PASSIVE NIGHT TIMELINE: Isha → Last Third Tick → Current Time (NOW) → Fajr
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(14.dp),
+                    .height(22.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
-                // Background Track
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(2.5.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                )
-
-                // Filled portion
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(nightProgress)
-                        .height(2.5.dp)
-                        .clip(CircleShape)
-                        .background(if (isDark) Color(0xFFFFFFFF).copy(alpha = 0.6f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
-                )
-
-                // Marker Dot
                 BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val markerOffset = maxWidth * nightProgress - 4.dp
+                    val totalWidth = maxWidth
+
+                    // 1. Base Neutral Track
                     Box(
                         modifier = Modifier
-                            .offset(x = markerOffset.coerceAtLeast(0.dp))
-                            .size(8.dp)
+                            .fillMaxWidth()
+                            .height(3.dp)
+                            .align(Alignment.CenterStart)
                             .clip(CircleShape)
-                            .background(if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary)
-                            .border(1.5.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                            .background(if (isDark) Color(0xFFFFFFFF).copy(alpha = 0.12f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.22f))
                     )
+
+                    // 2. Last-Third Segment Subtle Tint (Last Third Start → Fajr)
+                    if (lastThirdProgress in 0.05f..0.95f) {
+                        val segmentStartOffset = totalWidth * lastThirdProgress
+                        val segmentWidth = totalWidth * (1f - lastThirdProgress)
+                        Box(
+                            modifier = Modifier
+                                .offset(x = segmentStartOffset)
+                                .width(segmentWidth)
+                                .height(3.dp)
+                                .align(Alignment.CenterStart)
+                                .clip(RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp))
+                                .background(accentColor.copy(alpha = if (isDark) 0.20f else 0.14f))
+                        )
+                    }
+
+                    // 3. Elapsed Night Portion (Isha → Current Time)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(animatedNightProgress.coerceIn(0f, 1f))
+                            .height(3.dp)
+                            .align(Alignment.CenterStart)
+                            .clip(CircleShape)
+                            .background(accentColor.copy(alpha = if (isDark) 0.70f else 0.60f))
+                    )
+
+                    // 4. Subtle Last-Third Boundary Tick (Static calculated boundary)
+                    if (lastThirdProgress in 0.05f..0.95f) {
+                        val lastThirdOffset = totalWidth * lastThirdProgress - 1.dp
+                        Box(
+                            modifier = Modifier
+                                .offset(x = lastThirdOffset)
+                                .width(2.dp)
+                                .height(8.dp)
+                                .align(Alignment.CenterStart)
+                                .clip(RoundedCornerShape(1.dp))
+                                .background(accentColor.copy(alpha = if (isDark) 0.60f else 0.55f))
+                        )
+                    }
+
+                    // 5. Current-Time Marker (Represents NOW - small, clean, non-draggable)
+                    val markerOffset = (totalWidth * animatedNightProgress - 4.5.dp).coerceIn(0.dp, totalWidth - 9.dp)
+                    Box(
+                        modifier = Modifier
+                            .offset(x = markerOffset)
+                            .size(9.dp)
+                            .align(Alignment.CenterStart)
+                            .clip(CircleShape)
+                            .background(accentColor)
+                            .border(1.5.dp, MaterialTheme.colorScheme.surface, CircleShape)
+                            .pointerInput(Unit) {
+                                detectTapGestures {
+                                    showCurrentTimePopup = true
+                                }
+                            }
+                    )
+
+                    // Optional temporary popup on tap
+                    if (showCurrentTimePopup) {
+                        Surface(
+                            modifier = Modifier
+                                .offset(x = (markerOffset - 32.dp).coerceIn(0.dp, totalWidth - 76.dp), y = (-22).dp)
+                                .align(Alignment.CenterStart),
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.inverseSurface,
+                            shadowElevation = 2.dp
+                        ) {
+                            Text(
+                                text = "NOW · $currentTimeString",
+                                fontFamily = SpaceGrotesk,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.inverseOnSurface,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
                 }
             }
 
+            // Bottom Inset Bar: Live Fajr Countdown with subtle crossfade
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                color = if (isDark) Color(0xFF494556).copy(alpha = 0.20f) else Color(0xFF8D6B1E).copy(alpha = 0.08f),
+                border = BorderStroke(1.dp, accentColor.copy(alpha = if (isDark) 0.12f else 0.10f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = "Last third of the night begins at ${tonight.lastThirdStartFormatted}",
-                    fontFamily = SpaceGrotesk,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AnimatedContent(
+                        targetState = fajrCountdownText,
+                        transitionSpec = {
+                            if (isReducedMotion) {
+                                fadeIn(animationSpec = snap()) togetherWith fadeOut(animationSpec = snap())
+                            } else {
+                                fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
+                            }
+                        },
+                        label = "fajrCountdownCrossfade"
+                    ) { countdown ->
+                        Text(
+                            text = countdown,
+                            fontFamily = SpaceGrotesk,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isCurrentlyInLastThird) accentColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
             }
         }
     }
 }
+
 
 @Composable
 fun NextOpportunityCard(

@@ -59,7 +59,8 @@ data class TonightSummary(
     val headerTitle: String = "Night is Coming",
     val subtitleText: String = "A quiet part of the night is ahead.",
     val ishaTimeMillis: Long = 0L,
-    val fajrTimeMillis: Long = 0L
+    val fajrTimeMillis: Long = 0L,
+    val lastThirdStartMillis: Long = 0L
 )
 
 enum class JourneyNodeType {

@@ -360,7 +360,8 @@ object HijriCalc {
                 longitude = longitude,
                 date = Date(timestampMillis),
                 method = calcMethod,
-                timeZoneOffsetHours = tzOffset
+                timeZoneOffsetHours = tzOffset,
+                updateActiveTimeZone = false
             )
             prayerTimes.find { it.name == PrayerName.MAGHRIB }?.timeMillis
         }
