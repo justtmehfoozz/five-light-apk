@@ -30,11 +30,17 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.runtime.rememberCoroutineScope
 import com.example.ui.theme.*
 import com.example.ui.theme.FiveLightMotion
 import com.example.ui.theme.rememberIsReducedMotion
@@ -120,6 +126,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.Alignment
@@ -311,12 +318,57 @@ fun QuranScreen(
                     }
             }
 
-            // Auto-scroll list to keep currently playing verse in view
-            LaunchedEffect(playingVerseNumber, playingSurahNumber, currentSurah.number) {
+            var userPausedAutoScroll by remember { mutableStateOf(false) }
+            val coroutineScope = rememberCoroutineScope()
+
+            // Find playing item index in the list
+            val hasBismillah = remember(selectedSurah.number, verses) {
+                selectedSurah.number != 9 && selectedSurah.number != 1 && verses.none { it.verseNumber == 0 }
+            }
+            val currentPlayingIndex = remember(playingVerseNumber, playingSurahNumber, currentSurah.number, verses, hasBismillah) {
                 if (playingSurahNumber == currentSurah.number && playingVerseNumber != null && verses.isNotEmpty()) {
-                    val playingIndex = verses.indexOfFirst { it.verseNumber == playingVerseNumber }
-                    if (playingIndex >= 0) {
-                        listState.animateScrollToItem(playingIndex)
+                    val rawIndex = verses.indexOfFirst { it.verseNumber == playingVerseNumber }
+                    if (rawIndex >= 0) {
+                        if (hasBismillah) rawIndex + 1 else rawIndex
+                    } else if (playingVerseNumber == 0 && hasBismillah) {
+                        0
+                    } else -1
+                } else -1
+            }
+
+            // Track user scroll interactions: respect manual scrolling
+            LaunchedEffect(listState, currentPlayingIndex) {
+                snapshotFlow {
+                    Pair(listState.isScrollInProgress, listState.layoutInfo.visibleItemsInfo.map { it.index })
+                }.collect { (isScrolling, visibleIndices) ->
+                    if (currentPlayingIndex >= 0) {
+                        if (isScrolling) {
+                            if (visibleIndices.isNotEmpty() && !visibleIndices.contains(currentPlayingIndex)) {
+                                val firstVis = visibleIndices.first()
+                                if (kotlin.math.abs(firstVis - currentPlayingIndex) > 1) {
+                                    userPausedAutoScroll = true
+                                }
+                            }
+                        } else {
+                            if (visibleIndices.contains(currentPlayingIndex)) {
+                                userPausedAutoScroll = false
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Auto-scroll list smoothly to keep currently playing verse in view when not paused by manual scrolling
+            LaunchedEffect(currentPlayingIndex, userPausedAutoScroll) {
+                if (currentPlayingIndex >= 0 && !userPausedAutoScroll) {
+                    val targetScrollIndex = (currentPlayingIndex - 1).coerceAtLeast(0)
+                    if (isReducedMotion) {
+                        listState.scrollToItem(targetScrollIndex)
+                    } else {
+                        listState.animateScrollToItem(
+                            index = targetScrollIndex,
+                            scrollOffset = 0
+                        )
                     }
                 }
             }
@@ -484,68 +536,119 @@ fun QuranScreen(
                             bookmarks.map { "${it.surahNumber}_${it.verseNumber}" }.toSet()
                         }
 
-                        LazyColumn(
-                            state = listState,
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            if (selectedSurah.number != 9 && selectedSurah.number != 1 && verses.none { it.verseNumber == 0 }) {
-                                item(key = "bismillah_header_${selectedSurah.number}") {
-                                    val bismillahVerse = remember(selectedSurah.number) {
-                                        com.example.data.util.QuranData.getSurahBismillah(selectedSurah.number) ?: Verse(
-                                            surahNumber = selectedSurah.number,
-                                            verseNumber = 0,
-                                            textArabic = com.example.data.util.QuranData.BISMILLAH_ARABIC,
-                                            textEnglish = com.example.data.util.QuranData.BISMILLAH_ENGLISH,
-                                            audioUrl = com.example.data.util.QuranData.BISMILLAH_AUDIO_URL,
-                                            verseKey = "${selectedSurah.number}:0"
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            LazyColumn(
+                                state = listState,
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.fillMaxSize()
+                            ) {
+                                if (selectedSurah.number != 9 && selectedSurah.number != 1 && verses.none { it.verseNumber == 0 }) {
+                                    item(key = "bismillah_header_${selectedSurah.number}") {
+                                        val bismillahVerse = remember(selectedSurah.number) {
+                                            com.example.data.util.QuranData.getSurahBismillah(selectedSurah.number) ?: Verse(
+                                                surahNumber = selectedSurah.number,
+                                                verseNumber = 0,
+                                                textArabic = com.example.data.util.QuranData.BISMILLAH_ARABIC,
+                                                textEnglish = com.example.data.util.QuranData.BISMILLAH_ENGLISH,
+                                                audioUrl = com.example.data.util.QuranData.BISMILLAH_AUDIO_URL,
+                                                verseKey = "${selectedSurah.number}:0"
+                                            )
+                                        }
+                                        val isBismillahBookmarked = bookmarkedKeys.contains("${bismillahVerse.surahNumber}_${bismillahVerse.verseNumber}")
+                                        val isBismillahActive = (playingSurahNumber == bismillahVerse.surahNumber) && (playingVerseNumber == bismillahVerse.verseNumber)
+
+                                        BismillahHeader(
+                                            verse = bismillahVerse,
+                                            fontSizeSp = fontSizeSp,
+                                            showTranslation = showEnglishTranslation,
+                                            isPlaying = isBismillahActive && isPlayingAudio,
+                                            isBookmarked = isBismillahBookmarked,
+                                            isVerseActive = isBismillahActive,
+                                            onPlayAudio = { onPlayVerseAudio(bismillahVerse) },
+                                            onToggleBookmark = { onToggleBookmark(bismillahVerse, isBismillahBookmarked) },
+                                            onOpenLens = { activeLensVerse = bismillahVerse },
+                                            onLongClick = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                contextMenuVerse = bismillahVerse
+                                            }
                                         )
                                     }
-                                    val isBismillahBookmarked = bookmarkedKeys.contains("${bismillahVerse.surahNumber}_${bismillahVerse.verseNumber}")
-                                    val isBismillahActive = (playingSurahNumber == bismillahVerse.surahNumber) && (playingVerseNumber == bismillahVerse.verseNumber)
+                                }
 
-                                    BismillahHeader(
-                                        verse = bismillahVerse,
+                                items(verses, key = { it.verseKey }) { verse ->
+                                    val isBookmarked = bookmarkedKeys.contains("${verse.surahNumber}_${verse.verseNumber}")
+                                    val isVerseActive = (playingSurahNumber == verse.surahNumber) && (playingVerseNumber == verse.verseNumber)
+
+                                    VerseCard(
+                                        verse = verse,
                                         fontSizeSp = fontSizeSp,
                                         showTranslation = showEnglishTranslation,
-                                        isPlaying = isBismillahActive && isPlayingAudio,
-                                        isBookmarked = isBismillahBookmarked,
-                                        isVerseActive = isBismillahActive,
-                                        onPlayAudio = { onPlayVerseAudio(bismillahVerse) },
-                                        onToggleBookmark = { onToggleBookmark(bismillahVerse, isBismillahBookmarked) },
-                                        onOpenLens = { activeLensVerse = bismillahVerse },
+                                        isNightMode = isNightReadingMode,
+                                        isVerseActive = isVerseActive,
+                                        isPlaying = isVerseActive && isPlayingAudio,
+                                        isBookmarked = isBookmarked,
+                                        onPlayAudio = { onPlayVerseAudio(verse) },
+                                        onToggleBookmark = { onToggleBookmark(verse, isBookmarked) },
+                                        onOpenLens = { activeLensVerse = verse },
                                         onLongClick = {
                                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            contextMenuVerse = bismillahVerse
+                                            contextMenuVerse = verse
                                         }
                                     )
                                 }
+
+                                item {
+                                    Spacer(modifier = Modifier.height(180.dp))
+                                }
                             }
 
-                            items(verses, key = { it.verseKey }) { verse ->
-                                val isBookmarked = bookmarkedKeys.contains("${verse.surahNumber}_${verse.verseNumber}")
-                                val isVerseActive = (playingSurahNumber == verse.surahNumber) && (playingVerseNumber == verse.verseNumber)
-
-                                VerseCard(
-                                    verse = verse,
-                                    fontSizeSp = fontSizeSp,
-                                    showTranslation = showEnglishTranslation,
-                                    isNightMode = isNightReadingMode,
-                                    isVerseActive = isVerseActive,
-                                    isPlaying = isVerseActive && isPlayingAudio,
-                                    isBookmarked = isBookmarked,
-                                    onPlayAudio = { onPlayVerseAudio(verse) },
-                                    onToggleBookmark = { onToggleBookmark(verse, isBookmarked) },
-                                    onOpenLens = { activeLensVerse = verse },
-                                    onLongClick = {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        contextMenuVerse = verse
+                            // Floating "Jump to current verse" chip when user has manually scrolled away
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = userPausedAutoScroll && currentPlayingIndex >= 0,
+                                enter = fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 2 },
+                                exit = fadeOut(tween(180)) + slideOutVertically(tween(180)) { it / 2 },
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 110.dp)
+                            ) {
+                                Surface(
+                                    onClick = {
+                                        userPausedAutoScroll = false
+                                        coroutineScope.launch {
+                                            val targetScrollIndex = (currentPlayingIndex - 1).coerceAtLeast(0)
+                                            if (isReducedMotion) {
+                                                listState.scrollToItem(targetScrollIndex)
+                                            } else {
+                                                listState.animateScrollToItem(targetScrollIndex)
+                                            }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(24.dp),
+                                    color = Color.semanticSurface,
+                                    border = BorderStroke(1.dp, Color.semanticPrimaryAccent.copy(alpha = if (isNightReadingMode || isAppInDarkTheme()) 0.6f else 0.45f)),
+                                    shadowElevation = 6.dp,
+                                    modifier = Modifier.testTag("jump_to_current_verse_pill")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.PlayArrow,
+                                            contentDescription = null,
+                                            tint = Color.semanticPrimaryAccent,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = "Jump to Verse $playingVerseNumber",
+                                            style = MaterialTheme.typography.labelMedium.copy(
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = Color.semanticPrimaryAccent
+                                            )
+                                        )
                                     }
-                                )
-                            }
-
-                            item {
-                                Spacer(modifier = Modifier.height(140.dp))
+                                }
                             }
                         }
                     }
@@ -1479,19 +1582,35 @@ fun BismillahHeader(
         }
     }
 
-    val activeBackground = if (isVerseActive) {
-        accent.copy(alpha = if (isDark) 0.12f else 0.07f)
-    } else {
-        Color.Transparent
-    }
+    val activeAlpha by animateFloatAsState(
+        targetValue = if (isVerseActive) 1f else 0f,
+        animationSpec = if (isReducedMotion) snap() else tween(durationMillis = 250, easing = FastOutSlowInEasing),
+        label = "bismillahActiveHighlight"
+    )
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .then(motionModifier)
             .clip(RoundedCornerShape(14.dp))
-            .background(activeBackground)
-            .padding(top = 16.dp, bottom = 20.dp, start = 8.dp, end = 8.dp)
+            .drawBehind {
+                if (activeAlpha > 0.005f) {
+                    val bgTint = accent.copy(alpha = (if (isDark) 0.14f else 0.10f) * activeAlpha)
+                    drawRoundRect(
+                        color = bgTint,
+                        cornerRadius = CornerRadius(14.dp.toPx(), 14.dp.toPx())
+                    )
+                    val barWidth = 3.5.dp.toPx()
+                    val barMargin = 8.dp.toPx()
+                    drawRoundRect(
+                        color = accent.copy(alpha = activeAlpha * 0.95f),
+                        topLeft = Offset(4.dp.toPx(), barMargin),
+                        size = Size(barWidth, (size.height - barMargin * 2).coerceAtLeast(0f)),
+                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                    )
+                }
+            }
+            .padding(top = 16.dp, bottom = 20.dp, start = if (isVerseActive) 14.dp else 8.dp, end = 8.dp)
             .combinedClickable(
                 onClick = { onOpenLens?.invoke() },
                 onLongClick = onLongClick
@@ -1708,23 +1827,39 @@ fun VerseCard(
         }
     }
 
-    val activeBackground = if (isVerseActive) {
-        accent.copy(alpha = if (isDark) 0.12f else 0.07f)
-    } else {
-        Color.Transparent
-    }
+    val activeAlpha by animateFloatAsState(
+        targetValue = if (isVerseActive) 1f else 0f,
+        animationSpec = if (isReducedMotion) snap() else tween(durationMillis = 250, easing = FastOutSlowInEasing),
+        label = "verseActiveHighlight"
+    )
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .then(motionModifier)
             .clip(RoundedCornerShape(12.dp))
-            .background(activeBackground)
+            .drawBehind {
+                if (activeAlpha > 0.005f) {
+                    val bgTint = accent.copy(alpha = (if (isDark) 0.14f else 0.10f) * activeAlpha)
+                    drawRoundRect(
+                        color = bgTint,
+                        cornerRadius = CornerRadius(12.dp.toPx(), 12.dp.toPx())
+                    )
+                    val barWidth = 3.5.dp.toPx()
+                    val barMargin = 6.dp.toPx()
+                    drawRoundRect(
+                        color = accent.copy(alpha = activeAlpha * 0.95f),
+                        topLeft = Offset(3.dp.toPx(), barMargin),
+                        size = Size(barWidth, (size.height - barMargin * 2).coerceAtLeast(0f)),
+                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                    )
+                }
+            }
             .combinedClickable(
                 onClick = { onOpenLens?.invoke() },
                 onLongClick = onLongClick
             )
-            .padding(horizontal = if (isVerseActive) 10.dp else 4.dp, vertical = 12.dp)
+            .padding(start = if (isVerseActive) 14.dp else 6.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)
     ) {
         // Verse Header: Arabic-Indic Number Badge on Start, Action Icons on End
         Row(

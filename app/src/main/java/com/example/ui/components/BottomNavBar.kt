@@ -10,6 +10,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -28,6 +29,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -320,9 +322,9 @@ fun SereneBottomNavBar(
     val targetDockBorderColor = when (morphState) {
         DockMorphState.SEARCH -> if (isDark) Color.semanticPrimaryAccent else lightSearchBorderColor
         DockMorphState.MUSIC -> if (isPlaying) {
-            Color.semanticPrimaryAccent.copy(alpha = if (isDark) 0.70f else 0.60f)
+            Color.semanticPrimaryAccent.copy(alpha = if (isDark) 0.50f else 0.40f)
         } else {
-            Color.semanticPrimaryAccent.copy(alpha = if (isDark) 0.30f else 0.25f)
+            Color.semanticPrimaryAccent.copy(alpha = if (isDark) 0.22f else 0.18f)
         }
         DockMorphState.DOCK -> Color.semanticDockBorder
     }
@@ -369,19 +371,32 @@ fun SereneBottomNavBar(
         )
     }
 
-    // Active music player breathing pulse for subtle accent glow when playing
-    val musicPulseTransition = rememberInfiniteTransition(label = "musicPlayerPulse")
-    val musicPulseFraction by if (isReducedMotion || !isPlaying) {
-        remember(isPlaying) { mutableFloatStateOf(0f) }
+    // Active music player breathing pulse for internal audio indicator
+    val musicIndicatorTransition = rememberInfiniteTransition(label = "musicIndicatorPulse")
+    val musicIndicatorScale by if (isReducedMotion || !isPlaying) {
+        remember(isPlaying) { mutableFloatStateOf(1f) }
     } else {
-        musicPulseTransition.animateFloat(
-            initialValue = 0f,
-            targetValue = 1f,
+        musicIndicatorTransition.animateFloat(
+            initialValue = 0.94f,
+            targetValue = 1.06f,
             animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1800, easing = CubicBezierEasing(0.4f, 0.0f, 0.2f, 1.0f)),
+                animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Reverse
             ),
-            label = "musicPulse"
+            label = "musicIndicatorScale"
+        )
+    }
+    val musicIndicatorAlpha by if (isReducedMotion || !isPlaying) {
+        remember(isPlaying) { mutableFloatStateOf(0.16f) }
+    } else {
+        musicIndicatorTransition.animateFloat(
+            initialValue = 0.14f,
+            targetValue = 0.28f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "musicIndicatorAlpha"
         )
     }
 
@@ -744,39 +759,6 @@ fun SereneBottomNavBar(
             }
         }
 
-        // Active Player Glow Shadow when reciting
-        if (isPlaybackMode && !isSearchActive) {
-            val accentColor = Color.semanticPrimaryAccent
-            val basePulseAlpha = if (isPlaying && !isReducedMotion) {
-                androidx.compose.ui.util.lerp(0.08f, 0.22f, musicPulseFraction)
-            } else if (isPlaying) {
-                0.14f
-            } else {
-                0.04f
-            }
-            val pulseSpread = if (isPlaying && !isReducedMotion) {
-                androidx.compose.ui.unit.lerp(2.dp, 6.dp, musicPulseFraction)
-            } else {
-                2.dp
-            }
-
-            Box(
-                modifier = Modifier
-                    .padding(bottom = 24.dp)
-                    .navigationBarsPadding()
-                    .offset(y = currentTranslateY)
-                    .width(currentWidthDp + pulseSpread * 2)
-                    .height(dockHeight + pulseSpread * 2)
-                    .drawBehind {
-                        val glow = accentColor.copy(alpha = basePulseAlpha)
-                        drawRoundRect(
-                            color = glow,
-                            cornerRadius = CornerRadius((animatedCornerRadius + pulseSpread).toPx(), (animatedCornerRadius + pulseSpread).toPx())
-                        )
-                    }
-            )
-        }
-
         // SINGLE CONTINUOUS LIQUID GLASS MORPHING CONTAINER
         LiquidGlassSurface(
             modifier = Modifier
@@ -1103,20 +1085,27 @@ fun SereneBottomNavBar(
                             Row(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    .pointerInput(Unit) {
+                                        detectVerticalDragGestures { _, dragAmount ->
+                                            if (dragAmount < -18f) {
+                                                onExpandPlayer()
+                                            }
+                                        }
+                                    },
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Left artwork/track identity badge (tap to expand full player)
+                                // Left artwork/track identity badge (tap to expand full player, subtle internal pulse when playing)
                                 Box(
                                     modifier = Modifier
                                         .size(38.dp)
                                         .graphicsLayer {
                                             alpha = flankAlpha.value
-                                            scaleX = flankScale.value
-                                            scaleY = flankScale.value
+                                            scaleX = flankScale.value * musicIndicatorScale
+                                            scaleY = flankScale.value * musicIndicatorScale
                                         }
                                         .clip(CircleShape)
-                                        .background(Color.semanticPrimaryAccent.copy(alpha = 0.16f))
+                                        .background(Color.semanticPrimaryAccent.copy(alpha = musicIndicatorAlpha))
                                         .clickable { onExpandPlayer() },
                                     contentAlignment = Alignment.Center
                                 ) {
