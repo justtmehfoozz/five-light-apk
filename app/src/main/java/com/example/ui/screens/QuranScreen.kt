@@ -197,6 +197,8 @@ fun QuranScreen(
     onGetScrollPosition: (surahNumber: Int) -> Int = { 0 },
     initialOpenReadingView: Boolean = false,
     onResetInitialReadingView: () -> Unit = {},
+    onScrolledAwayFromActiveVerseChange: (Boolean) -> Unit = {},
+    jumpToActiveVerseTrigger: Long = 0L,
     modifier: Modifier = Modifier
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) } // 0: All Surahs, 1: Bookmarks
@@ -354,6 +356,29 @@ fun QuranScreen(
                                 userPausedAutoScroll = false
                             }
                         }
+                    }
+                }
+            }
+
+            // Sync scrolled-away status with parent / bottom audio dock
+            LaunchedEffect(userPausedAutoScroll, currentPlayingIndex, isReadingViewActive, selectedSurah.number, playingSurahNumber) {
+                val isAway = userPausedAutoScroll && (currentPlayingIndex >= 0) && isReadingViewActive && (selectedSurah.number == playingSurahNumber)
+                onScrolledAwayFromActiveVerseChange(isAway)
+            }
+
+            // Handle jump to active verse trigger from the integrated audio player morph
+            LaunchedEffect(jumpToActiveVerseTrigger) {
+                if (jumpToActiveVerseTrigger > 0L && currentPlayingIndex >= 0) {
+                    userPausedAutoScroll = false
+                    onScrolledAwayFromActiveVerseChange(false)
+                    val targetScrollIndex = (currentPlayingIndex - 1).coerceAtLeast(0)
+                    if (isReducedMotion) {
+                        listState.scrollToItem(targetScrollIndex)
+                    } else {
+                        listState.animateScrollToItem(
+                            index = targetScrollIndex,
+                            scrollOffset = 0
+                        )
                     }
                 }
             }
@@ -599,55 +624,6 @@ fun QuranScreen(
 
                                 item {
                                     Spacer(modifier = Modifier.height(180.dp))
-                                }
-                            }
-
-                            // Floating "Jump to current verse" chip when user has manually scrolled away
-                            androidx.compose.animation.AnimatedVisibility(
-                                visible = userPausedAutoScroll && currentPlayingIndex >= 0,
-                                enter = fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 2 },
-                                exit = fadeOut(tween(180)) + slideOutVertically(tween(180)) { it / 2 },
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 110.dp)
-                            ) {
-                                Surface(
-                                    onClick = {
-                                        userPausedAutoScroll = false
-                                        coroutineScope.launch {
-                                            val targetScrollIndex = (currentPlayingIndex - 1).coerceAtLeast(0)
-                                            if (isReducedMotion) {
-                                                listState.scrollToItem(targetScrollIndex)
-                                            } else {
-                                                listState.animateScrollToItem(targetScrollIndex)
-                                            }
-                                        }
-                                    },
-                                    shape = RoundedCornerShape(24.dp),
-                                    color = Color.semanticSurface,
-                                    border = BorderStroke(1.dp, Color.semanticPrimaryAccent.copy(alpha = if (isNightReadingMode || isAppInDarkTheme()) 0.6f else 0.45f)),
-                                    shadowElevation = 6.dp,
-                                    modifier = Modifier.testTag("jump_to_current_verse_pill")
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.PlayArrow,
-                                            contentDescription = null,
-                                            tint = Color.semanticPrimaryAccent,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "Jump to Verse $playingVerseNumber",
-                                            style = MaterialTheme.typography.labelMedium.copy(
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = Color.semanticPrimaryAccent
-                                            )
-                                        )
-                                    }
                                 }
                             }
                         }

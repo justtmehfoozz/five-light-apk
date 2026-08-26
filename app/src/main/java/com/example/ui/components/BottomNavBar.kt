@@ -19,10 +19,14 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.material3.Surface
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -295,6 +299,8 @@ fun SereneBottomNavBar(
     dockFifthSlotMode: String = "more",
     onFifthSlotMoreTap: () -> Unit = {},
     onExpandPlayer: () -> Unit = {},
+    isScrolledAwayFromActiveVerse: Boolean = false,
+    onJumpToActiveVerse: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val currentRouteState by rememberUpdatedState(currentRoute)
@@ -1458,6 +1464,177 @@ fun SereneBottomNavBar(
                                 modifier = Modifier.size(18.dp)
                             )
                         }
+                    }
+                }
+            }
+        }
+
+        // INTEGRATED JUMP-TO-CURRENT-VERSE MORPH CONTROL
+        JumpToCurrentVerseMorphControl(
+            visible = isScrolledAwayFromActiveVerse && isPlaybackMode && !isSearchActive && (playingVerseNumber != null),
+            playingVerseNumber = playingVerseNumber,
+            isDark = isDark,
+            isReducedMotion = isReducedMotion,
+            dockTranslateY = currentTranslateY,
+            dockHeight = dockHeight,
+            dockBg = dockBg,
+            dockBorderColor = dockBorderColor,
+            onClick = onJumpToActiveVerse,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+        )
+    }
+}
+
+/**
+ * Integrated Jump-to-Current-Verse control that emerges as a physical extension of the audio player.
+ *
+ * Sequence:
+ * 1. Small circle emerges from the upper boundary of the audio player.
+ * 2. Circle continuously expands horizontally into a refined pill shape.
+ * 3. Text "Jump to Verse X" reveals inside the expanded pill.
+ * 4. Reverse morph (Pill -> Circle -> Retract into player) occurs on tap or when user scrolls near verse.
+ */
+@Composable
+fun JumpToCurrentVerseMorphControl(
+    visible: Boolean,
+    playingVerseNumber: Int?,
+    isDark: Boolean,
+    isReducedMotion: Boolean,
+    dockTranslateY: Dp,
+    dockHeight: Dp,
+    dockBg: Color,
+    dockBorderColor: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val transition = updateTransition(targetState = visible, label = "jumpToVerseMorph")
+
+    val morphProgress by transition.animateFloat(
+        transitionSpec = {
+            if (isReducedMotion) {
+                snap()
+            } else if (targetState) {
+                // Emerging & expanding: container-transform ease out
+                tween(durationMillis = 320, easing = FastOutSlowInEasing)
+            } else {
+                // Retracting back into player: smooth ease in-out
+                tween(durationMillis = 260, easing = FastOutSlowInEasing)
+            }
+        },
+        label = "morphProgress"
+    ) { isVis ->
+        if (isVis) 1f else 0f
+    }
+
+    if (morphProgress > 0.001f || visible) {
+        val accentColor = Color.semanticPrimaryAccent
+        val verseText = if (playingVerseNumber == 0) "Jump to Bismillah" else "Jump to Verse ${playingVerseNumber ?: 1}"
+
+        // Multi-stage interpolation:
+        // 0.00f -> 0.35f: Small circle emerges upward from player top edge
+        // 0.35f -> 1.00f: Circle expands horizontally into pill, revealing text
+        val emergeFraction = (morphProgress / 0.35f).coerceIn(0f, 1f)
+        val expandFraction = ((morphProgress - 0.35f) / 0.65f).coerceIn(0f, 1f)
+
+        val targetPillWidth = 164.dp
+        val circleSize = 34.dp
+        val currentWidth = if (isReducedMotion) {
+            if (visible) targetPillWidth else circleSize
+        } else {
+            lerp(circleSize, targetPillWidth, expandFraction)
+        }
+        val currentHeight = 34.dp
+        val currentCornerRadius = 17.dp
+
+        val verticalTravelOffset = if (isReducedMotion) {
+            0.dp
+        } else {
+            lerp(18.dp, 0.dp, emergeFraction)
+        }
+        val controlAlpha = if (isReducedMotion) {
+            if (visible) 1f else 0f
+        } else {
+            (emergeFraction / 0.5f).coerceIn(0f, 1f)
+        }
+        val textAlpha = if (isReducedMotion) {
+            if (visible) 1f else 0f
+        } else {
+            ((expandFraction - 0.30f) / 0.70f).coerceIn(0f, 1f)
+        }
+
+        // Resting position: sits directly above the audio player dock with 6.dp spacing
+        val bottomPadding = 24.dp + dockHeight + 6.dp
+
+        Box(
+            modifier = modifier
+                .padding(bottom = bottomPadding)
+                .offset(y = dockTranslateY + verticalTravelOffset)
+                .graphicsLayer {
+                    alpha = controlAlpha
+                }
+                .zIndex(25f), // Highest stacking order: always above the audio player
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            // Subtle connector bridge between jump pill and audio player
+            if (emergeFraction > 0.5f) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .offset(y = 6.dp)
+                        .width(2.dp)
+                        .height(6.dp)
+                        .background(
+                            dockBorderColor.copy(alpha = 0.45f * ((emergeFraction - 0.5f) / 0.5f))
+                        )
+                )
+            }
+
+            // Morphing Glass Surface
+            Surface(
+                onClick = onClick,
+                shape = RoundedCornerShape(currentCornerRadius),
+                color = dockBg,
+                border = BorderStroke(
+                    1.2.dp,
+                    dockBorderColor.copy(alpha = if (isDark) 0.55f else 0.40f)
+                ),
+                shadowElevation = 8.dp,
+                modifier = Modifier
+                    .width(currentWidth)
+                    .height(currentHeight)
+                    .testTag("jump_to_current_verse_pill")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = "Jump to Verse",
+                        tint = accentColor,
+                        modifier = Modifier.size(15.dp)
+                    )
+
+                    if (textAlpha > 0.01f) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = verseText,
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                color = accentColor,
+                                fontSize = 12.5.sp
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.graphicsLayer {
+                                alpha = textAlpha
+                            }
+                        )
                     }
                 }
             }

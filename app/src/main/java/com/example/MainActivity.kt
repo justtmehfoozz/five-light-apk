@@ -127,6 +127,8 @@ class MainActivity : ComponentActivity() {
                 val audioProgress by viewModel.audioProgress.collectAsStateWithLifecycle()
                 val showPrayerMode by viewModel.showPrayerMode.collectAsStateWithLifecycle()
                 var showExpandedPlayerSheet by remember { mutableStateOf(false) }
+                var isScrolledAwayFromActiveVerse by remember { mutableStateOf(false) }
+                var jumpToActiveVerseTrigger by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
 
                 val mainPredictiveState = rememberPredictiveBackState()
                 val canPopAppLevel = showSearchOverlay || showSettingsSheet || showExpandedPlayerSheet || tabStack.size > 1
@@ -338,7 +340,11 @@ class MainActivity : ComponentActivity() {
                                     onSaveScrollPosition = { sNum, vIdx -> viewModel.saveSurahScrollPosition(sNum, vIdx) },
                                     onGetScrollPosition = { sNum -> viewModel.getSurahScrollPosition(sNum) },
                                     initialOpenReadingView = openQuranReadingDirectly,
-                                    onResetInitialReadingView = { openQuranReadingDirectly = false }
+                                    onResetInitialReadingView = { openQuranReadingDirectly = false },
+                                    onScrolledAwayFromActiveVerseChange = { isAway ->
+                                        isScrolledAwayFromActiveVerse = isAway
+                                    },
+                                    jumpToActiveVerseTrigger = jumpToActiveVerseTrigger
                                 )
                             }
 
@@ -540,6 +546,10 @@ class MainActivity : ComponentActivity() {
                         },
                         onExpandPlayer = {
                             showExpandedPlayerSheet = true
+                        },
+                        isScrolledAwayFromActiveVerse = isScrolledAwayFromActiveVerse && (playingSurahNumber != null) && (playingVerseNumber != null) && !showExpandedPlayerSheet && (currentRoute == "quran" || pagerState.currentPage == 2),
+                        onJumpToActiveVerse = {
+                            jumpToActiveVerseTrigger = System.currentTimeMillis()
                         },
                         modifier = Modifier.fillMaxSize()
                     )
