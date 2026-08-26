@@ -17,6 +17,7 @@ import com.example.ui.theme.semanticBackground
 import com.example.ui.theme.semanticWarning
 
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
@@ -52,6 +53,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -109,6 +111,7 @@ import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -122,7 +125,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -373,6 +378,47 @@ fun QuranScreen(
                     }
                 }
 
+                // 7. Reading Progress Indicator (strictly scroll position only, theme accent)
+                val readingProgress by remember(listState, verses.size) {
+                    derivedStateOf {
+                        val layoutInfo = listState.layoutInfo
+                        val totalItems = layoutInfo.totalItemsCount
+                        if (totalItems <= 1) {
+                            0f
+                        } else {
+                            val visibleItems = layoutInfo.visibleItemsInfo
+                            if (visibleItems.isEmpty()) {
+                                0f
+                            } else {
+                                val firstVisible = visibleItems.first()
+                                val firstIndex = firstVisible.index
+                                val itemSize = firstVisible.size
+                                val offset = if (itemSize > 0) listState.firstVisibleItemScrollOffset.toFloat() / itemSize else 0f
+                                val exactIndex = firstIndex + offset
+                                val maxIndex = (totalItems - 1).coerceAtLeast(1).toFloat()
+                                (exactIndex / maxIndex).coerceIn(0f, 1f)
+                            }
+                        }
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, bottom = 4.dp)
+                        .height(2.dp)
+                        .clip(RoundedCornerShape(1.dp))
+                        .background(Color.semanticBorder.copy(alpha = 0.3f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(fraction = readingProgress)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(1.dp))
+                            .background(Color.semanticPrimaryAccent)
+                    )
+                }
+
                 // Font Size Slider Overlay
                 if (showFontSizeControls) {
                     Card(
@@ -397,7 +443,7 @@ fun QuranScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Verses List with Shimmer Skeletons
                 AnimatedContent(
@@ -420,7 +466,7 @@ fun QuranScreen(
                         )
 
                         LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             items(4) {
@@ -440,7 +486,7 @@ fun QuranScreen(
 
                         LazyColumn(
                             state = listState,
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             if (selectedSurah.number != 9 && selectedSurah.number != 1 && verses.none { it.verseNumber == 0 }) {
@@ -458,14 +504,13 @@ fun QuranScreen(
                                     val isBismillahBookmarked = bookmarkedKeys.contains("${bismillahVerse.surahNumber}_${bismillahVerse.verseNumber}")
                                     val isBismillahActive = (playingSurahNumber == bismillahVerse.surahNumber) && (playingVerseNumber == bismillahVerse.verseNumber)
 
-                                    VerseCard(
+                                    BismillahHeader(
                                         verse = bismillahVerse,
                                         fontSizeSp = fontSizeSp,
                                         showTranslation = showEnglishTranslation,
-                                        isNightMode = isNightReadingMode,
-                                        isVerseActive = isBismillahActive,
                                         isPlaying = isBismillahActive && isPlayingAudio,
                                         isBookmarked = isBismillahBookmarked,
+                                        isVerseActive = isBismillahActive,
                                         onPlayAudio = { onPlayVerseAudio(bismillahVerse) },
                                         onToggleBookmark = { onToggleBookmark(bismillahVerse, isBismillahBookmarked) },
                                         onOpenLens = { activeLensVerse = bismillahVerse },
@@ -1342,6 +1387,281 @@ fun SurahQuickActionSheet(
     }
 }
 
+private fun Int.toArabicIndicDigits(): String {
+    val arabicIndicDigits = charArrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
+    val str = this.toString()
+    val sb = StringBuilder(str.length)
+    for (ch in str) {
+        if (ch in '0'..'9') {
+            sb.append(arabicIndicDigits[ch - '0'])
+        } else {
+            sb.append(ch)
+        }
+    }
+    return sb.toString()
+}
+
+@Composable
+fun VerseNumberBadge(
+    verseNumber: Int,
+    modifier: Modifier = Modifier
+) {
+    val isDark = isAppInDarkTheme()
+    val accent = Color.semanticPrimaryAccent
+    val arabicNumeral = remember(verseNumber) { verseNumber.toArabicIndicDigits() }
+
+    Box(
+        modifier = modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(accent.copy(alpha = if (isDark) 0.12f else 0.08f))
+            .border(
+                width = 1.dp,
+                color = accent.copy(alpha = if (isDark) 0.5f else 0.4f),
+                shape = CircleShape
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = arabicNumeral,
+            fontFamily = AmiriFont,
+            fontSize = if (arabicNumeral.length > 2) 10.5.sp else 12.5.sp,
+            fontWeight = FontWeight.Bold,
+            color = accent,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.offset(y = (-1).dp)
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun BismillahHeader(
+    verse: Verse,
+    fontSizeSp: Float,
+    showTranslation: Boolean,
+    isPlaying: Boolean,
+    isBookmarked: Boolean,
+    isVerseActive: Boolean,
+    onPlayAudio: () -> Unit,
+    onToggleBookmark: () -> Unit,
+    onOpenLens: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val isDark = isAppInDarkTheme()
+    val accent = Color.semanticPrimaryAccent
+    val textPrimary = Color.semanticPrimaryText
+    val isReducedMotion = rememberIsReducedMotion()
+
+    // 8. Subtle first-appearance animation in the current reading session
+    val hasBeenSeen = rememberSaveable(verse.verseKey) { mutableStateOf(false) }
+    val animProgress = remember { Animatable(if (isReducedMotion || hasBeenSeen.value) 1f else 0f) }
+
+    LaunchedEffect(verse.verseKey) {
+        if (!isReducedMotion && !hasBeenSeen.value) {
+            animProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 230, easing = FastOutSlowInEasing)
+            )
+            hasBeenSeen.value = true
+        } else {
+            animProgress.snapTo(1f)
+        }
+    }
+
+    val motionModifier = if (isReducedMotion || (hasBeenSeen.value && animProgress.value == 1f)) {
+        Modifier
+    } else {
+        Modifier.graphicsLayer {
+            alpha = animProgress.value
+            translationY = (1f - animProgress.value) * 12.dp.toPx()
+        }
+    }
+
+    val activeBackground = if (isVerseActive) {
+        accent.copy(alpha = if (isDark) 0.12f else 0.07f)
+    } else {
+        Color.Transparent
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(motionModifier)
+            .clip(RoundedCornerShape(14.dp))
+            .background(activeBackground)
+            .padding(top = 16.dp, bottom = 20.dp, start = 8.dp, end = 8.dp)
+            .combinedClickable(
+                onClick = { onOpenLens?.invoke() },
+                onLongClick = onLongClick
+            ),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // 4. Subtle tapered divider ABOVE Bismillah (approx 1px, 48% screen width, faded edges, tiny diamond)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.48f)
+                .height(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.fillMaxWidth().height(1.dp)) {
+                val brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        accent.copy(alpha = if (isDark) 0.6f else 0.5f),
+                        Color.Transparent
+                    )
+                )
+                drawRect(brush = brush)
+            }
+            Canvas(modifier = Modifier.size(5.dp)) {
+                val path = Path().apply {
+                    moveTo(size.width / 2f, 0f)
+                    lineTo(size.width, size.height / 2f)
+                    lineTo(size.width / 2f, size.height)
+                    lineTo(0f, size.height / 2f)
+                    close()
+                }
+                drawPath(path = path, color = accent.copy(alpha = if (isDark) 0.8f else 0.7f))
+            }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // Dominant Arabic Bismillah text centered, large, prominent
+        ArabicText(
+            text = verse.textArabic,
+            fontSize = (fontSizeSp * 1.06f).sp,
+            color = textPrimary,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+        )
+
+        // Translation centered if enabled
+        if (showTranslation && verse.textEnglish.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = verse.textEnglish,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp,
+                    letterSpacing = 0.2.sp
+                ),
+                color = Color.semanticSecondaryText,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // 2. Action Icons Hierarchy
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Play (Prioritized with subtle circular accent background)
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clickable(onClick = onPlayAudio),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isPlaying) accent
+                            else accent.copy(alpha = if (isDark) 0.18f else 0.12f)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AnimatedContent(
+                        targetState = isPlaying,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(180)) togetherWith
+                                    fadeOut(animationSpec = tween(140))
+                        },
+                        label = "bismillahPlayPauseAnim"
+                    ) { activePlaying ->
+                        Icon(
+                            imageVector = if (activePlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (activePlaying) "Pause Audio" else "Play Audio",
+                            tint = if (activePlaying) Color.White else accent,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+            }
+
+            // Lens / Search (Subtle, 50-60% opacity)
+            if (onOpenLens != null) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clickable(onClick = onOpenLens),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = "Quran Lens",
+                        tint = textPrimary.copy(alpha = 0.55f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            // Bookmark (Accurate state)
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clickable(onClick = onToggleBookmark),
+                contentAlignment = Alignment.Center
+            ) {
+                AnimatedContent(
+                    targetState = isBookmarked,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(180)) togetherWith
+                                fadeOut(animationSpec = tween(140))
+                    },
+                    label = "bismillahBookmarkAnim"
+                ) { activeBookmarked ->
+                    Icon(
+                        imageVector = if (activeBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                        contentDescription = if (activeBookmarked) "Remove Bookmark" else "Bookmark",
+                        tint = if (activeBookmarked) accent else textPrimary.copy(alpha = 0.55f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Subtle bottom separator line
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.35f)
+                .height(1.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.semanticBorder.copy(alpha = if (isDark) 0.35f else 0.45f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VerseCard(
@@ -1358,67 +1678,85 @@ fun VerseCard(
     onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isNightMode || MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
-    val cardBg = Color.semanticSurface
-    val highlightOverlay = if (isVerseActive) Color.semanticPrimaryAccent.copy(alpha = 0.12f) else Color.Transparent
+    val isDark = isNightMode || isAppInDarkTheme()
+    val accent = Color.semanticPrimaryAccent
     val textPrimary = Color.semanticPrimaryText
-    
-    val defaultBorder = Color.semanticBorder
-    val cardBorder = if (isVerseActive) BorderStroke(1.8.dp, Color.semanticPrimaryAccent) else BorderStroke(1.dp, defaultBorder)
+    val isReducedMotion = rememberIsReducedMotion()
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        border = cardBorder,
-        colors = CardDefaults.cardColors(containerColor = cardBg)
+    // 8. Subtle first-appearance animation in the current reading session
+    val hasBeenSeen = rememberSaveable(verse.verseKey) { mutableStateOf(false) }
+    val animProgress = remember { Animatable(if (isReducedMotion || hasBeenSeen.value) 1f else 0f) }
+
+    LaunchedEffect(verse.verseKey) {
+        if (!isReducedMotion && !hasBeenSeen.value) {
+            animProgress.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 230, easing = FastOutSlowInEasing)
+            )
+            hasBeenSeen.value = true
+        } else {
+            animProgress.snapTo(1f)
+        }
+    }
+
+    val motionModifier = if (isReducedMotion || (hasBeenSeen.value && animProgress.value == 1f)) {
+        Modifier
+    } else {
+        Modifier.graphicsLayer {
+            alpha = animProgress.value
+            translationY = (1f - animProgress.value) * 12.dp.toPx()
+        }
+    }
+
+    val activeBackground = if (isVerseActive) {
+        accent.copy(alpha = if (isDark) 0.12f else 0.07f)
+    } else {
+        Color.Transparent
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(motionModifier)
+            .clip(RoundedCornerShape(12.dp))
+            .background(activeBackground)
+            .combinedClickable(
+                onClick = { onOpenLens?.invoke() },
+                onLongClick = onLongClick
+            )
+            .padding(horizontal = if (isVerseActive) 10.dp else 4.dp, vertical = 12.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(highlightOverlay)
-                .combinedClickable(
-                    onClick = { onOpenLens?.invoke() },
-                    onLongClick = onLongClick
-                )
+        // Verse Header: Arabic-Indic Number Badge on Start, Action Icons on End
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(18.dp)
-            ) {
-            // Header Action bar for verse
+            // 3. Small circular verse-number badge with Arabic-Indic numerals
+            VerseNumberBadge(verseNumber = verse.verseNumber)
+
+            // 2. Action Icons Hierarchy: Play prioritized, Search & Bookmark subtle
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val chipBg = if (isDark) Color(0xFF2C2C2E) else Color.semanticPrimaryAccent.copy(alpha = 0.12f)
-                val chipTextColor = if (isDark) Color.quranChipTextColorDark else Color.semanticPrimaryAccent
-
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = chipBg
+                // Play Button (Prioritized with subtle circular accent background)
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clickable(onClick = onPlayAudio),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (verse.verseNumber == 0) "Bismillah" else "Verse ${verse.verseNumber}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = chipTextColor,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
-                }
-
-                Row {
-                    if (onOpenLens != null) {
-                        IconButton(onClick = onOpenLens) {
-                            Icon(
-                                imageVector = Icons.Outlined.Search,
-                                contentDescription = "Quran Lens",
-                                tint = if (isDark) Color.quranVerseActionIconColorDark else textPrimary
-                            )
-                        }
-                    }
-
-                    IconButton(onClick = onPlayAudio) {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (isPlaying) accent
+                                else accent.copy(alpha = if (isDark) 0.18f else 0.12f)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
                         AnimatedContent(
                             targetState = isPlaying,
                             transitionSpec = {
@@ -1430,52 +1768,89 @@ fun VerseCard(
                             Icon(
                                 imageVector = if (activePlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                 contentDescription = if (activePlaying) "Pause Audio" else "Play Audio",
-                                tint = if (isDark) Color.quranVerseActionIconColorDark else MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-
-                    IconButton(onClick = onToggleBookmark) {
-                        AnimatedContent(
-                            targetState = isBookmarked,
-                            transitionSpec = {
-                                fadeIn(animationSpec = tween(180)) togetherWith
-                                        fadeOut(animationSpec = tween(140))
-                            },
-                            label = "verseBookmarkAnim"
-                        ) { activeBookmarked ->
-                            Icon(
-                                imageVector = if (activeBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
-                                contentDescription = if (activeBookmarked) "Remove Bookmark" else "Bookmark",
-                                tint = if (isDark) Color.quranVerseActionIconColorDark else if (activeBookmarked) MaterialTheme.colorScheme.primary else textPrimary.copy(alpha = 0.6f)
+                                tint = if (activePlaying) Color.White else accent,
+                                modifier = Modifier.size(17.dp)
                             )
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(12.dp))
+                // Quran Lens / Search (50-60% opacity, 18dp icon, 48dp touch target)
+                if (onOpenLens != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clickable(onClick = onOpenLens),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Search,
+                            contentDescription = "Quran Lens",
+                            tint = textPrimary.copy(alpha = 0.55f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
 
-            // Uthmani Arabic Text Rendered Large & Clear
-            Text(
-                text = verse.textArabic,
-                style = ArabicTextStyle.copy(fontSize = fontSizeSp.sp, lineHeight = (fontSizeSp * 1.8f).sp),
-                color = textPrimary,
-                textAlign = TextAlign.End,
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            if (showTranslation && verse.textEnglish.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = verse.textEnglish,
-                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 22.sp),
-                    color = Color.semanticMutedText
-                )
+                // Bookmark (Accurate state: filled accent when bookmarked, 55% outlined when not)
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clickable(onClick = onToggleBookmark),
+                    contentAlignment = Alignment.Center
+                ) {
+                    AnimatedContent(
+                        targetState = isBookmarked,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(180)) togetherWith
+                                    fadeOut(animationSpec = tween(140))
+                        },
+                        label = "verseBookmarkAnim"
+                    ) { activeBookmarked ->
+                        Icon(
+                            imageVector = if (activeBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
+                            contentDescription = if (activeBookmarked) "Remove Bookmark" else "Bookmark",
+                            tint = if (activeBookmarked) accent else textPrimary.copy(alpha = 0.55f),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
             }
         }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // 1. Dominant Arabic Qur'an Text (RTL, large, generous line-height)
+        ArabicText(
+            text = verse.textArabic,
+            fontSize = fontSizeSp.sp,
+            color = textPrimary,
+            textAlign = TextAlign.End,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        // Translation: visually secondary, comfortable typography, vertical breathing room
+        if (showTranslation && verse.textEnglish.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = verse.textEnglish,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp,
+                    letterSpacing = 0.2.sp
+                ),
+                color = Color.semanticSecondaryText,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
+        // 5. Continuous flow divider (subtle, non-distracting)
+        Spacer(modifier = Modifier.height(14.dp))
+        HorizontalDivider(
+            color = Color.semanticBorder.copy(alpha = if (isDark) 0.25f else 0.35f),
+            thickness = 0.75.dp
+        )
     }
-}
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1749,98 +2124,99 @@ fun VerseCardSkeleton(
     shimmerAlpha: Float,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isNightMode || androidx.compose.material3.MaterialTheme.colorScheme.background.run { (red * 0.299f + green * 0.587f + blue * 0.114f) < 0.5f }
-    val cardBg = Color.semanticSurface
-    
-    val baseColor = if (isDark) Color.White else com.example.ui.theme.LightPrimaryText
+    val isDark = isNightMode || isAppInDarkTheme()
+    val baseColor = if (isDark) Color.White else LightPrimaryText
     val skeletonFill = baseColor.copy(alpha = shimmerAlpha)
 
-    Card(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = cardBg)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 12.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp)
+        // Header: circular badge on left, action icons on right
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Header: pill label placeholder on left, neutral icons on right
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Verse N pill label placeholder
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(skeletonFill)
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(
                     modifier = Modifier
-                        .width(68.dp)
-                        .height(24.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .size(30.dp)
+                        .clip(CircleShape)
                         .background(skeletonFill)
                 )
-
-                // Neutral play/bookmark action placeholders
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(skeletonFill)
-                    )
-                    Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .clip(CircleShape)
-                            .background(skeletonFill)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Arabic text block placeholders (RTL right-aligned)
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.End
-            ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.9f)
-                        .height(22.dp)
-                        .clip(RoundedCornerShape(6.dp))
+                        .size(26.dp)
+                        .clip(CircleShape)
                         .background(skeletonFill)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(0.65f)
-                        .height(22.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(skeletonFill)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // English translation placeholders (LTR left-aligned)
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.85f)
-                        .height(15.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(skeletonFill)
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.52f)
-                        .height(15.dp)
-                        .clip(RoundedCornerShape(4.dp))
+                        .size(26.dp)
+                        .clip(CircleShape)
                         .background(skeletonFill)
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // Arabic text block placeholders (RTL right-aligned)
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.End
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .height(24.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(skeletonFill)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.68f)
+                    .height(24.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(skeletonFill)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        // English translation placeholders (LTR left-aligned)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(skeletonFill)
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.55f)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(skeletonFill)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+        HorizontalDivider(
+            color = Color.semanticBorder.copy(alpha = 0.2f),
+            thickness = 0.75.dp
+        )
     }
 }
