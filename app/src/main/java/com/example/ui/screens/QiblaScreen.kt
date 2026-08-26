@@ -620,7 +620,7 @@ private fun SoftArcCompass(
 
             // Part 2: Motion Trail on Ring along needle path during active rotation
             if (abs(trailSweep) > 0.5f && trailAlpha > 0.005f) {
-                val needleAngle = -90f - animatedDelta
+                val needleAngle = -90f + shortestSignedAngle(-animatedDelta)
                 drawMotionTrail(
                     center = center,
                     radius = radius,
@@ -639,11 +639,12 @@ private fun SoftArcCompass(
                 color = ringColor
             )
 
-            // C. Soft Accent Arc from 12 o'clock to direction arrow
+            // C. Soft Accent Arc from 12 o'clock to direction arrow (Shortest angular path <= 180°)
+            val shortestArcSweep = shortestSignedAngle(-animatedDelta)
             drawQiblaArc(
                 center = center,
                 radius = radius,
-                sweepAngle = -animatedDelta,
+                sweepAngle = shortestArcSweep,
                 color = orangeAccent
             )
 
@@ -712,10 +713,11 @@ private fun DrawScope.drawMotionTrail(
     trailAlpha: Float,
     color: Color
 ) {
-    if (abs(trailSweep) < 0.5f || trailAlpha <= 0.005f) return
+    val normalizedSweep = shortestSignedAngle(trailSweep)
+    if (abs(normalizedSweep) < 0.5f || trailAlpha <= 0.005f) return
 
     val numSegments = 6
-    val segmentSweep = trailSweep / numSegments
+    val segmentSweep = normalizedSweep / numSegments
     for (i in 0 until numSegments) {
         val segStart = needleAngle + (i * segmentSweep)
         val t = i.toFloat() / numSegments
@@ -835,6 +837,7 @@ private fun DrawScope.drawCardinalLabels(
 
 /**
  * C. Soft Accent Arc along circumference from 12 o'clock to the direction arrow
+ * Strictly normalized to shortest path within [-180°, 180°].
  */
 private fun DrawScope.drawQiblaArc(
     center: Offset,
@@ -842,11 +845,12 @@ private fun DrawScope.drawQiblaArc(
     sweepAngle: Float,
     color: Color
 ) {
-    if (abs(sweepAngle) < 0.5f) return
+    val normalizedSweep = shortestSignedAngle(sweepAngle)
+    if (abs(normalizedSweep) < 0.5f) return
     drawArc(
         color = color,
         startAngle = -90f,
-        sweepAngle = sweepAngle,
+        sweepAngle = normalizedSweep,
         useCenter = false,
         topLeft = Offset(center.x - radius, center.y - radius),
         size = Size(radius * 2f, radius * 2f),
