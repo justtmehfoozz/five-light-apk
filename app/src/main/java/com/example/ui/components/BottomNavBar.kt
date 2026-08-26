@@ -1488,13 +1488,16 @@ fun SereneBottomNavBar(
 }
 
 /**
- * Integrated Jump-to-Current-Verse control that emerges as a physical extension of the audio player.
+ * Integrated Jump-to-Current-Verse control that visually separates from the audio player
+ * through a fluid, organic liquid separation morph and absorbs back seamlessly.
  *
  * Sequence:
- * 1. Small circle emerges from the upper boundary of the audio player.
- * 2. Circle continuously expands horizontally into a refined pill shape.
- * 3. Text "Jump to Verse X" reveals inside the expanded pill.
- * 4. Reverse morph (Pill -> Circle -> Retract into player) occurs on tap or when user scrolls near verse.
+ * 1. Droplet emerges from the audio player top boundary under fluid surface tension.
+ * 2. Surface stretches upward with a temporary liquid neck connecting during physical detachment.
+ * 3. Neck thins and cleanly detaches; two independent rounded surfaces form.
+ * 4. Droplet expands horizontally into a refined pill container, revealing text cleanly.
+ * 5. Pill rests above the audio player with an intentional clean air gap (NO permanent line or stem).
+ * 6. Reverse animation cleanly contracts text, shrinks into droplet, and absorbs back into the player.
  */
 @Composable
 fun JumpToCurrentVerseMorphControl(
@@ -1509,18 +1512,22 @@ fun JumpToCurrentVerseMorphControl(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val transition = updateTransition(targetState = visible, label = "jumpToVerseMorph")
+    val transition = updateTransition(targetState = visible, label = "jumpToVerseFluidMorph")
+
+    // Custom fluid easing for organic physical mass and cohesive liquid movement
+    val fluidSeparationEasing = remember { CubicBezierEasing(0.22f, 0.0f, 0.12f, 1.0f) }
+    val fluidAbsorptionEasing = remember { CubicBezierEasing(0.32f, 0.0f, 0.18f, 1.0f) }
 
     val morphProgress by transition.animateFloat(
         transitionSpec = {
             if (isReducedMotion) {
                 snap()
             } else if (targetState) {
-                // Emerging & expanding: container-transform ease out
-                tween(durationMillis = 320, easing = FastOutSlowInEasing)
+                // Emerging & liquid separation: deliberate, organic 560ms motion
+                tween(durationMillis = 560, easing = fluidSeparationEasing)
             } else {
-                // Retracting back into player: smooth ease in-out
-                tween(durationMillis = 260, easing = FastOutSlowInEasing)
+                // Reverse absorption: fluid 480ms contraction back into player
+                tween(durationMillis = 480, easing = fluidAbsorptionEasing)
             }
         },
         label = "morphProgress"
@@ -1532,40 +1539,68 @@ fun JumpToCurrentVerseMorphControl(
         val accentColor = Color.semanticPrimaryAccent
         val verseText = if (playingVerseNumber == 0) "Jump to Bismillah" else "Jump to Verse ${playingVerseNumber ?: 1}"
 
-        // Multi-stage interpolation:
-        // 0.00f -> 0.35f: Small circle emerges upward from player top edge
-        // 0.35f -> 1.00f: Circle expands horizontally into pill, revealing text
-        val emergeFraction = (morphProgress / 0.35f).coerceIn(0f, 1f)
-        val expandFraction = ((morphProgress - 0.35f) / 0.65f).coerceIn(0f, 1f)
+        // Multi-stage fluid parameter interpolation:
+        // Phase 1 (0.00 - 0.36): Emergence & vertical tension stretch
+        // Phase 2 (0.36 - 0.45): Detachment & droplet spherical relaxation
+        // Phase 3 (0.45 - 0.88): Horizontal pill expansion & text reveal
+        // Phase 4 (0.88 - 1.00): Soft settle at resting position
+        val separationFraction = (morphProgress / 0.38f).coerceIn(0f, 1f)
+        val expandFraction = ((morphProgress - 0.40f) / 0.50f).coerceIn(0f, 1f)
+        val textFraction = ((morphProgress - 0.52f) / 0.40f).coerceIn(0f, 1f)
 
-        val targetPillWidth = 164.dp
+        val targetPillWidth = 168.dp
         val circleSize = 34.dp
+
+        // Dynamic width during liquid morph
         val currentWidth = if (isReducedMotion) {
             if (visible) targetPillWidth else circleSize
         } else {
-            lerp(circleSize, targetPillWidth, expandFraction)
+            if (morphProgress < 0.40f) {
+                // Slight narrowing under vertical stretch tension
+                lerp(circleSize, 29.dp, (morphProgress / 0.25f).coerceIn(0f, 1f))
+            } else {
+                lerp(34.dp, targetPillWidth, expandFraction)
+            }
         }
-        val currentHeight = 34.dp
-        val currentCornerRadius = 17.dp
 
+        // Dynamic height during liquid morph (elongates under tension, then relaxes into standard pill)
+        val currentHeight = if (isReducedMotion) {
+            34.dp
+        } else {
+            if (morphProgress < 0.28f) {
+                // Vertical stretch
+                lerp(24.dp, 38.dp, (morphProgress / 0.28f).coerceIn(0f, 1f))
+            } else if (morphProgress < 0.45f) {
+                // Relaxation back to 34dp after detachment
+                lerp(38.dp, 34.dp, ((morphProgress - 0.28f) / 0.17f).coerceIn(0f, 1f))
+            } else {
+                34.dp
+            }
+        }
+
+        val currentCornerRadius = currentHeight / 2
+
+        // Vertical travel offset: moves from right against player edge up to clean resting gap
         val verticalTravelOffset = if (isReducedMotion) {
             0.dp
         } else {
-            lerp(18.dp, 0.dp, emergeFraction)
+            lerp(26.dp, 0.dp, separationFraction)
         }
+
         val controlAlpha = if (isReducedMotion) {
             if (visible) 1f else 0f
         } else {
-            (emergeFraction / 0.5f).coerceIn(0f, 1f)
+            (morphProgress / 0.18f).coerceIn(0f, 1f)
         }
+
         val textAlpha = if (isReducedMotion) {
             if (visible) 1f else 0f
         } else {
-            ((expandFraction - 0.30f) / 0.70f).coerceIn(0f, 1f)
+            textFraction
         }
 
-        // Resting position: sits directly above the audio player dock with 6.dp spacing
-        val bottomPadding = 24.dp + dockHeight + 6.dp
+        // Resting position: sits directly above the audio player dock with an 8.dp clean air gap
+        val bottomPadding = 24.dp + dockHeight + 8.dp
 
         Box(
             modifier = modifier
@@ -1574,24 +1609,59 @@ fun JumpToCurrentVerseMorphControl(
                 .graphicsLayer {
                     alpha = controlAlpha
                 }
-                .zIndex(25f), // Highest stacking order: always above the audio player
+                .zIndex(30f), // Highest stacking order: always above the audio player & reader text
             contentAlignment = Alignment.BottomCenter
         ) {
-            // Subtle connector bridge between jump pill and audio player
-            if (emergeFraction > 0.5f) {
-                Box(
+            // TEMPORARY FLUID LIQUID NECK / MENISCUS (Visible ONLY during physical separation / absorption)
+            // Completely disappears once separated (morphProgress > 0.38f) leaving a pure clean gap!
+            if (!isReducedMotion && morphProgress in 0.05f..0.38f) {
+                val neckProgress = ((morphProgress - 0.05f) / 0.33f).coerceIn(0f, 1f)
+                val neckAlpha = (1f - neckProgress).coerceIn(0f, 1f)
+
+                Canvas(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .offset(y = 6.dp)
-                        .width(2.dp)
-                        .height(6.dp)
-                        .background(
-                            dockBorderColor.copy(alpha = 0.45f * ((emergeFraction - 0.5f) / 0.5f))
+                        .offset(y = 22.dp)
+                        .width(36.dp)
+                        .height(24.dp)
+                        .graphicsLayer { alpha = neckAlpha }
+                ) {
+                    val w = size.width
+                    val h = size.height
+                    val topNeckHalfWidth = lerp(10.dp, 3.dp, neckProgress).toPx()
+                    val bottomBaseHalfWidth = lerp(16.dp, 6.dp, neckProgress).toPx()
+                    val centerX = w / 2f
+
+                    val fluidPath = Path().apply {
+                        moveTo(centerX - topNeckHalfWidth, 0f)
+                        // Organic curved meniscus pulling apart
+                        cubicTo(
+                            centerX - (topNeckHalfWidth * 0.5f), h * 0.4f,
+                            centerX - bottomBaseHalfWidth, h * 0.8f,
+                            centerX - bottomBaseHalfWidth, h
                         )
-                )
+                        lineTo(centerX + bottomBaseHalfWidth, h)
+                        cubicTo(
+                            centerX + bottomBaseHalfWidth, h * 0.8f,
+                            centerX + (topNeckHalfWidth * 0.5f), h * 0.4f,
+                            centerX + topNeckHalfWidth, 0f
+                        )
+                        close()
+                    }
+
+                    // Fill fluid neck matching dock background
+                    drawPath(path = fluidPath, color = dockBg)
+
+                    // Draw organic boundary stroke
+                    drawPath(
+                        path = fluidPath,
+                        color = dockBorderColor.copy(alpha = if (isDark) 0.50f * neckAlpha else 0.35f * neckAlpha),
+                        style = Stroke(width = 1.2.dp.toPx())
+                    )
+                }
             }
 
-            // Morphing Glass Surface
+            // MORPHING LIQUID SURFACE (Droplet -> Pill)
             Surface(
                 onClick = onClick,
                 shape = RoundedCornerShape(currentCornerRadius),
