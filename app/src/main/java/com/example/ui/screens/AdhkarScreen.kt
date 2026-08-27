@@ -3,6 +3,7 @@ package com.example.ui.screens
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import com.example.ui.components.RegisterPredictiveBackHandler
+import com.example.ui.components.predictiveBackChildTransform
 import com.example.ui.components.predictiveBackTransform
 import com.example.ui.components.rememberPredictiveBackState
 import androidx.compose.animation.*
@@ -412,137 +413,158 @@ fun AdhkarScreen(
 
     // PART 8: FOCUSED SWIPE-THROUGH MODE STATE
     var isFocusMode by remember { mutableStateOf(false) }
+    val focusModePredictiveState = rememberPredictiveBackState()
 
-    if (isFocusMode) {
-        AdhkarFocusModeScreen(
-            title = if (selectedTab == 0) "Morning Adhkar" else "Evening Adhkar",
-            items = adhkarList,
-            progressMap = activeProgressMap,
-            onClose = { isFocusMode = false },
-            isDark = isDark,
-            isActiveTab = isActiveTab
-        )
-        return
-    }
+    RegisterPredictiveBackHandler(
+        enabled = isActiveTab && isFocusMode,
+        backState = focusModePredictiveState,
+        onBack = { isFocusMode = false }
+    )
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.semanticBackground)
-            .statusBarsPadding()
-    ) {
-        // Top Header with Focus Mode Entry (Part 8)
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .fillMaxSize()
+                .predictiveBackChildTransform(if (isFocusMode) focusModePredictiveState.progress else 0f)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.semanticPrimaryText
-                    )
-                }
-                Text(
-                    text = "Daily Adhkar",
-                    fontFamily = SerifHeaderFont,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.semanticPrimaryText
-                )
-            }
-
-            // Focus Mode Button
-            IconButton(
-                onClick = { isFocusMode = true },
-                modifier = Modifier.testTag("adhkar_focus_mode_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.CenterFocusStrong,
-                    contentDescription = "Focus Mode",
-                    tint = Color.semanticPrimaryText
-                )
-            }
-        }
-
-        // Segmented Tabs with Completion Checkmarks (Part 7)
-        val morningLabel = if (isMorningComplete) "Morning ✓" else "Morning"
-        val eveningLabel = if (isEveningComplete) "Evening ✓" else "Evening"
-        val adhkarTabs = listOf(morningLabel, eveningLabel)
-
-        AdhkarSegmentedTabs(
-            tabs = adhkarTabs,
-            selectedIndex = selectedTab,
-            onTabSelected = handleTabSelect,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 6.dp)
-        )
-
-        // PART 7: SECTION-COMPLETE BANNER ACKNOWLEDGMENT
-        AnimatedVisibility(
-            visible = isCurrentSectionComplete,
-            enter = fadeIn(tween(240)) + expandVertically(tween(240)),
-            exit = fadeOut(tween(180)) + shrinkVertically(tween(180))
-        ) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = Color.semanticPrimaryAccent.copy(alpha = 0.10f),
-                border = BorderStroke(1.dp, Color.semanticPrimaryAccent.copy(alpha = 0.25f)),
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 6.dp)
+                    .fillMaxSize()
+                    .background(Color.semanticBackground)
+                    .statusBarsPadding()
             ) {
+                // Top Header with Focus Mode Entry (Part 8)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = null,
-                        tint = Color.semanticPrimaryAccent,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Text(
-                        text = if (selectedTab == 0) "Morning Adhkar completed" else "Evening Adhkar completed",
-                        fontFamily = SpaceGrotesk,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = Color.semanticPrimaryText
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = onBack) {
+                            Icon(
+                                imageVector = Icons.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color.semanticPrimaryText
+                            )
+                        }
+                        Text(
+                            text = "Daily Adhkar",
+                            fontFamily = SerifHeaderFont,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.semanticPrimaryText
+                        )
+                    }
+
+                    // Focus Mode Button
+                    IconButton(
+                        onClick = { isFocusMode = true },
+                        modifier = Modifier.testTag("adhkar_focus_mode_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.CenterFocusStrong,
+                            contentDescription = "Focus Mode",
+                            tint = Color.semanticPrimaryText
+                        )
+                    }
+                }
+
+                // Segmented Tabs with Completion Checkmarks (Part 7)
+                val morningLabel = if (isMorningComplete) "Morning ✓" else "Morning"
+                val eveningLabel = if (isEveningComplete) "Evening ✓" else "Evening"
+                val adhkarTabs = listOf(morningLabel, eveningLabel)
+
+                AdhkarSegmentedTabs(
+                    tabs = adhkarTabs,
+                    selectedIndex = selectedTab,
+                    onTabSelected = handleTabSelect,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 6.dp)
+                )
+
+                // PART 7: SECTION-COMPLETE BANNER ACKNOWLEDGMENT
+                AnimatedVisibility(
+                    visible = isCurrentSectionComplete,
+                    enter = fadeIn(tween(240)) + expandVertically(tween(240)),
+                    exit = fadeOut(tween(180)) + shrinkVertically(tween(180))
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color.semanticPrimaryAccent.copy(alpha = 0.10f),
+                        border = BorderStroke(1.dp, Color.semanticPrimaryAccent.copy(alpha = 0.25f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.CheckCircle,
+                                contentDescription = null,
+                                tint = Color.semanticPrimaryAccent,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = if (selectedTab == 0) "Morning Adhkar completed" else "Evening Adhkar completed",
+                                fontFamily = SpaceGrotesk,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.semanticPrimaryText
+                            )
+                        }
+                    }
+                }
+
+                LazyColumn(
+                    state = adhkarListState,
+                    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(adhkarList.size, key = { index -> "${selectedTab}_${adhkarList[index].title}" }) { index ->
+                        val item = adhkarList[index]
+                        val currentCount = activeProgressMap[index] ?: 0
+
+                        AdhkarItemCard(
+                            item = item,
+                            currentCount = currentCount,
+                            onIncrement = {
+                                if (currentCount < item.count) {
+                                    activeProgressMap[index] = currentCount + 1
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
+                            },
+                            onSwipeComplete = {
+                                activeProgressMap[index] = item.count
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            },
+                            isDark = isDark
+                        )
+                    }
                 }
             }
         }
 
-        LazyColumn(
-            state = adhkarListState,
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.fillMaxSize()
-        ) {
-            items(adhkarList.size, key = { index -> "${selectedTab}_${adhkarList[index].title}" }) { index ->
-                val item = adhkarList[index]
-                val currentCount = activeProgressMap[index] ?: 0
-
-                AdhkarItemCard(
-                    item = item,
-                    currentCount = currentCount,
-                    onIncrement = {
-                        if (currentCount < item.count) {
-                            activeProgressMap[index] = currentCount + 1
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        }
-                    },
-                    onSwipeComplete = {
-                        activeProgressMap[index] = item.count
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    },
-                    isDark = isDark
+        if (isFocusMode) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.semanticBackground)
+                    .predictiveBackTransform(focusModePredictiveState.progress, focusModePredictiveState.swipeEdge)
+            ) {
+                AdhkarFocusModeScreen(
+                    title = if (selectedTab == 0) "Morning Adhkar" else "Evening Adhkar",
+                    items = adhkarList,
+                    progressMap = activeProgressMap,
+                    onClose = { isFocusMode = false },
+                    isDark = isDark,
+                    isActiveTab = isActiveTab
                 )
             }
         }
@@ -762,13 +784,6 @@ fun AdhkarFocusModeScreen(
     var slideDirection by remember { mutableStateOf(1) }
     var totalDragX by remember { mutableStateOf(0f) }
 
-    val adhkarBackState = rememberPredictiveBackState()
-    RegisterPredictiveBackHandler(
-        enabled = isActiveTab,
-        backState = adhkarBackState,
-        onBack = onClose
-    )
-
     val safeIndex = if (items.isNotEmpty()) currentIndex.coerceIn(0, items.size - 1) else 0
     val currentItem = if (items.isNotEmpty()) items[safeIndex] else return
     val currentCount = progressMap[safeIndex] ?: 0
@@ -777,7 +792,6 @@ fun AdhkarFocusModeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .predictiveBackTransform(adhkarBackState.progress, adhkarBackState.swipeEdge)
             .background(Color.semanticBackground)
             .statusBarsPadding()
             .navigationBarsPadding()

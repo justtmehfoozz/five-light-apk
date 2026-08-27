@@ -228,6 +228,8 @@ fun DuaLibraryScreen(
         }
     )
 
+    val isCategoryActive = activeCategory != null
+
     Box(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -259,6 +261,7 @@ fun DuaLibraryScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
                     .predictiveBackTransform(predictiveState.progress, predictiveState.swipeEdge)
             ) {
                 DuaCategoryDetailScreen(

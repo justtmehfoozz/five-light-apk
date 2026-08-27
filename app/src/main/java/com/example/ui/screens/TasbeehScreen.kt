@@ -485,7 +485,6 @@ fun TasbeehScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .predictiveBackTransform(tasbeehPredictiveState.progress, tasbeehPredictiveState.swipeEdge)
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(scrollState)
     ) {

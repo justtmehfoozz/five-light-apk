@@ -581,7 +581,6 @@ fun HomeScreen(
         state = listState,
         modifier = modifier
             .fillMaxSize()
-            .predictiveBackTransform(homePredictiveState.progress, homePredictiveState.swipeEdge)
             .background(MaterialTheme.colorScheme.background),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {

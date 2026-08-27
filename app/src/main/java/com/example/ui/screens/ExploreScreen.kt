@@ -139,6 +139,7 @@ fun ExploreScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
                     .predictiveBackTransform(predictiveState.progress, predictiveState.swipeEdge)
             ) {
                 when (activeSubRoute) {

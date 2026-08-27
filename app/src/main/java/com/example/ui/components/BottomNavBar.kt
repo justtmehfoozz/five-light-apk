@@ -472,16 +472,6 @@ fun SereneBottomNavBar(
     val movementFraction = movementAnimatable.value
     val transformProgress = maxOf(morphFraction, movementFraction)
 
-    val searchPredictiveState = rememberPredictiveBackState()
-    RegisterPredictiveBackHandler(
-        enabled = isSearchActive || transformProgress > 0.01f,
-        backState = searchPredictiveState,
-        onBack = {
-            keyboardController?.hide()
-            onDismissSearch()
-        }
-    )
-
     val isVibrationEnabled = LocalVibrationEnabled.current
 
     fun performActivationHaptic() {
@@ -1451,7 +1441,6 @@ fun SereneBottomNavBar(
                     Row(
                         modifier = Modifier
                             .fillMaxSize()
-                            .predictiveBackTransform(searchPredictiveState.progress, searchPredictiveState.swipeEdge)
                             .graphicsLayer { alpha = searchContentAlpha }
                             .padding(start = 16.dp, end = 12.dp),
                         verticalAlignment = Alignment.CenterVertically

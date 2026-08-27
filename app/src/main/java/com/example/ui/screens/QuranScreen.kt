@@ -486,6 +486,7 @@ fun QuranScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .background(bgContainer)
                     .predictiveBackTransform(quranPredictiveState.progress, quranPredictiveState.swipeEdge)
             ) {
             val listState = remember(currentSurah.number) { androidx.compose.foundation.lazy.LazyListState() }
