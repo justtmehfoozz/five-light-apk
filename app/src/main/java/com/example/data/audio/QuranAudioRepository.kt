@@ -27,6 +27,14 @@ object QuranAudioRepository {
         verseNumber: Int,
         reciterId: String = DEFAULT_RECITER_ID
     ): String {
+        if (surahNumber == 1) {
+            val audioVerseIndex = if (verseNumber == 0) 1 else (verseNumber + 1).coerceAtMost(7)
+            val paddedVerse = String.format(Locale.US, "%03d", audioVerseIndex)
+            return "https://everyayah.com/data/Alafasy_128kbps/001${paddedVerse}.mp3"
+        }
+        if (verseNumber == 0) {
+            return "https://everyayah.com/data/Alafasy_128kbps/001001.mp3"
+        }
         val paddedSurah = String.format(Locale.US, "%03d", surahNumber)
         val paddedVerse = String.format(Locale.US, "%03d", verseNumber)
         return "https://everyayah.com/data/Alafasy_128kbps/${paddedSurah}${paddedVerse}.mp3"

@@ -3,16 +3,21 @@ package com.example.ui.components
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +46,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -63,7 +69,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -97,6 +105,7 @@ fun ExpandedQuranPlayerSheet(
     verse: Verse?,
     currentVerseNumber: Int?,
     isPlaying: Boolean,
+    isLoading: Boolean = false,
     audioProgress: Float,
     isBookmarked: Boolean,
     onPlayPause: () -> Unit,
@@ -114,6 +123,7 @@ fun ExpandedQuranPlayerSheet(
     val textPrimary = Color.semanticPrimaryText
     val textSecondary = Color.semanticSecondaryText
     val sheetBg = Color.semanticSurface
+    val haptic = LocalHapticFeedback.current
 
     val totalVerses = surah?.versesCount ?: 1
     val displayVerseNumber = currentVerseNumber ?: verse?.verseNumber ?: 1
@@ -184,7 +194,10 @@ fun ExpandedQuranPlayerSheet(
                 }
 
                 IconButton(
-                    onClick = onToggleBookmark,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onToggleBookmark()
+                    },
                     modifier = Modifier.testTag("full_player_bookmark_btn")
                 ) {
                     AnimatedContent(
@@ -237,7 +250,7 @@ fun ExpandedQuranPlayerSheet(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Active Verse Preview Card (with accent border and subtle background tint)
+            // Active Verse Preview Card (with accent border and smooth internal content transition)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -250,86 +263,84 @@ fun ExpandedQuranPlayerSheet(
                     )
                     .padding(18.dp)
             ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            VerseNumberBadge(verseNumber = displayVerseNumber)
-                            Text(
-                                text = "Verse $displayVerseNumber of $totalVerses",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                                color = accent
-                            )
-                        }
-
-                        // Subtle active recitation wave
-                        val waveTransition = rememberInfiniteTransition(label = "playerWave")
-                        val waveHeight by if (isReducedMotion || !isPlaying) {
-                            remember { mutableFloatStateOf(0.4f) }
+                AnimatedContent(
+                    targetState = Triple(displayVerseNumber, verse?.textArabic, verse?.textEnglish),
+                    transitionSpec = {
+                        if (isReducedMotion) {
+                            fadeIn(animationSpec = snap()) togetherWith fadeOut(animationSpec = snap())
                         } else {
-                            waveTransition.animateFloat(
-                                initialValue = 0.2f,
-                                targetValue = 1f,
-                                animationSpec = infiniteRepeatable(
-                                    animation = tween(1200, easing = FastOutSlowInEasing),
-                                    repeatMode = RepeatMode.Reverse
-                                ),
-                                label = "waveH"
-                            )
+                            (fadeIn(animationSpec = tween(280)) + slideInVertically(animationSpec = tween(280)) { 8 }) togetherWith
+                                    (fadeOut(animationSpec = tween(180)) + slideOutVertically(animationSpec = tween(180)) { -8 })
                         }
-
-                        Box(
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape)
-                                .background(accent.copy(alpha = if (isPlaying) 0.20f else 0.08f)),
-                            contentAlignment = Alignment.Center
+                    },
+                    label = "activeVerseContentAnim"
+                ) { (vNum, arText, enText) ->
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Filled.GraphicEq,
-                                contentDescription = "Active recitation",
-                                tint = accent,
-                                modifier = Modifier.size(16.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                VerseNumberBadge(verseNumber = vNum)
+                                Text(
+                                    text = "Verse $vNum of $totalVerses",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    color = accent
+                                )
+                            }
+
+                            // Subtle active recitation indicator
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(accent.copy(alpha = if (isPlaying) 0.20f else 0.08f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.GraphicEq,
+                                    contentDescription = "Active recitation",
+                                    tint = accent,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Arabic Verse Text
+                        val displayArabic = arText ?: (surah?.nameArabic ?: "")
+                        if (displayArabic.isNotEmpty()) {
+                            Text(
+                                text = displayArabic,
+                                fontFamily = AmiriFont,
+                                fontSize = 24.sp,
+                                lineHeight = 42.sp,
+                                color = textPrimary,
+                                textAlign = TextAlign.End,
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
-                    }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Arabic Verse Text
-                    val arabicContent = verse?.textArabic ?: (surah?.nameArabic ?: "")
-                    if (arabicContent.isNotEmpty()) {
-                        Text(
-                            text = arabicContent,
-                            fontFamily = AmiriFont,
-                            fontSize = 24.sp,
-                            lineHeight = 42.sp,
-                            color = textPrimary,
-                            textAlign = TextAlign.End,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    // English Translation
-                    val englishContent = verse?.textEnglish ?: ""
-                    if (englishContent.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text(
-                            text = englishContent,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontSize = 14.sp,
-                                lineHeight = 21.sp
-                            ),
-                            color = textSecondary,
-                            textAlign = TextAlign.Start,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        // English Translation
+                        val displayEnglish = enText ?: ""
+                        if (displayEnglish.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = displayEnglish,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontSize = 14.sp,
+                                    lineHeight = 21.sp
+                                ),
+                                color = textSecondary,
+                                textAlign = TextAlign.Start,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
             }
@@ -366,16 +377,19 @@ fun ExpandedQuranPlayerSheet(
             var isDraggingProgress by remember { mutableStateOf(false) }
             var dragProgressFraction by remember { mutableFloatStateOf(0f) }
             val currentDisplayProg = if (isDraggingProgress) dragProgressFraction else audioProgress.coerceIn(0f, 1f)
+            val trackHeight by animateDpAsState(if (isDraggingProgress) 6.dp else 4.dp, animationSpec = tween(180), label = "sheetTrackH")
+            val thumbSize by animateDpAsState(if (isDraggingProgress) 18.dp else 14.dp, animationSpec = tween(180), label = "sheetThumbS")
 
             Column(modifier = Modifier.fillMaxWidth()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(28.dp)
+                        .height(30.dp)
                         .testTag("full_player_seekbar")
                         .pointerInput(Unit) {
                             detectTapGestures(
                                 onPress = { offset ->
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     val fraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
                                     dragProgressFraction = fraction
                                     isDraggingProgress = true
@@ -388,6 +402,7 @@ fun ExpandedQuranPlayerSheet(
                         .pointerInput(Unit) {
                             detectHorizontalDragGestures(
                                 onDragStart = { offset ->
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     isDraggingProgress = true
                                     dragProgressFraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
                                     onSeekAudio(dragProgressFraction)
@@ -408,7 +423,6 @@ fun ExpandedQuranPlayerSheet(
                         },
                     contentAlignment = Alignment.CenterStart
                 ) {
-                    val trackHeight = 4.dp
                     val inactiveTrackColor = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.12f)
 
                     // Inactive Track
@@ -434,12 +448,12 @@ fun ExpandedQuranPlayerSheet(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(fraction = currentDisplayProg)
-                                .height(16.dp),
+                                .height(20.dp),
                             contentAlignment = Alignment.CenterEnd
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(14.dp)
+                                    .size(thumbSize)
                                     .clip(CircleShape)
                                     .background(Color.White)
                                     .border(2.dp, accent, CircleShape)
@@ -459,7 +473,7 @@ fun ExpandedQuranPlayerSheet(
                         color = Color.semanticMutedText
                     )
                     Text(
-                        text = if (currentDisplayProg >= 0.99f) "Completed" else "Reciting",
+                        text = if (isLoading) "Loading..." else if (currentDisplayProg >= 0.99f) "Completed" else if (isPlaying) "Reciting" else "Paused",
                         style = MaterialTheme.typography.labelSmall,
                         color = Color.semanticMutedText
                     )
@@ -478,7 +492,10 @@ fun ExpandedQuranPlayerSheet(
             ) {
                 // Stop Button
                 IconButton(
-                    onClick = onStopAudio,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onStopAudio()
+                    },
                     modifier = Modifier
                         .size(48.dp)
                         .testTag("full_player_stop_btn")
@@ -493,7 +510,10 @@ fun ExpandedQuranPlayerSheet(
 
                 // Skip Previous
                 IconButton(
-                    onClick = onSkipPrevious,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onSkipPrevious()
+                    },
                     modifier = Modifier
                         .size(52.dp)
                         .testTag("full_player_prev_btn")
@@ -506,7 +526,7 @@ fun ExpandedQuranPlayerSheet(
                     )
                 }
 
-                // Focal Play / Pause 64dp Button
+                // Focal Play / Pause 64dp Button (with Loading Spinner)
                 Box(
                     modifier = Modifier
                         .size(64.dp)
@@ -518,31 +538,43 @@ fun ExpandedQuranPlayerSheet(
                             shape = CircleShape
                         )
                         .testTag("full_player_play_pause_btn")
-                        .pointerInput(Unit) {
-                            detectTapGestures(onTap = { onPlayPause() })
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onPlayPause()
                         },
                     contentAlignment = Alignment.Center
                 ) {
-                    AnimatedContent(
-                        targetState = isPlaying,
-                        transitionSpec = {
-                            fadeIn(animationSpec = tween(180)) togetherWith
-                                    fadeOut(animationSpec = tween(140))
-                        },
-                        label = "fullPlayerPlayPauseAnim"
-                    ) { activePlaying ->
-                        Icon(
-                            imageVector = if (activePlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = if (activePlaying) "Pause" else "Play",
-                            tint = Color.semanticAccentForeground,
-                            modifier = Modifier.size(34.dp)
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(28.dp),
+                            color = Color.semanticAccentForeground,
+                            strokeWidth = 3.dp
                         )
+                    } else {
+                        AnimatedContent(
+                            targetState = isPlaying,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(180)) togetherWith
+                                        fadeOut(animationSpec = tween(140))
+                            },
+                            label = "fullPlayerPlayPauseAnim"
+                        ) { activePlaying ->
+                            Icon(
+                                imageVector = if (activePlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                contentDescription = if (activePlaying) "Pause" else "Play",
+                                tint = Color.semanticAccentForeground,
+                                modifier = Modifier.size(34.dp)
+                            )
+                        }
                     }
                 }
 
                 // Skip Next
                 IconButton(
-                    onClick = onSkipNext,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onSkipNext()
+                    },
                     modifier = Modifier
                         .size(52.dp)
                         .testTag("full_player_next_btn")
@@ -555,7 +587,7 @@ fun ExpandedQuranPlayerSheet(
                     )
                 }
 
-                // Redundant/Secondary spacer for balanced alignment
+                // Collapse Button
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier.size(48.dp)

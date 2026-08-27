@@ -124,6 +124,7 @@ class MainActivity : ComponentActivity() {
                 val playingVerseNumber by viewModel.playingVerseNumber.collectAsStateWithLifecycle()
                 val playingVerse by viewModel.playingVerse.collectAsStateWithLifecycle()
                 val isPlayingAudio by viewModel.isPlayingAudio.collectAsStateWithLifecycle()
+                val isLoadingAudio by viewModel.isLoadingAudio.collectAsStateWithLifecycle()
                 val audioProgress by viewModel.audioProgress.collectAsStateWithLifecycle()
                 val showPrayerMode by viewModel.showPrayerMode.collectAsStateWithLifecycle()
                 var showExpandedPlayerSheet by remember { mutableStateOf(false) }
@@ -289,12 +290,13 @@ class MainActivity : ComponentActivity() {
                                 val showEnglishTranslation by viewModel.showEnglishTranslation.collectAsStateWithLifecycle()
                                 val isNightReadingMode by viewModel.isNightReadingMode.collectAsStateWithLifecycle()
                                 val playingVerseNumber by viewModel.playingVerseNumber.collectAsStateWithLifecycle()
-                                val isPlayingAudio by viewModel.isPlayingAudio.collectAsStateWithLifecycle()
                                 val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
                                 val lastReadPosition by viewModel.lastReadPosition.collectAsStateWithLifecycle()
                                 val surahScrollPositions by viewModel.surahScrollPositions.collectAsStateWithLifecycle()
 
                                 val playingSurahNumber by viewModel.playingSurahNumber.collectAsStateWithLifecycle()
+                                val isPlayingAudio by viewModel.isPlayingAudio.collectAsStateWithLifecycle()
+                                val isLoadingAudio by viewModel.isLoadingAudio.collectAsStateWithLifecycle()
                                 val audioProgress by viewModel.audioProgress.collectAsStateWithLifecycle()
                                 val surahPlaybackProgress by viewModel.surahPlaybackProgress.collectAsStateWithLifecycle()
                                 val surahDownloadStates by viewModel.surahDownloadStates.collectAsStateWithLifecycle()
@@ -320,6 +322,7 @@ class MainActivity : ComponentActivity() {
                                     playingSurahNumber = playingSurahNumber,
                                     playingVerseNumber = playingVerseNumber,
                                     isPlayingAudio = isPlayingAudio,
+                                    isLoadingAudio = isLoadingAudio,
                                     audioProgress = audioProgress,
                                     surahPlaybackProgress = surahPlaybackProgress,
                                     surahDownloadStates = surahDownloadStates,
@@ -465,6 +468,7 @@ class MainActivity : ComponentActivity() {
                         playingSurahNumber = playingSurahNumber,
                         playingVerseNumber = playingVerseNumber,
                         isPlaying = isPlayingAudio,
+                        isLoading = isLoadingAudio,
                         audioProgress = audioProgress,
                         onPlayPause = { viewModel.togglePlayPauseAudio() },
                         onSkipPrevious = { viewModel.playPreviousVerseAudio() },
@@ -570,6 +574,7 @@ class MainActivity : ComponentActivity() {
                             verse = playingVerse,
                             currentVerseNumber = playingVerseNumber,
                             isPlaying = isPlayingAudio,
+                            isLoading = isLoadingAudio,
                             audioProgress = audioProgress,
                             isBookmarked = isCurrentBookmarked,
                             onPlayPause = { viewModel.togglePlayPauseAudio() },

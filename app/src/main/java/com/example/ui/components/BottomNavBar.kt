@@ -6,13 +6,20 @@ import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.View
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDp
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -83,6 +90,7 @@ import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -279,6 +287,7 @@ fun SereneBottomNavBar(
     playingSurahNumber: Int? = null,
     playingVerseNumber: Int? = null,
     isPlaying: Boolean = false,
+    isLoading: Boolean = false,
     audioProgress: Float = 0f,
     onPlayPause: () -> Unit = {},
     onSkipPrevious: () -> Unit = {},
@@ -1087,6 +1096,22 @@ fun SereneBottomNavBar(
                                     QuranData.SURAHS_DIRECTORY.find { it.number == num }
                                 }
                             }
+                            val haptic = LocalHapticFeedback.current
+
+                            val ambientInfiniteTransition = rememberInfiniteTransition(label = "ambientPulse")
+                            val ambientPulseAlpha by if (isReducedMotion || !isPlaying) {
+                                remember { mutableFloatStateOf(0.12f) }
+                            } else {
+                                ambientInfiniteTransition.animateFloat(
+                                    initialValue = 0.08f,
+                                    targetValue = 0.20f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(2800, easing = FastOutSlowInEasing),
+                                        repeatMode = RepeatMode.Reverse
+                                    ),
+                                    label = "ambientAlpha"
+                                )
+                            }
 
                             Row(
                                 modifier = Modifier
@@ -1101,7 +1126,7 @@ fun SereneBottomNavBar(
                                     },
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Left artwork/track identity badge (tap to expand full player, subtle internal pulse when playing)
+                                // Left artwork/track identity badge (tap to expand full player, subtle ambient pulse when playing)
                                 Box(
                                     modifier = Modifier
                                         .size(38.dp)
@@ -1111,7 +1136,7 @@ fun SereneBottomNavBar(
                                             scaleY = flankScale.value * musicIndicatorScale
                                         }
                                         .clip(CircleShape)
-                                        .background(Color.semanticPrimaryAccent.copy(alpha = musicIndicatorAlpha))
+                                        .background(Color.semanticPrimaryAccent.copy(alpha = if (isPlaying && !isReducedMotion) ambientPulseAlpha else musicIndicatorAlpha))
                                         .clickable { onExpandPlayer() },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -1140,32 +1165,49 @@ fun SereneBottomNavBar(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         // Track label (tap to expand full player)
-                                        Column(
+                                        Box(
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .padding(end = 4.dp)
                                                 .clickable { onExpandPlayer() },
-                                            verticalArrangement = Arrangement.Center
+                                            contentAlignment = Alignment.CenterStart
                                         ) {
-                                            Text(
-                                                text = playingSurah?.nameEnglish ?: "Quran Recitation",
-                                                style = MaterialTheme.typography.labelMedium.copy(
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = controlIconColor,
-                                                    fontSize = 12.sp
-                                                ),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = if (playingVerseNumber != null) "Verse $playingVerseNumber • Tap for details" else (playingSurah?.nameArabic ?: "Surah Recitation"),
-                                                style = MaterialTheme.typography.bodySmall.copy(
-                                                    color = inactiveIconColor,
-                                                    fontSize = 10.sp
-                                                ),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
+                                            AnimatedContent(
+                                                targetState = Pair(playingSurah?.nameEnglish ?: "Quran Recitation", playingVerseNumber),
+                                                transitionSpec = {
+                                                    if (isReducedMotion) {
+                                                        fadeIn(animationSpec = snap()) togetherWith fadeOut(animationSpec = snap())
+                                                    } else {
+                                                        (fadeIn(animationSpec = tween(280)) + slideInVertically(animationSpec = tween(280)) { 6 }) togetherWith
+                                                                (fadeOut(animationSpec = tween(180)) + slideOutVertically(animationSpec = tween(180)) { -6 })
+                                                    }
+                                                },
+                                                label = "dockTrackInfoAnim"
+                                            ) { (surahTitle, verseNum) ->
+                                                Column(
+                                                    verticalArrangement = Arrangement.Center
+                                                ) {
+                                                    Text(
+                                                        text = surahTitle,
+                                                        style = MaterialTheme.typography.labelMedium.copy(
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            color = controlIconColor,
+                                                            fontSize = 12.sp
+                                                        ),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Text(
+                                                        text = if (verseNum != null) "Verse $verseNum • Tap for details" else (playingSurah?.nameArabic ?: "Surah Recitation"),
+                                                        style = MaterialTheme.typography.bodySmall.copy(
+                                                            color = inactiveIconColor,
+                                                            fontSize = 10.sp
+                                                        ),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
                                         }
 
                                         // Playback buttons: Previous, Play/Pause, Next
@@ -1184,7 +1226,10 @@ fun SereneBottomNavBar(
                                                         translationY = flankYOffset.value.dp.toPx()
                                                     }
                                                     .clip(CircleShape)
-                                                    .clickable { onSkipPrevious() },
+                                                    .clickable {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                        onSkipPrevious()
+                                                    },
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
@@ -1195,7 +1240,7 @@ fun SereneBottomNavBar(
                                                 )
                                             }
 
-                                            // Play / Pause Focal Button
+                                            // Play / Pause Focal Button (with Loading state)
                                             Box(
                                                 modifier = Modifier
                                                     .size(36.dp)
@@ -1207,15 +1252,35 @@ fun SereneBottomNavBar(
                                                     }
                                                     .clip(CircleShape)
                                                     .background(Color.semanticPrimaryAccent)
-                                                    .clickable { onPlayPause() },
+                                                    .clickable {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                        onPlayPause()
+                                                    },
                                                 contentAlignment = Alignment.Center
                                             ) {
-                                                Icon(
-                                                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                                    contentDescription = if (isPlaying) "Pause" else "Play",
-                                                    tint = Color.semanticAccentForeground,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
+                                                if (isLoading) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(18.dp),
+                                                        color = Color.semanticAccentForeground,
+                                                        strokeWidth = 2.dp
+                                                    )
+                                                } else {
+                                                    AnimatedContent(
+                                                        targetState = isPlaying,
+                                                        transitionSpec = {
+                                                            fadeIn(animationSpec = tween(180)) togetherWith
+                                                                    fadeOut(animationSpec = tween(140))
+                                                        },
+                                                        label = "dockPlayPauseIconAnim"
+                                                    ) { activePlaying ->
+                                                        Icon(
+                                                            imageVector = if (activePlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                                            contentDescription = if (activePlaying) "Pause" else "Play",
+                                                            tint = Color.semanticAccentForeground,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                    }
+                                                }
                                             }
 
                                             // Skip Next
@@ -1229,7 +1294,10 @@ fun SereneBottomNavBar(
                                                         translationY = flankYOffset.value.dp.toPx()
                                                     }
                                                     .clip(CircleShape)
-                                                    .clickable { onSkipNext() },
+                                                    .clickable {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                        onSkipNext()
+                                                    },
                                                 contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(
@@ -1248,14 +1316,18 @@ fun SereneBottomNavBar(
                                     var isDraggingProgress by remember { mutableStateOf(false) }
                                     var dragProgressFraction by remember { mutableFloatStateOf(0f) }
                                     val currentDisplayProg = if (isDraggingProgress) dragProgressFraction else audioProgress.coerceIn(0f, 1f)
+                                    val trackHeight by animateDpAsState(if (isDraggingProgress) 4.dp else 2.dp, animationSpec = tween(180), label = "trackH")
+                                    val thumbWidth by animateDpAsState(if (isDraggingProgress) 12.dp else 8.dp, animationSpec = tween(180), label = "thumbW")
+                                    val thumbHeight by animateDpAsState(if (isDraggingProgress) 6.dp else 4.dp, animationSpec = tween(180), label = "thumbH")
 
                                     Box(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(10.dp)
+                                            .height(12.dp)
                                             .pointerInput(Unit) {
                                                 detectTapGestures(
                                                     onPress = { offset ->
+                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                         val fraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
                                                         dragProgressFraction = fraction
                                                         isDraggingProgress = true
@@ -1268,6 +1340,7 @@ fun SereneBottomNavBar(
                                             .pointerInput(Unit) {
                                                 detectHorizontalDragGestures(
                                                     onDragStart = { offset ->
+                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                         isDraggingProgress = true
                                                         dragProgressFraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
                                                         onSeekAudio(dragProgressFraction)
@@ -1292,7 +1365,7 @@ fun SereneBottomNavBar(
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(2.dp)
+                                                .height(trackHeight)
                                                 .clip(CircleShape)
                                                 .background(inactiveTrackColor)
                                         )
@@ -1301,7 +1374,7 @@ fun SereneBottomNavBar(
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxWidth(fraction = currentDisplayProg)
-                                                .height(2.dp)
+                                                .height(trackHeight)
                                                 .clip(CircleShape)
                                                 .background(progressAccent)
                                         )
@@ -1311,12 +1384,12 @@ fun SereneBottomNavBar(
                                             Box(
                                                 modifier = Modifier
                                                     .fillMaxWidth(fraction = currentDisplayProg)
-                                                    .height(6.dp),
+                                                    .height(thumbHeight + 2.dp),
                                                 contentAlignment = Alignment.CenterEnd
                                             ) {
                                                 Box(
                                                     modifier = Modifier
-                                                        .size(width = 8.dp, height = 4.dp)
+                                                        .size(width = thumbWidth, height = thumbHeight)
                                                         .clip(CircleShape)
                                                         .background(progressAccent)
                                                 )
@@ -1348,14 +1421,17 @@ fun SereneBottomNavBar(
                                                 scaleY = closeScale.value
                                             }
                                             .clip(CircleShape)
-                                            .clickable { onStopAudio() },
+                                            .clickable {
+                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                onStopAudio()
+                                            },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = Icons.Filled.Close,
                                             contentDescription = "Dismiss audio bar",
-                                            tint = controlIconColor,
-                                            modifier = Modifier.size(16.dp)
+                                            tint = inactiveIconColor,
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
                                 }
@@ -1469,17 +1545,14 @@ fun SereneBottomNavBar(
             }
         }
 
-        // INTEGRATED JUMP-TO-CURRENT-VERSE MORPH CONTROL & REAL ATTACHED SURFACE MORPH
-        JumpToCurrentVerseMorphControl(
+        // INDEPENDENT FLOATING JUMP-TO-CURRENT-VERSE CONTROL
+        JumpToCurrentVerseControl(
             visible = isScrolledAwayFromActiveVerse && isPlaybackMode && !isSearchActive && (playingVerseNumber != null),
             playingVerseNumber = playingVerseNumber,
             isDark = isDark,
             isReducedMotion = isReducedMotion,
             dockTranslateY = currentTranslateY,
-            dockWidth = currentWidthDp,
             dockHeight = dockHeight,
-            dockBg = dockBg,
-            dockBorderColor = dockBorderColor,
             onClick = onJumpToActiveVerse,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -1489,368 +1562,136 @@ fun SereneBottomNavBar(
 }
 
 /**
- * Dedicated state model managing the Jump-to-Current-Verse morph lifecycle and hysteresis.
- */
-enum class JumpMorphState {
-    HIDDEN,
-    ENTERING,
-    VISIBLE,
-    EXITING
-}
-
-// Development-only visual debug flag to inspect exact Path boundaries, anchor & neck geometry
-private const val DEBUG_JUMP_MORPH = false
-
-/**
- * Integrated Jump-to-Current-Verse control that physically morphs out of the Audio Player's
- * JUMP_MORPH_ANCHOR (top edge), following the material separation and absorption principles.
+ * Independent floating Jump-to-Current-Verse control that appears cleanly above the Audio Player
+ * when the user scrolls sufficiently away from the currently playing verse.
  *
- * Sequence of Physical Material Stages:
- * 1. 0.00: Attached to JUMP_MORPH_ANCHOR (top edge of Audio Player dock). No gap.
- * 2. 0.00 -> 0.28: Local Player Edge Upward Deformation (organic bulge) + Emerging Protrusion
- *    - Protrusion height grows (0dp -> 26dp), width is compact (30dp -> 26dp).
- *    - Continuous material neck connects the player top edge to the emerging protrusion.
- * 3. 0.28 -> 0.48: Material Separation & Pinch-off
- *    - Neck thins and detaches cleanly.
- *    - Separated shape relaxes to a 34dp spherical bubble.
- *    - Player edge bulge smoothly relaxes back to flat baseline.
- *    - 12dp clean air gap opens between the sphere and player top edge.
- * 4. 0.48 -> 0.85: Continuous Geometric Expansion & Delayed Content Reveal
- *    - Sphere continuously widens from 34dp into a 168dp pill (cornerRadius = height / 2).
- *    - From ~50% to ~80%, play icon and "Jump to Verse X" text smoothly fade in.
- * 5. 0.85 -> 1.00: Settling into Independent Pill
- *    - Resting with a clean 12dp gap above the Audio Player.
+ * Visual Presentation & Geometry:
+ * - Completely independent floating pill with ~12dp visual gap above the Audio Player dock
+ * - Zero material morphing, zero neck/connector, zero player deformation
+ * - Highest z-index layering above the player and content
  *
- * Reversible Symmetrical Absorption:
- * On exit, the sequence executes in exact reverse along the identical cubic-bezier easing curve,
- * contracting the pill to a sphere, descending to JUMP_MORPH_ANCHOR, bulging the player edge to meet it,
- * and seamlessly absorbing the material back into the Audio Player surface.
+ * Clean Independent Motion:
+ * - Entrance: opacity 0 -> 1, translationY +10dp -> 0dp over 260ms (smooth Ease-Out curve)
+ * - Exit: opacity 1 -> 0, translationY 0dp -> +10dp over 200ms (smooth Ease-In curve)
+ * - Reduced Motion: pure instant/fade transition with 0dp translation
  */
 @Composable
-fun JumpToCurrentVerseMorphControl(
+fun JumpToCurrentVerseControl(
     visible: Boolean,
     playingVerseNumber: Int?,
     isDark: Boolean,
     isReducedMotion: Boolean,
     dockTranslateY: Dp,
-    dockWidth: Dp,
     dockHeight: Dp,
-    dockBg: Color,
-    dockBorderColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val transition = updateTransition(targetState = visible, label = "jumpToVerseContinuousMorph")
+    val transition = updateTransition(targetState = visible, label = "jumpToVerseVisibility")
 
-    // Shared continuous material cubic-bezier easing with smooth viscous acceleration and soft deceleration
-    // Entry: surface formation -> stretch -> release
-    // Exit: magnetic approach -> stretch -> contact -> absorption
-    val continuousMorphEasing = remember { CubicBezierEasing(0.20f, 0.0f, 0.10f, 1.0f) }
-
-    val morphProgress by transition.animateFloat(
+    val pillAlpha by transition.animateFloat(
         transitionSpec = {
             if (isReducedMotion) {
                 snap()
+            } else if (targetState) {
+                // Calm, polished, lightweight 260ms ease-out entrance
+                tween(durationMillis = 260, easing = FastOutSlowInEasing)
             } else {
-                // Deliberate 750ms viscous material morphing for both entry & magnetic exit
-                tween(durationMillis = 750, easing = continuousMorphEasing)
+                // Clean, responsive 200ms ease-in exit
+                tween(durationMillis = 200, easing = FastOutLinearInEasing)
             }
         },
-        label = "continuousMorphProgress"
+        label = "jumpPillAlpha"
     ) { isVis ->
         if (isVis) 1f else 0f
     }
 
-    val currentMorphState = remember(visible, morphProgress) {
-        when {
-            visible && morphProgress >= 0.999f -> JumpMorphState.VISIBLE
-            visible -> JumpMorphState.ENTERING
-            !visible && morphProgress <= 0.001f -> JumpMorphState.HIDDEN
-            else -> JumpMorphState.EXITING
-        }
+    val pillOffsetY by transition.animateDp(
+        transitionSpec = {
+            if (isReducedMotion) {
+                snap()
+            } else if (targetState) {
+                // Entrance: gently rises +10dp -> 0dp into position
+                tween(durationMillis = 260, easing = FastOutSlowInEasing)
+            } else {
+                // Exit: gently moves downward 0dp -> +10dp as it fades
+                tween(durationMillis = 200, easing = FastOutLinearInEasing)
+            }
+        },
+        label = "jumpPillOffsetY"
+    ) { isVis ->
+        if (isVis) 0.dp else 10.dp
     }
 
-    if (currentMorphState != JumpMorphState.HIDDEN || visible) {
-        // Semantic accent colors: Light mode uses classic warm gold, Dark mode uses refined high-contrast muted violet (#C5BED4 on dark surface)
+    if (pillAlpha > 0.001f || visible) {
+        // Semantic theme styling: Light mode uses #8D6B1E, Dark mode uses #494556 border & #D4CCE6 text/icon
         val jumpAccentColor = if (isDark) {
-            Color(0xFFD4CCE6) // High-readability muted-violet tint for dark mode icon/text
+            Color(0xFFD4CCE6)
         } else {
-            Color.semanticPrimaryAccentLight // Warm gold (#8D6B1E) for light mode
+            Color(0xFF8D6B1E)
         }
 
-        // Dedicated surface & border styling matching Audio Player material in both themes
         val jumpSurfaceBg = if (isDark) {
-            // Refined deep surface with subtle #494556 violet tint (elevated against pitch-black background)
             Color(0xFF222129)
         } else {
-            dockBg
+            Color.White
         }
 
         val jumpBorderColor = if (isDark) {
-            // Clearly defined, crisp #494556 edge definition with subtle luminescence
-            Color(0xFF6B657D)
+            Color(0xFF494556)
         } else {
-            dockBorderColor.copy(alpha = 0.40f)
+            Color(0xFF8D6B1E).copy(alpha = 0.30f)
         }
 
         val verseText = if (playingVerseNumber == 0) "Jump to Bismillah" else "Jump to Verse ${playingVerseNumber ?: 1}"
 
-        val targetPillWidth = 168.dp
-        val circleSize = 34.dp
-        val finalAirGap = 12.dp
-
-        // Dynamic width:
-        // - At 0.00: 32dp (attached protrusion base on player top edge)
-        // - 0.00 -> 0.28: narrows to 26dp under upward pulling tension (stretch release)
-        // - 0.28 -> 0.48: relaxes to 34dp sphere upon separation
-        // - 0.48 -> 0.85: continuously expands to 168dp pill
-        val currentWidth = if (isReducedMotion) {
-            if (visible) targetPillWidth else circleSize
-        } else {
-            when {
-                morphProgress < 0.28f -> {
-                    val t = (morphProgress / 0.28f).coerceIn(0f, 1f)
-                    lerp(32.dp, 26.dp, t)
-                }
-                morphProgress < 0.48f -> {
-                    val t = ((morphProgress - 0.28f) / 0.20f).coerceIn(0f, 1f)
-                    lerp(26.dp, 34.dp, t)
-                }
-                else -> {
-                    val t = ((morphProgress - 0.48f) / 0.37f).coerceIn(0f, 1f)
-                    lerp(34.dp, targetPillWidth, t)
-                }
-            }
-        }
-
-        // Dynamic height with anchor-directed elongation during proximity (magnetic stretch):
-        // - At 0.00: 0dp (fully embedded inside player top edge)
-        // - 0.00 -> 0.28: rises out of player top edge, elongating to 36dp (vertical stretch)
-        // - 0.28 -> 0.48: smoothly transitions between elongated form (36dp) and spherical bubble (34dp)
-        // - 0.48 -> 1.00: standard 34dp pill height
-        val currentHeight = if (isReducedMotion) {
-            34.dp
-        } else {
-            when {
-                morphProgress < 0.28f -> {
-                    val t = (morphProgress / 0.28f).coerceIn(0f, 1f)
-                    // Viscous elongation toward anchor during proximity
-                    lerp(4.dp, 37.dp, t)
-                }
-                morphProgress < 0.48f -> {
-                    val t = ((morphProgress - 0.28f) / 0.20f).coerceIn(0f, 1f)
-                    lerp(37.dp, 34.dp, t)
-                }
-                else -> 34.dp
-            }
-        }
-
-        val currentCornerRadius = currentHeight / 2
-
-        // Air gap from player's top edge (JUMP_MORPH_ANCHOR):
-        // Features smooth non-linear magnetic approach curve as the mass enters proximity (0.28 -> 0.00):
-        // - 0.00 -> 0.28: 0dp (attached to player top edge, continuous material neck)
-        // - 0.28 -> 0.48: 0dp -> 12dp with subtle magnetic attraction curve (smooth acceleration into anchor on exit)
-        // - 0.48 -> 1.00: 12dp (resting gap)
-        val currentAirGap = if (isReducedMotion) {
-            finalAirGap
-        } else {
-            if (morphProgress < 0.28f) {
-                0.dp
-            } else {
-                val t = ((morphProgress - 0.28f) / 0.20f).coerceIn(0f, 1f)
-                // Quadratic easing in proximity zone to provide smooth, gentle magnetic attraction
-                // without bounce or recoil
-                val magneticT = t * t * (3f - 2f * t)
-                lerp(0.dp, finalAirGap, magneticT)
-            }
-        }
-
-        // Delayed Content Reveal (50% -> 80%):
-        // 0% to 50% is 100% geometric shape morph.
-        // Content gently fades in between 50% and 80%.
-        val iconAlphaFraction = ((morphProgress - 0.50f) / 0.28f).coerceIn(0f, 1f)
-        val textAlphaFraction = ((morphProgress - 0.58f) / 0.26f).coerceIn(0f, 1f)
-
-        val controlAlpha = if (isReducedMotion) {
-            if (visible) 1f else 0f
-        } else {
-            (morphProgress / 0.04f).coerceIn(0f, 1f)
-        }
-
-        val iconAlpha = if (isReducedMotion) {
-            if (visible) 1f else 0f
-        } else iconAlphaFraction
-
-        val textAlpha = if (isReducedMotion) {
-            if (visible) 1f else 0f
-        } else textAlphaFraction
-
-        // JUMP_MORPH_ANCHOR is positioned strictly at the TOP EDGE of the audio player dock:
-        // dockTopBaseline = 24.dp (dock bottom margin) + dockHeight
-        val dockTopBaseline = 24.dp + dockHeight
+        // Position strictly above the audio player dock with a clean 12dp air gap (8–16dp specification)
+        val dockTopBaseline = 24.dp + dockHeight + 12.dp
 
         Box(
             modifier = modifier
                 .padding(bottom = dockTopBaseline)
-                .offset(y = dockTranslateY)
+                .offset(y = dockTranslateY + if (isReducedMotion) 0.dp else pillOffsetY)
                 .graphicsLayer {
-                    alpha = controlAlpha
+                    alpha = pillAlpha
                 }
-                .zIndex(35f), // Highest stacking order: always cleanly visible above player & reader text
-            contentAlignment = Alignment.BottomCenter
+                .zIndex(50f), // Highest stacking order: always cleanly visible above player & reader text
+            contentAlignment = Alignment.Center
         ) {
-            // UNIFIED GEOMETRIC MORPH CONTAINER (Player Top-Edge Deformation + Organic Material Neck)
-            // Active strictly during attachment & separation phase (0.00 <= morphProgress <= 0.48).
-            // Exactly matches the organic fluid neck in the reference screenshots.
-            // Once separated (morphProgress > 0.48), disappears completely leaving a pristine clean gap!
-            if (!isReducedMotion && morphProgress in 0.001f..0.48f) {
-                val separationPhase = (morphProgress / 0.48f).coerceIn(0f, 1f)
-                val neckAlpha = (1f - ((morphProgress - 0.26f) / 0.22f)).coerceIn(0f, 1f)
-
-                // Player top-edge bulge height: rises organically around JUMP_MORPH_ANCHOR
-                val bulgeProgress = if (morphProgress < 0.22f) {
-                    (morphProgress / 0.22f).coerceIn(0f, 1f)
-                } else {
-                    (1f - ((morphProgress - 0.22f) / 0.26f)).coerceIn(0f, 1f)
-                }
-                val maxBulgeHeightPx = 10.dp
-
-                Canvas(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .width(dockWidth.coerceAtLeast(140.dp))
-                        .height(currentAirGap + currentHeight + 20.dp)
-                        .graphicsLayer { alpha = neckAlpha }
-                ) {
-                    val w = size.width
-                    val h = size.height
-                    val centerX = w / 2f
-                    val playerTopY = h - 2.dp.toPx() // exact top edge baseline of audio player
-
-                    val bulgeRisePx = bulgeProgress * maxBulgeHeightPx.toPx()
-                    val baseHalfWidth = lerp(34.dp, 12.dp, separationPhase).toPx()
-
-                    val bubbleBottomY = playerTopY - currentAirGap.toPx()
-                    val neckTopY = bubbleBottomY + (currentHeight.toPx() * 0.35f).coerceAtLeast(2.dp.toPx())
-                    val neckTopHalfWidth = (currentWidth.toPx() * 0.42f).coerceAtLeast(4.dp.toPx())
-
-                    // Dynamic waist narrowing as the bubble pulls upward under fluid surface tension
-                    val waistFrac = (morphProgress / 0.42f).coerceIn(0f, 1f)
-                    val waistFactor = 0.85f * (1f - waistFrac) + 0.25f * waistFrac
-                    val waistHalfWidth = (neckTopHalfWidth * waistFactor).coerceAtLeast(1.5.dp.toPx())
-
-                    val neckFillPath = Path().apply {
-                        moveTo(centerX - baseHalfWidth, playerTopY)
-                        // Left concave organic curve upward to neck top
-                        cubicTo(
-                            centerX - (baseHalfWidth * 0.70f), playerTopY - (bulgeRisePx * 0.6f) - (playerTopY - neckTopY) * 0.20f,
-                            centerX - (waistHalfWidth * 1.25f), playerTopY - (playerTopY - neckTopY) * 0.65f,
-                            centerX - neckTopHalfWidth, neckTopY
-                        )
-                        // Across neck top inside the bubble
-                        lineTo(centerX + neckTopHalfWidth, neckTopY)
-                        // Right concave organic curve downward to player top edge
-                        cubicTo(
-                            centerX + (waistHalfWidth * 1.25f), playerTopY - (playerTopY - neckTopY) * 0.65f,
-                            centerX + (baseHalfWidth * 0.70f), playerTopY - (bulgeRisePx * 0.6f) - (playerTopY - neckTopY) * 0.20f,
-                            centerX + baseHalfWidth, playerTopY
-                        )
-                        // Along player top edge
-                        lineTo(centerX - baseHalfWidth, playerTopY)
-                        close()
-                    }
-
-                    val leftOutlinePath = Path().apply {
-                        moveTo(centerX - baseHalfWidth, playerTopY)
-                        cubicTo(
-                            centerX - (baseHalfWidth * 0.70f), playerTopY - (bulgeRisePx * 0.6f) - (playerTopY - neckTopY) * 0.20f,
-                            centerX - (waistHalfWidth * 1.25f), playerTopY - (playerTopY - neckTopY) * 0.65f,
-                            centerX - neckTopHalfWidth, neckTopY
-                        )
-                    }
-
-                    val rightOutlinePath = Path().apply {
-                        moveTo(centerX + neckTopHalfWidth, neckTopY)
-                        cubicTo(
-                            centerX + (waistHalfWidth * 1.25f), playerTopY - (playerTopY - neckTopY) * 0.65f,
-                            centerX + (baseHalfWidth * 0.70f), playerTopY - (bulgeRisePx * 0.6f) - (playerTopY - neckTopY) * 0.20f,
-                            centerX + baseHalfWidth, playerTopY
-                        )
-                    }
-
-                    // Fill continuous organic material body matching player dock & jump bubble
-                    drawPath(path = neckFillPath, color = jumpSurfaceBg)
-
-                    // Draw organic material border stroke exclusively along the curved outer flanks
-                    val strokeColor = jumpBorderColor.copy(alpha = if (isDark) 0.85f * neckAlpha else 0.35f * neckAlpha)
-                    drawPath(path = leftOutlinePath, color = strokeColor, style = Stroke(width = 1.2.dp.toPx()))
-                    drawPath(path = rightOutlinePath, color = strokeColor, style = Stroke(width = 1.2.dp.toPx()))
-
-                    // DEVELOPMENT-ONLY DEBUG OVERLAY: Visualize Neck & Deformation Paths in High Contrast
-                    if (DEBUG_JUMP_MORPH) {
-                        drawPath(path = neckFillPath, color = Color.Green.copy(alpha = 0.45f))
-                        drawCircle(color = Color.Yellow, radius = 4.dp.toPx(), center = Offset(centerX, playerTopY))
-                    }
-                }
-            }
-
-            // MORPHING JUMP CONTROL SURFACE (Attached Protrusion -> Separated Sphere -> Final Pill)
-            Box(
+            Surface(
+                onClick = onClick,
+                shape = CircleShape,
+                color = jumpSurfaceBg,
+                border = BorderStroke(1.2.dp, jumpBorderColor),
+                shadowElevation = if (isDark) 4.dp else 6.dp,
                 modifier = Modifier
-                    .padding(bottom = currentAirGap)
-                    .width(currentWidth)
-                    .height(currentHeight),
-                contentAlignment = Alignment.Center
+                    .height(36.dp)
+                    .testTag("jump_to_current_verse_pill")
             ) {
-                Surface(
-                    onClick = onClick,
-                    shape = RoundedCornerShape(currentCornerRadius),
-                    color = jumpSurfaceBg,
-                    border = BorderStroke(
-                        1.2.dp,
-                        if (DEBUG_JUMP_MORPH) Color.Red else jumpBorderColor
-                    ),
-                    shadowElevation = if (currentAirGap > 1.dp) (if (isDark) 6.dp else 8.dp) else 2.dp,
+                Row(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .testTag("jump_to_current_verse_pill")
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.PlayArrow,
-                            contentDescription = "Jump to Verse",
-                            tint = jumpAccentColor,
-                            modifier = Modifier
-                                .size(15.dp)
-                                .graphicsLayer {
-                                    alpha = iconAlpha
-                                }
-                        )
+                    Icon(
+                        imageVector = Icons.Filled.PlayArrow,
+                        contentDescription = "Jump to Verse",
+                        tint = jumpAccentColor,
+                        modifier = Modifier.size(15.dp)
+                    )
 
-                        if (textAlpha > 0.01f) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = verseText,
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = jumpAccentColor,
-                                    fontSize = 12.5.sp
-                                ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.graphicsLayer {
-                                    alpha = textAlpha
-                                }
-                            )
-                        }
-                    }
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Text(
+                        text = verseText,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            color = jumpAccentColor,
+                            fontSize = 12.5.sp
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }

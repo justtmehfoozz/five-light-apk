@@ -37,6 +37,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -141,6 +143,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
@@ -176,6 +179,7 @@ fun QuranScreen(
     playingSurahNumber: Int?,
     playingVerseNumber: Int?,
     isPlayingAudio: Boolean,
+    isLoadingAudio: Boolean = false,
     audioProgress: Float = 0f,
     surahPlaybackProgress: Map<Int, Float> = emptyMap(),
     surahDownloadStates: Map<Int, SurahDownloadStatus> = emptyMap(),
@@ -299,11 +303,25 @@ fun QuranScreen(
             if (isReaderView && currentSurah != null) {
             val listState = remember(currentSurah.number) { androidx.compose.foundation.lazy.LazyListState() }
 
-            // Restore scroll position ONLY AFTER loading verses (when verses.isNotEmpty())
-            LaunchedEffect(currentSurah.number, verses.isNotEmpty()) {
-                if (verses.isNotEmpty()) {
+            val displayVerses = remember(selectedSurah.number, verses) {
+                if (selectedSurah.number == 1 && verses.size == 7) {
+                    // Exclude duplicate Bismillah (first raw item) and present the 6 actual verses numbered 1..6
+                    verses.drop(1).mapIndexed { index, v ->
+                        v.copy(
+                            verseNumber = index + 1,
+                            verseKey = "1:${index + 1}"
+                        )
+                    }
+                } else {
+                    verses
+                }
+            }
+
+            // Restore scroll position ONLY AFTER loading verses (when displayVerses.isNotEmpty())
+            LaunchedEffect(currentSurah.number, displayVerses.isNotEmpty()) {
+                if (displayVerses.isNotEmpty()) {
                     val savedIndex = onGetScrollPosition(currentSurah.number)
-                    val targetIndex = if (savedIndex in 0 until verses.size) savedIndex else 0
+                    val targetIndex = if (savedIndex in 0 until displayVerses.size) savedIndex else 0
                     listState.scrollToItem(targetIndex)
                 }
             }
@@ -314,7 +332,7 @@ fun QuranScreen(
                     .distinctUntilChanged()
                     .debounce(250L)
                     .collect { index ->
-                        if (verses.isNotEmpty() && index >= 0) {
+                        if (displayVerses.isNotEmpty() && index >= 0) {
                             onSaveScrollPosition(currentSurah.number, index)
                         }
                     }
@@ -323,49 +341,61 @@ fun QuranScreen(
             var userPausedAutoScroll by remember { mutableStateOf(false) }
             val coroutineScope = rememberCoroutineScope()
 
-            // Derive presentation layout: ceremonial Bismillah header + body flow verses
-            val readerLayout = remember(selectedSurah.number, verses) {
-                com.example.data.util.QuranData.getSurahReaderLayout(selectedSurah.number, verses)
-            }
-
             // Find playing item index in the list
-            val currentPlayingIndex = remember(playingVerseNumber, playingSurahNumber, currentSurah.number, readerLayout) {
-                if (playingSurahNumber == currentSurah.number && playingVerseNumber != null) {
-                    val bismillah = readerLayout.bismillahHeader
-                    val hasBismillah = bismillah != null
-                    if (bismillah != null && (playingVerseNumber == bismillah.verseNumber || (currentSurah.number == 1 && playingVerseNumber == 1) || playingVerseNumber == 0)) {
+            val hasBismillah = remember(selectedSurah.number, displayVerses) {
+                selectedSurah.number != 9 && displayVerses.none { it.verseNumber == 0 }
+            }
+            val currentPlayingIndex = remember(playingVerseNumber, playingSurahNumber, currentSurah.number, displayVerses, hasBismillah) {
+                if (playingSurahNumber == currentSurah.number && playingVerseNumber != null && displayVerses.isNotEmpty()) {
+                    val rawIndex = displayVerses.indexOfFirst { it.verseNumber == playingVerseNumber }
+                    if (rawIndex >= 0) {
+                        if (hasBismillah) rawIndex + 1 else rawIndex
+                    } else if (playingVerseNumber == 0 && hasBismillah) {
                         0
-                    } else {
-                        val rawIndex = readerLayout.flowVerses.indexOfFirst { it.verseNumber == playingVerseNumber }
-                        if (rawIndex >= 0) {
-                            if (hasBismillah) rawIndex + 1 else rawIndex
-                        } else -1
-                    }
+                    } else -1
                 } else -1
             }
 
-            // Track user scroll interactions: respect manual scrolling with robust hysteresis
+            // Track user scroll interactions: respect manual scrolling with robust hysteresis (SHOW_THRESHOLD = 400dp, HIDE_THRESHOLD = 200dp)
+            val currentDensity = LocalDensity.current
             LaunchedEffect(listState, currentPlayingIndex) {
+                if (currentPlayingIndex < 0) {
+                    userPausedAutoScroll = false
+                    return@LaunchedEffect
+                }
                 snapshotFlow {
-                    Pair(listState.isScrollInProgress, listState.layoutInfo.visibleItemsInfo.map { it.index })
-                }.collect { (isScrolling, visibleIndices) ->
-                    if (currentPlayingIndex >= 0) {
-                        if (isScrolling) {
-                            if (visibleIndices.isNotEmpty() && !visibleIndices.contains(currentPlayingIndex)) {
-                                val firstVis = visibleIndices.first()
-                                val lastVis = visibleIndices.last()
-                                // Requires scrolling at least 2 items away before separating
-                                if (currentPlayingIndex < firstVis - 1 || currentPlayingIndex > lastVis + 1) {
-                                    userPausedAutoScroll = true
-                                }
-                            }
+                    val info = listState.layoutInfo
+                    val visibleItems = info.visibleItemsInfo
+                    if (visibleItems.isEmpty()) return@snapshotFlow userPausedAutoScroll
+                    val activeItem = visibleItems.firstOrNull { it.index == currentPlayingIndex }
+                    if (activeItem != null) {
+                        false
+                    } else {
+                        val firstVis = visibleItems.first()
+                        val lastVis = visibleItems.last()
+                        val avgItemSize = (visibleItems.sumOf { it.size }.toFloat() / visibleItems.size).coerceAtLeast(100f)
+                        val vpHeight = (info.viewportEndOffset - info.viewportStartOffset).toFloat()
+                        val distancePx = if (currentPlayingIndex < firstVis.index) {
+                            val itemDiff = (firstVis.index - currentPlayingIndex).toFloat()
+                            (itemDiff * avgItemSize + firstVis.offset).coerceAtLeast(0f)
                         } else {
-                            // When user scrolls back and active verse enters viewport, reset pause
-                            if (visibleIndices.contains(currentPlayingIndex)) {
-                                userPausedAutoScroll = false
-                            }
+                            val itemDiff = (currentPlayingIndex - lastVis.index).toFloat()
+                            val lastItemBottom = (lastVis.offset + lastVis.size).toFloat()
+                            (itemDiff * avgItemSize + (lastItemBottom - vpHeight)).coerceAtLeast(0f)
+                        }
+                        val distanceDp = distancePx / currentDensity.density
+                        if (userPausedAutoScroll) {
+                            // Hysteresis: stay paused until user returns within 200dp
+                            distanceDp > 200f
+                        } else {
+                            // Pause once user scrolls 400dp away
+                            distanceDp >= 400f
                         }
                     }
+                }
+                .distinctUntilChanged()
+                .collect { isFarAway ->
+                    userPausedAutoScroll = isFarAway
                 }
             }
 
@@ -375,11 +405,9 @@ fun QuranScreen(
                 onScrolledAwayFromActiveVerseChange(isAway)
             }
 
-            // Handle jump to active verse trigger from the integrated audio player morph
+            // Handle jump to active verse trigger: smoothly scroll to active verse, hiding pill as viewport arrives
             LaunchedEffect(jumpToActiveVerseTrigger) {
                 if (jumpToActiveVerseTrigger > 0L && currentPlayingIndex >= 0) {
-                    userPausedAutoScroll = false
-                    onScrolledAwayFromActiveVerseChange(false)
                     val targetScrollIndex = (currentPlayingIndex - 1).coerceAtLeast(0)
                     if (isReducedMotion) {
                         listState.scrollToItem(targetScrollIndex)
@@ -389,6 +417,7 @@ fun QuranScreen(
                             scrollOffset = 0
                         )
                     }
+                    userPausedAutoScroll = false
                 }
             }
 
@@ -464,46 +493,8 @@ fun QuranScreen(
                     }
                 }
 
-                // 7. Reading Progress Indicator (strictly scroll position only, theme accent)
-                val readingProgress by remember(listState, verses.size) {
-                    derivedStateOf {
-                        val layoutInfo = listState.layoutInfo
-                        val totalItems = layoutInfo.totalItemsCount
-                        if (totalItems <= 1) {
-                            0f
-                        } else {
-                            val visibleItems = layoutInfo.visibleItemsInfo
-                            if (visibleItems.isEmpty()) {
-                                0f
-                            } else {
-                                val firstVisible = visibleItems.first()
-                                val firstIndex = firstVisible.index
-                                val itemSize = firstVisible.size
-                                val offset = if (itemSize > 0) listState.firstVisibleItemScrollOffset.toFloat() / itemSize else 0f
-                                val exactIndex = firstIndex + offset
-                                val maxIndex = (totalItems - 1).coerceAtLeast(1).toFloat()
-                                (exactIndex / maxIndex).coerceIn(0f, 1f)
-                            }
-                        }
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp, bottom = 4.dp)
-                        .height(2.dp)
-                        .clip(RoundedCornerShape(1.dp))
-                        .background(Color.semanticBorder.copy(alpha = 0.3f))
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(fraction = readingProgress)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(1.dp))
-                            .background(Color.semanticPrimaryAccent)
-                    )
-                }
+                // 7. Reading Progress Indicator (strictly scroll position only, theme accent, rendered in draw phase to prevent recompositions)
+                ReadingProgressBar(listState = listState)
 
                 // Font Size Slider Overlay
                 if (showFontSizeControls) {
@@ -533,7 +524,7 @@ fun QuranScreen(
 
                 // Verses List with Shimmer Skeletons
                 AnimatedContent(
-                    targetState = verses.isEmpty(),
+                    targetState = displayVerses.isEmpty(),
                     transitionSpec = {
                         fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(150))
                     },
@@ -555,13 +546,13 @@ fun QuranScreen(
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(4) {
+                            items(4, contentType = { "verse_skeleton" }) {
                                 VerseCardSkeleton(
                                     isNightMode = isNightReadingMode,
                                     shimmerAlpha = shimmerAlpha
                                 )
                             }
-                            item {
+                            item(contentType = "reader_spacer") {
                                 Spacer(modifier = Modifier.height(140.dp))
                             }
                         }
@@ -576,18 +567,30 @@ fun QuranScreen(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
-                                if (readerLayout.bismillahHeader != null) {
-                                    item(key = "bismillah_header_${selectedSurah.number}") {
-                                        val bismillahVerse = readerLayout.bismillahHeader
+                                if (selectedSurah.number != 9 && displayVerses.none { it.verseNumber == 0 }) {
+                                    item(
+                                        key = "bismillah_header_${selectedSurah.number}",
+                                        contentType = "bismillah_header"
+                                    ) {
+                                        val bismillahVerse = remember(selectedSurah.number) {
+                                            com.example.data.util.QuranData.getSurahBismillah(selectedSurah.number) ?: Verse(
+                                                surahNumber = selectedSurah.number,
+                                                verseNumber = 0,
+                                                textArabic = com.example.data.util.QuranData.BISMILLAH_ARABIC,
+                                                textEnglish = com.example.data.util.QuranData.BISMILLAH_ENGLISH,
+                                                audioUrl = com.example.data.util.QuranData.BISMILLAH_AUDIO_URL,
+                                                verseKey = "${selectedSurah.number}:0"
+                                            )
+                                        }
                                         val isBismillahBookmarked = bookmarkedKeys.contains("${bismillahVerse.surahNumber}_${bismillahVerse.verseNumber}")
-                                        val isBismillahActive = (playingSurahNumber == selectedSurah.number) &&
-                                                (playingVerseNumber == bismillahVerse.verseNumber || (selectedSurah.number == 1 && playingVerseNumber == 1) || playingVerseNumber == 0)
+                                        val isBismillahActive = (playingSurahNumber == bismillahVerse.surahNumber) && (playingVerseNumber == bismillahVerse.verseNumber)
 
                                         BismillahHeader(
                                             verse = bismillahVerse,
                                             fontSizeSp = fontSizeSp,
                                             showTranslation = showEnglishTranslation,
                                             isPlaying = isBismillahActive && isPlayingAudio,
+                                            isLoading = isBismillahActive && isLoadingAudio,
                                             isBookmarked = isBismillahBookmarked,
                                             isVerseActive = isBismillahActive,
                                             onPlayAudio = { onPlayVerseAudio(bismillahVerse) },
@@ -601,7 +604,11 @@ fun QuranScreen(
                                     }
                                 }
 
-                                items(readerLayout.flowVerses, key = { it.verseKey }) { verse ->
+                                items(
+                                    items = displayVerses,
+                                    key = { it.verseKey },
+                                    contentType = { "verse_card" }
+                                ) { verse ->
                                     val isBookmarked = bookmarkedKeys.contains("${verse.surahNumber}_${verse.verseNumber}")
                                     val isVerseActive = (playingSurahNumber == verse.surahNumber) && (playingVerseNumber == verse.verseNumber)
 
@@ -612,6 +619,7 @@ fun QuranScreen(
                                         isNightMode = isNightReadingMode,
                                         isVerseActive = isVerseActive,
                                         isPlaying = isVerseActive && isPlayingAudio,
+                                        isLoading = isVerseActive && isLoadingAudio,
                                         isBookmarked = isBookmarked,
                                         onPlayAudio = { onPlayVerseAudio(verse) },
                                         onToggleBookmark = { onToggleBookmark(verse, isBookmarked) },
@@ -623,7 +631,10 @@ fun QuranScreen(
                                     )
                                 }
 
-                                item {
+                                item(
+                                    key = "reader_bottom_spacer",
+                                    contentType = "reader_spacer"
+                                ) {
                                     Spacer(modifier = Modifier.height(180.dp))
                                 }
                             }
@@ -806,7 +817,11 @@ fun QuranScreen(
                             }
                         }
 
-                        items(filteredSurahs, key = { it.number }) { surah ->
+                        items(
+                            items = filteredSurahs,
+                            key = { it.number },
+                            contentType = { "surah_list_item" }
+                        ) { surah ->
                             val isPlayingThisSurah = playingSurahNumber == surah.number
                             val isLastReadSurah = playingSurahNumber == null && lastReadPosition?.surahNumber == surah.number
                             val isCurrent = isPlayingThisSurah || isLastReadSurah
@@ -865,7 +880,11 @@ fun QuranScreen(
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            items(bookmarks, key = { "${it.surahNumber}_${it.verseNumber}" }) { bookmark ->
+                            items(
+                                items = bookmarks,
+                                key = { "${it.surahNumber}_${it.verseNumber}" },
+                                contentType = { "bookmark_list_item" }
+                            ) { bookmark ->
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -1467,6 +1486,49 @@ fun SurahQuickActionSheet(
     }
 }
 
+@Composable
+private fun ReadingProgressBar(
+    listState: LazyListState,
+    modifier: Modifier = Modifier
+) {
+    val accent = Color.semanticPrimaryAccent
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp, bottom = 4.dp)
+            .height(2.dp)
+            .clip(RoundedCornerShape(1.dp))
+            .background(Color.semanticBorder.copy(alpha = 0.3f))
+            .drawWithContent {
+                val layoutInfo = listState.layoutInfo
+                val totalItems = layoutInfo.totalItemsCount
+                val progress = if (totalItems <= 1) {
+                    0f
+                } else {
+                    val visibleItems = layoutInfo.visibleItemsInfo
+                    if (visibleItems.isEmpty()) {
+                        0f
+                    } else {
+                        val firstVisible = visibleItems.first()
+                        val firstIndex = firstVisible.index
+                        val itemSize = firstVisible.size
+                        val offset = if (itemSize > 0) listState.firstVisibleItemScrollOffset.toFloat() / itemSize else 0f
+                        val exactIndex = firstIndex + offset
+                        val maxIndex = (totalItems - 1).coerceAtLeast(1).toFloat()
+                        (exactIndex / maxIndex).coerceIn(0f, 1f)
+                    }
+                }
+                if (progress > 0f) {
+                    drawRoundRect(
+                        color = accent,
+                        size = Size(width = size.width * progress, height = size.height),
+                        cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx())
+                    )
+                }
+            }
+    )
+}
+
 private fun Int.toArabicIndicDigits(): String {
     val arabicIndicDigits = charArrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
     val str = this.toString()
@@ -1521,6 +1583,7 @@ fun BismillahHeader(
     fontSizeSp: Float,
     showTranslation: Boolean,
     isPlaying: Boolean,
+    isLoading: Boolean = false,
     isBookmarked: Boolean,
     isVerseActive: Boolean,
     onPlayAudio: () -> Unit,
@@ -1530,10 +1593,11 @@ fun BismillahHeader(
     modifier: Modifier = Modifier
 ) {
     val isDark = isAppInDarkTheme()
-    val accent = if (isDark) Color(0xFF494556) else Color(0xFF8D6B1E)
+    val accent = Color.semanticPrimaryAccent
     val textPrimary = Color.semanticPrimaryText
     val isReducedMotion = rememberIsReducedMotion()
 
+    // 8. Subtle first-appearance animation in the current reading session
     val hasBeenSeen = rememberSaveable(verse.verseKey) { mutableStateOf(false) }
     val animProgress = remember { Animatable(if (isReducedMotion || hasBeenSeen.value) 1f else 0f) }
 
@@ -1549,7 +1613,7 @@ fun BismillahHeader(
         }
     }
 
-    val motionModifier = if (isReducedMotion || (hasBeenSeen.value && animProgress.value == 1f)) {
+    val motionModifier = if (isReducedMotion) {
         Modifier
     } else {
         Modifier.graphicsLayer {
@@ -1571,7 +1635,7 @@ fun BismillahHeader(
             .clip(RoundedCornerShape(14.dp))
             .drawBehind {
                 if (activeAlpha > 0.005f) {
-                    val bgTint = if (isDark) Color(0xFF494556).copy(alpha = 0.20f * activeAlpha) else Color(0xFF8D6B1E).copy(alpha = 0.10f * activeAlpha)
+                    val bgTint = accent.copy(alpha = (if (isDark) 0.14f else 0.10f) * activeAlpha)
                     drawRoundRect(
                         color = bgTint,
                         cornerRadius = CornerRadius(14.dp.toPx(), 14.dp.toPx())
@@ -1579,38 +1643,38 @@ fun BismillahHeader(
                     val barWidth = 3.5.dp.toPx()
                     val barMargin = 8.dp.toPx()
                     drawRoundRect(
-                        color = (if (isDark) Color(0xFFE2E0EC) else Color(0xFF8D6B1E)).copy(alpha = activeAlpha * 0.95f),
+                        color = accent.copy(alpha = activeAlpha * 0.95f),
                         topLeft = Offset(4.dp.toPx(), barMargin),
                         size = Size(barWidth, (size.height - barMargin * 2).coerceAtLeast(0f)),
                         cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
                     )
                 }
             }
-            .padding(top = 20.dp, bottom = 24.dp, start = if (isVerseActive) 14.dp else 12.dp, end = 12.dp)
+            .padding(top = 16.dp, bottom = 20.dp, start = if (isVerseActive) 14.dp else 8.dp, end = 8.dp)
             .combinedClickable(
                 onClick = { onOpenLens?.invoke() },
                 onLongClick = onLongClick
             ),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Ceremonial divider ABOVE Bismillah (tapered gradient line with diamond accent)
+        // 4. Subtle tapered divider ABOVE Bismillah (approx 1px, 48% screen width, faded edges, tiny diamond)
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.50f)
-                .height(18.dp),
+                .fillMaxWidth(0.48f)
+                .height(16.dp),
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.fillMaxWidth().height(1.dp)) {
                 val brush = Brush.horizontalGradient(
                     colors = listOf(
                         Color.Transparent,
-                        (if (isDark) Color(0xFF8B859D) else Color(0xFF8D6B1E)).copy(alpha = if (isDark) 0.5f else 0.45f),
+                        accent.copy(alpha = if (isDark) 0.6f else 0.5f),
                         Color.Transparent
                     )
                 )
                 drawRect(brush = brush)
             }
-            Canvas(modifier = Modifier.size(6.dp)) {
+            Canvas(modifier = Modifier.size(5.dp)) {
                 val path = Path().apply {
                     moveTo(size.width / 2f, 0f)
                     lineTo(size.width, size.height / 2f)
@@ -1618,16 +1682,16 @@ fun BismillahHeader(
                     lineTo(0f, size.height / 2f)
                     close()
                 }
-                drawPath(path = path, color = if (isDark) Color(0xFFB0ACC0) else Color(0xFF8D6B1E))
+                drawPath(path = path, color = accent.copy(alpha = if (isDark) 0.8f else 0.7f))
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(18.dp))
 
-        // Prominent Arabic Bismillah text centered
+        // Dominant Arabic Bismillah text centered, large, prominent
         ArabicText(
             text = verse.textArabic,
-            fontSize = (fontSizeSp * 1.10f).sp,
+            fontSize = (fontSizeSp * 1.06f).sp,
             color = textPrimary,
             textAlign = TextAlign.Center,
             modifier = Modifier
@@ -1635,13 +1699,13 @@ fun BismillahHeader(
                 .padding(horizontal = 16.dp)
         )
 
-        // Translation centered below it if enabled
+        // Translation centered if enabled
         if (showTranslation && verse.textEnglish.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = verse.textEnglish,
                 style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 14.5.sp,
+                    fontSize = 14.sp,
                     lineHeight = 22.sp,
                     letterSpacing = 0.2.sp
                 ),
@@ -1655,12 +1719,12 @@ fun BismillahHeader(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Action Icons Hierarchy (Play, Lens/Search, Bookmark)
+        // 2. Action Icons Hierarchy
         Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Play Button
+            // Play (Prioritized with subtle circular accent background)
             Box(
                 modifier = Modifier
                     .size(48.dp)
@@ -1669,33 +1733,41 @@ fun BismillahHeader(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(34.dp)
+                        .size(30.dp)
                         .clip(CircleShape)
                         .background(
                             if (isPlaying) accent
-                            else if (isDark) Color(0xFF24222C) else accent.copy(alpha = 0.12f)
+                            else accent.copy(alpha = if (isDark) 0.18f else 0.12f)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    AnimatedContent(
-                        targetState = isPlaying,
-                        transitionSpec = {
-                            fadeIn(animationSpec = tween(180)) togetherWith
-                                    fadeOut(animationSpec = tween(140))
-                        },
-                        label = "bismillahPlayPauseAnim"
-                    ) { activePlaying ->
-                        Icon(
-                            imageVector = if (activePlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = if (activePlaying) "Pause Audio" else "Play Audio",
-                            tint = if (activePlaying) Color.White else textPrimary.copy(alpha = 0.75f),
-                            modifier = Modifier.size(18.dp)
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(15.dp),
+                            color = if (isPlaying) Color.White else accent,
+                            strokeWidth = 2.dp
                         )
+                    } else {
+                        AnimatedContent(
+                            targetState = isPlaying,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(180)) togetherWith
+                                        fadeOut(animationSpec = tween(140))
+                            },
+                            label = "bismillahPlayPauseAnim"
+                        ) { activePlaying ->
+                            Icon(
+                                imageVector = if (activePlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                contentDescription = if (activePlaying) "Pause Audio" else "Play Audio",
+                                tint = if (activePlaying) Color.White else accent,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            // Lens / Search Button
+            // Lens / Search (Subtle, 50-60% opacity)
             if (onOpenLens != null) {
                 Box(
                     modifier = Modifier
@@ -1707,12 +1779,12 @@ fun BismillahHeader(
                         imageVector = Icons.Outlined.Search,
                         contentDescription = "Quran Lens",
                         tint = textPrimary.copy(alpha = 0.55f),
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
-            // Bookmark Button
+            // Bookmark (Accurate state)
             Box(
                 modifier = Modifier
                     .size(48.dp)
@@ -1731,24 +1803,24 @@ fun BismillahHeader(
                         imageVector = if (activeBookmarked) Icons.Filled.Bookmark else Icons.Outlined.BookmarkBorder,
                         contentDescription = if (activeBookmarked) "Remove Bookmark" else "Bookmark",
                         tint = if (activeBookmarked) accent else textPrimary.copy(alpha = 0.55f),
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        // Ceremonial bottom separator line (tapered divider)
+        // Subtle bottom separator line
         Box(
             modifier = Modifier
-                .fillMaxWidth(0.38f)
+                .fillMaxWidth(0.35f)
                 .height(1.dp)
                 .background(
                     Brush.horizontalGradient(
                         colors = listOf(
                             Color.Transparent,
-                            (if (isDark) Color(0xFF8B859D) else Color(0xFF8D6B1E)).copy(alpha = if (isDark) 0.35f else 0.35f),
+                            Color.semanticBorder.copy(alpha = if (isDark) 0.35f else 0.45f),
                             Color.Transparent
                         )
                     )
@@ -1766,6 +1838,7 @@ fun VerseCard(
     isNightMode: Boolean,
     isVerseActive: Boolean,
     isPlaying: Boolean,
+    isLoading: Boolean = false,
     isBookmarked: Boolean,
     onPlayAudio: () -> Unit,
     onToggleBookmark: () -> Unit,
@@ -1794,7 +1867,7 @@ fun VerseCard(
         }
     }
 
-    val motionModifier = if (isReducedMotion || (hasBeenSeen.value && animProgress.value == 1f)) {
+    val motionModifier = if (isReducedMotion) {
         Modifier
     } else {
         Modifier.graphicsLayer {
@@ -1868,20 +1941,28 @@ fun VerseCard(
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        AnimatedContent(
-                            targetState = isPlaying,
-                            transitionSpec = {
-                                fadeIn(animationSpec = tween(180)) togetherWith
-                                        fadeOut(animationSpec = tween(140))
-                            },
-                            label = "versePlayPauseAnim"
-                        ) { activePlaying ->
-                            Icon(
-                                imageVector = if (activePlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = if (activePlaying) "Pause Audio" else "Play Audio",
-                                tint = if (activePlaying) Color.White else accent,
-                                modifier = Modifier.size(17.dp)
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(15.dp),
+                                color = if (isPlaying) Color.White else accent,
+                                strokeWidth = 2.dp
                             )
+                        } else {
+                            AnimatedContent(
+                                targetState = isPlaying,
+                                transitionSpec = {
+                                    fadeIn(animationSpec = tween(180)) togetherWith
+                                            fadeOut(animationSpec = tween(140))
+                                },
+                                label = "versePlayPauseAnim"
+                            ) { activePlaying ->
+                                Icon(
+                                    imageVector = if (activePlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                                    contentDescription = if (activePlaying) "Pause Audio" else "Play Audio",
+                                    tint = if (activePlaying) Color.White else accent,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
                         }
                     }
                 }

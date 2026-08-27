@@ -205,48 +205,18 @@ object QuranData {
     /**
      * Standalone Surah-level Bismillah metadata.
      * Returns null for Surah At-Tawbah (9).
-     * For Surah Al-Fatihah (1), returns the Bismillah header entity with verseNumber = 1 and verseKey = "1:1".
      * For Surahs 2..114, returns the Bismillah header entity with verseNumber = 0 and verseKey = "$surahNumber:0".
      */
     fun getSurahBismillah(surahNumber: Int): Verse? {
         if (surahNumber == 9) return null
-        val verseNum = if (surahNumber == 1) 1 else 0
         return Verse(
             surahNumber = surahNumber,
-            verseNumber = verseNum,
+            verseNumber = 0,
             textArabic = BISMILLAH_ARABIC,
             textEnglish = BISMILLAH_ENGLISH,
             audioUrl = BISMILLAH_AUDIO_URL,
-            verseKey = "$surahNumber:$verseNum"
+            verseKey = "$surahNumber:0"
         )
-    }
-
-    data class SurahReaderLayout(
-        val bismillahHeader: Verse?,
-        val flowVerses: List<Verse>
-    )
-
-    fun getSurahReaderLayout(surahNumber: Int, verses: List<Verse>): SurahReaderLayout {
-        if (surahNumber == 9) {
-            return SurahReaderLayout(bismillahHeader = null, flowVerses = verses)
-        }
-        val firstVerse = verses.firstOrNull()
-        val isFirstVerseBismillah = firstVerse != null && firstVerse.verseNumber == 1 &&
-            (firstVerse.textArabic.contains("بِسْمِ ٱللَّهِ") || firstVerse.textEnglish.startsWith("In the name of Allah", ignoreCase = true))
-
-        val bismillah = if (isFirstVerseBismillah) {
-            firstVerse
-        } else {
-            getSurahBismillah(surahNumber)
-        }
-
-        val flowVerses = if (isFirstVerseBismillah) {
-            verses.drop(1)
-        } else {
-            verses
-        }
-
-        return SurahReaderLayout(bismillahHeader = bismillah, flowVerses = flowVerses)
     }
 
     private data class ParsedQuranData(
@@ -503,7 +473,20 @@ object QuranData {
     }
 
     fun getQuranLensInfoForVerse(context: Context, surahNumber: Int, verseNumber: Int): com.example.data.model.QuranLensInfo {
-        val verse = getVerse(context, surahNumber, verseNumber)
+        val verse = if (surahNumber == 1) {
+            if (verseNumber == 0) {
+                getSurahBismillah(1)
+            } else if (verseNumber in 1..6) {
+                val raw = getVerse(context, 1, verseNumber + 1)
+                raw?.copy(verseNumber = verseNumber, verseKey = "1:$verseNumber")
+            } else {
+                getVerse(context, surahNumber, verseNumber)
+            }
+        } else if (verseNumber == 0) {
+            getSurahBismillah(surahNumber)
+        } else {
+            getVerse(context, surahNumber, verseNumber)
+        }
         val surah = SURAHS_DIRECTORY.find { it.number == surahNumber }
 
         if (verse == null) {

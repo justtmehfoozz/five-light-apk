@@ -288,6 +288,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
 
     // Audio Playback State
     private var mediaPlayer: MediaPlayer? = null
+    private var activePlaybackJob: kotlinx.coroutines.Job? = null
+    private var activePlaybackSessionId: Long = 0L
     private val _playingSurahNumber = MutableStateFlow<Int?>(null)
     val playingSurahNumber: StateFlow<Int?> = _playingSurahNumber.asStateFlow()
 
@@ -299,6 +301,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
 
     private val _isPlayingAudio = MutableStateFlow(false)
     val isPlayingAudio: StateFlow<Boolean> = _isPlayingAudio.asStateFlow()
+
+    private val _isLoadingAudio = MutableStateFlow(false)
+    val isLoadingAudio: StateFlow<Boolean> = _isLoadingAudio.asStateFlow()
 
     private val _audioProgress = MutableStateFlow(0f)
     val audioProgress: StateFlow<Float> = _audioProgress.asStateFlow()
@@ -438,13 +443,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
 
     fun playSurah(surah: Surah) {
         selectSurah(surah)
-        viewModelScope.launch(Dispatchers.IO) {
-            val verses = QuranData.getVersesForSurah(getApplication(), surah.number)
-            val firstVerseNum = verses.minOfOrNull { it.verseNumber } ?: 1
-            withContext(Dispatchers.Main) {
-                playVerseByNumber(surah.number, firstVerseNum)
-            }
-        }
+        val firstVerseNum = if (surah.number != 9) 0 else 1
+        playVerseByNumber(surah.number, firstVerseNum)
     }
 
     fun getQuranLensInfo(context: Context, surahNumber: Int, verseNumber: Int): com.example.data.model.QuranLensInfo {
@@ -1051,6 +1051,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         _playbackError.value = null
     }
 
+    private fun releaseCurrentMediaPlayer() {
+        activePlaybackJob?.cancel()
+        activePlaybackJob = null
+        progressJob?.cancel()
+        progressJob = null
+        mediaPlayer?.let { player ->
+            try {
+                player.setOnPreparedListener(null)
+                player.setOnCompletionListener(null)
+                player.setOnErrorListener(null)
+                if (player.isPlaying) {
+                    player.stop()
+                }
+                player.reset()
+                player.release()
+            } catch (_: Exception) {}
+        }
+        mediaPlayer = null
+    }
+
     fun playVerseAudio(verse: Verse) {
         if (_playingSurahNumber.value == verse.surahNumber && _playingVerseNumber.value == verse.verseNumber) {
             if (_isPlayingAudio.value) {
@@ -1076,23 +1096,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
     }
 
     private fun reloadAndPlayVerse(verse: Verse) {
+        releaseCurrentMediaPlayer()
+        val currentSessionId = ++activePlaybackSessionId
+
         _playingSurahNumber.value = verse.surahNumber
         _playingVerseNumber.value = verse.verseNumber
         _playingVerse.value = verse
         _audioProgress.value = 0f
         _playbackError.value = null
+        _isPlayingAudio.value = false
 
         val surahProg = computeCurrentSurahProgress(verse.surahNumber, verse.verseNumber, 0f)
         updateSurahProgress(verse.surahNumber, surahProg)
 
-        progressJob?.cancel()
-        try {
-            mediaPlayer?.reset()
-            mediaPlayer?.release()
-        } catch (_: Exception) {}
-        mediaPlayer = null
-
-        viewModelScope.launch(Dispatchers.IO) {
+        activePlaybackJob = viewModelScope.launch(Dispatchers.IO) {
             val appCtx = getApplication<Application>()
             val cachedFile = QuranAudioRepository.getVerseAudioFile(appCtx, verse.surahNumber, verse.verseNumber)
             val isLocalAvailable = cachedFile.exists() && cachedFile.length() > 0
@@ -1100,11 +1117,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
 
             if (!isLocalAvailable && !isNetworkOk) {
                 withContext(Dispatchers.Main) {
-                    stopAudio()
-                    val surahName = QuranData.SURAHS_DIRECTORY.find { it.number == verse.surahNumber }?.nameEnglish ?: "Surah ${verse.surahNumber}"
-                    val msg = "Download required for offline playback. Connect to internet or download $surahName."
-                    _playbackError.value = msg
-                    android.widget.Toast.makeText(appCtx, msg, android.widget.Toast.LENGTH_LONG).show()
+                    if (activePlaybackSessionId == currentSessionId) {
+                        stopAudio()
+                        val surahName = QuranData.SURAHS_DIRECTORY.find { it.number == verse.surahNumber }?.nameEnglish ?: "Surah ${verse.surahNumber}"
+                        val msg = "Download required for offline playback. Connect to internet or download $surahName."
+                        _playbackError.value = msg
+                        android.widget.Toast.makeText(appCtx, msg, android.widget.Toast.LENGTH_LONG).show()
+                    }
                 }
                 return@launch
             }
@@ -1120,101 +1139,189 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
                 }
             }
 
+            if (!isActive || activePlaybackSessionId != currentSessionId) {
+                return@launch
+            }
+
+            var tempPlayer: MediaPlayer? = null
             try {
-                val mp = MediaPlayer()
-                mp.setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .setUsage(AudioAttributes.USAGE_MEDIA)
-                        .build()
-                )
-                mp.setDataSource(sourcePathOrUrl)
+                val mp = MediaPlayer().apply {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .build()
+                    )
+                    setDataSource(sourcePathOrUrl)
+                }
+                tempPlayer = mp
 
                 withContext(Dispatchers.Main) {
-                    mediaPlayer = mp
-                    mp.prepareAsync()
-                    mp.setOnPreparedListener {
-                        it.start()
-                        _isPlayingAudio.value = true
-                        startProgressTracker()
+                    if (!isActive || activePlaybackSessionId != currentSessionId) {
+                        try {
+                            mp.reset()
+                            mp.release()
+                        } catch (_: Exception) {}
+                        return@withContext
                     }
-                    mp.setOnCompletionListener {
-                        _audioProgress.value = 0f
-                        val nextVerseNum = verse.verseNumber + 1
-                        val totalVerses = QuranData.SURAHS_DIRECTORY.find { it.number == verse.surahNumber }?.versesCount ?: 1
-                        if (nextVerseNum > totalVerses) {
-                            updateSurahProgress(verse.surahNumber, 1.0f)
-                            stopAudio()
+
+                    // Release any previous player instance before setting the new one
+                    mediaPlayer?.let { old ->
+                        try {
+                            old.setOnPreparedListener(null)
+                            old.setOnCompletionListener(null)
+                            old.setOnErrorListener(null)
+                            old.reset()
+                            old.release()
+                        } catch (_: Exception) {}
+                    }
+
+                    mediaPlayer = mp
+
+                    mp.setOnPreparedListener { preparedMp ->
+                        if (activePlaybackSessionId == currentSessionId && mediaPlayer == preparedMp) {
+                            try {
+                                preparedMp.start()
+                                _isLoadingAudio.value = false
+                                _isPlayingAudio.value = true
+                                startProgressTracker()
+                            } catch (e: Exception) {
+                                _isLoadingAudio.value = false
+                                stopAudio()
+                            }
                         } else {
-                            playVerseByNumber(verse.surahNumber, nextVerseNum)
+                            try {
+                                preparedMp.reset()
+                                preparedMp.release()
+                            } catch (_: Exception) {}
                         }
                     }
-                    mp.setOnErrorListener { player, _, _ ->
+
+                    mp.setOnCompletionListener { completedMp ->
+                        if (activePlaybackSessionId == currentSessionId && mediaPlayer == completedMp) {
+                            _audioProgress.value = 0f
+                            val nextVerseNum = verse.verseNumber + 1
+                            val totalVerses = if (verse.surahNumber == 1) 6 else (QuranData.SURAHS_DIRECTORY.find { it.number == verse.surahNumber }?.versesCount ?: 1)
+                            if (nextVerseNum > totalVerses) {
+                                updateSurahProgress(verse.surahNumber, 1.0f)
+                                stopAudio()
+                            } else {
+                                playVerseByNumber(verse.surahNumber, nextVerseNum)
+                            }
+                        } else {
+                            try {
+                                completedMp.reset()
+                                completedMp.release()
+                            } catch (_: Exception) {}
+                        }
+                    }
+
+                    mp.setOnErrorListener { errorMp, _, _ ->
                         try {
-                            player.reset()
-                            player.release()
+                            errorMp.reset()
+                            errorMp.release()
                         } catch (_: Exception) {}
-                        if (mediaPlayer == player) {
+
+                        if (activePlaybackSessionId == currentSessionId && mediaPlayer == errorMp) {
                             mediaPlayer = null
+                            _isLoadingAudio.value = false
                             _isPlayingAudio.value = false
                             _playingSurahNumber.value = null
                             _playingVerseNumber.value = null
                             _playingVerse.value = null
                             _audioProgress.value = 0f
                             progressJob?.cancel()
-                        }
 
+                            val surahName = QuranData.SURAHS_DIRECTORY.find { it.number == verse.surahNumber }?.nameEnglish ?: "Surah ${verse.surahNumber}"
+                            val errMsg = if (!NetworkUtils.isNetworkAvailable(appCtx)) {
+                                "Download required for offline playback. Connect to internet or download $surahName."
+                            } else {
+                                "Unable to play recitation for $surahName. Check connection."
+                            }
+                            _playbackError.value = errMsg
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                android.widget.Toast.makeText(appCtx, errMsg, android.widget.Toast.LENGTH_LONG).show()
+                            }
+                        }
+                        true
+                    }
+
+                    mp.prepareAsync()
+                }
+            } catch (e: Exception) {
+                tempPlayer?.let {
+                    try {
+                        it.reset()
+                        it.release()
+                    } catch (_: Exception) {}
+                }
+                withContext(Dispatchers.Main) {
+                    if (activePlaybackSessionId == currentSessionId) {
+                        stopAudio()
                         val surahName = QuranData.SURAHS_DIRECTORY.find { it.number == verse.surahNumber }?.nameEnglish ?: "Surah ${verse.surahNumber}"
                         val errMsg = if (!NetworkUtils.isNetworkAvailable(appCtx)) {
                             "Download required for offline playback. Connect to internet or download $surahName."
                         } else {
-                            "Unable to play recitation for $surahName. Check connection."
+                            "Unable to play recitation for $surahName."
                         }
                         _playbackError.value = errMsg
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            android.widget.Toast.makeText(appCtx, errMsg, android.widget.Toast.LENGTH_LONG).show()
-                        }
-                        true
+                        android.widget.Toast.makeText(appCtx, errMsg, android.widget.Toast.LENGTH_LONG).show()
                     }
-                }
-            } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    stopAudio()
-                    val surahName = QuranData.SURAHS_DIRECTORY.find { it.number == verse.surahNumber }?.nameEnglish ?: "Surah ${verse.surahNumber}"
-                    val errMsg = if (!NetworkUtils.isNetworkAvailable(appCtx)) {
-                        "Download required for offline playback. Connect to internet or download $surahName."
-                    } else {
-                        "Unable to play recitation for $surahName."
-                    }
-                    _playbackError.value = errMsg
-                    android.widget.Toast.makeText(appCtx, errMsg, android.widget.Toast.LENGTH_LONG).show()
                 }
             }
         }
     }
 
     private fun playVerseByNumber(surahNumber: Int, verseNumber: Int) {
+        releaseCurrentMediaPlayer()
+        val currentSessionId = ++activePlaybackSessionId
+
         _playingSurahNumber.value = surahNumber
         _playingVerseNumber.value = verseNumber
         _audioProgress.value = 0f
+        _isPlayingAudio.value = false
+        _isLoadingAudio.value = true
 
         val initialSurahProg = computeCurrentSurahProgress(surahNumber, verseNumber, 0f)
         updateSurahProgress(surahNumber, initialSurahProg)
 
-        viewModelScope.launch(Dispatchers.IO) {
-            val currentVerses = if (_selectedSurah.value?.number == surahNumber && _surahVerses.value.isNotEmpty()) {
-                _surahVerses.value
-            } else {
-                QuranData.getVersesForSurah(getApplication(), surahNumber)
-            }
-            val nextVerse = currentVerses.find { it.verseNumber == verseNumber }
-            withContext(Dispatchers.Main) {
-                if (nextVerse != null) {
-                    reloadAndPlayVerse(nextVerse)
+        activePlaybackJob = viewModelScope.launch(Dispatchers.IO) {
+            val nextVerse: Verse? = if (surahNumber == 1) {
+                if (verseNumber == 0) {
+                    QuranData.getSurahBismillah(1)
+                } else if (verseNumber in 1..6) {
+                    val rawVerses = QuranData.getVersesForSurah(getApplication(), 1)
+                    if (rawVerses.size >= 7 && verseNumber < rawVerses.size) {
+                        val raw = rawVerses[verseNumber]
+                        raw.copy(verseNumber = verseNumber, verseKey = "1:$verseNumber")
+                    } else {
+                        null
+                    }
                 } else {
-                    // Reached end of surah
-                    updateSurahProgress(surahNumber, 1.0f)
-                    stopAudio()
+                    null
+                }
+            } else {
+                val currentVerses = if (_selectedSurah.value?.number == surahNumber && _surahVerses.value.isNotEmpty()) {
+                    _surahVerses.value
+                } else {
+                    QuranData.getVersesForSurah(getApplication(), surahNumber)
+                }
+                if (verseNumber == 0) {
+                    QuranData.getSurahBismillah(surahNumber)
+                } else {
+                    currentVerses.find { it.verseNumber == verseNumber }
+                }
+            }
+
+            withContext(Dispatchers.Main) {
+                if (activePlaybackSessionId == currentSessionId) {
+                    if (nextVerse != null) {
+                        reloadAndPlayVerse(nextVerse)
+                    } else {
+                        // Reached end of surah
+                        updateSurahProgress(surahNumber, 1.0f)
+                        stopAudio()
+                    }
                 }
             }
         }
@@ -1226,12 +1333,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         } else {
             val mp = mediaPlayer
             if (mp != null) {
-                mp.start()
-                _isPlayingAudio.value = true
-                startProgressTracker()
+                try {
+                    mp.start()
+                    _isPlayingAudio.value = true
+                    startProgressTracker()
+                } catch (e: Exception) {
+                    val sNum = _playingSurahNumber.value ?: _selectedSurah.value?.number ?: 1
+                    val minV = if (sNum != 9) 0 else 1
+                    val vNum = _playingVerseNumber.value ?: minV
+                    playVerseByNumber(sNum, vNum)
+                }
             } else {
                 val sNum = _playingSurahNumber.value ?: _selectedSurah.value?.number ?: 1
-                val minV = _surahVerses.value.firstOrNull()?.verseNumber ?: 1
+                val minV = if (sNum != 9) 0 else 1
                 val vNum = _playingVerseNumber.value ?: minV
                 playVerseByNumber(sNum, vNum)
             }
@@ -1240,18 +1354,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
 
     fun playNextVerseAudio() {
         val sNum = _playingSurahNumber.value ?: _selectedSurah.value?.number ?: 1
-        val minV = _surahVerses.value.firstOrNull()?.verseNumber ?: 1
-        val currentV = _playingVerseNumber.value ?: minV
+        val maxV = if (sNum == 1) 6 else (QuranData.SURAHS_DIRECTORY.find { it.number == sNum }?.versesCount ?: _surahVerses.value.size)
+        val currentV = _playingVerseNumber.value ?: 0
         val nextV = currentV + 1
-        _playingSurahNumber.value = sNum
-        _playingVerseNumber.value = nextV
-        _audioProgress.value = 0f
-        playVerseByNumber(sNum, nextV)
+        if (nextV <= maxV) {
+            playVerseByNumber(sNum, nextV)
+        } else {
+            updateSurahProgress(sNum, 1.0f)
+            stopAudio()
+        }
     }
 
     fun playPreviousVerseAudio() {
         val sNum = _playingSurahNumber.value ?: _selectedSurah.value?.number ?: 1
-        val minV = _surahVerses.value.firstOrNull()?.verseNumber ?: 0
+        val minV = if (sNum != 9) 0 else 1
         val currentV = _playingVerseNumber.value ?: minV
         val now = System.currentTimeMillis()
         val currentPos = try { mediaPlayer?.currentPosition ?: 0 } catch (e: Exception) { 0 }
@@ -1268,9 +1384,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
             }
         } else {
             val prevV = (currentV - 1).coerceAtLeast(minV)
-            _playingSurahNumber.value = sNum
-            _playingVerseNumber.value = prevV
-            _audioProgress.value = 0f
             playVerseByNumber(sNum, prevV)
         }
         lastPreviousTapTime = now
@@ -1284,22 +1397,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
                 }
             }
         } catch (e: Exception) { }
+        _isLoadingAudio.value = false
         _isPlayingAudio.value = false
         progressJob?.cancel()
     }
 
     fun stopAudio() {
-        try {
-            mediaPlayer?.reset()
-            mediaPlayer?.release()
-        } catch (e: Exception) { }
-        mediaPlayer = null
+        releaseCurrentMediaPlayer()
+        ++activePlaybackSessionId
+        _isLoadingAudio.value = false
         _isPlayingAudio.value = false
         _playingSurahNumber.value = null
         _playingVerseNumber.value = null
         _playingVerse.value = null
         _audioProgress.value = 0f
-        progressJob?.cancel()
     }
 
     fun seekAudioTo(progressFraction: Float) {
@@ -1434,7 +1545,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         super.onCleared()
         tickerJob?.cancel()
         sensorManager?.unregisterListener(this)
-        mediaPlayer?.release()
-        mediaPlayer = null
+        releaseCurrentMediaPlayer()
     }
 }
