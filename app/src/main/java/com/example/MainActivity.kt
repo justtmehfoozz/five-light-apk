@@ -184,13 +184,15 @@ class MainActivity : ComponentActivity() {
                                 scaleY = appContentScale
                             }
                     ) {
+                    val effectivePredictiveProgress = if (showExpandedPlayerSheet || showSearchOverlay || showSettingsSheet) 0f else mainPredictiveState.progress
+
                     HorizontalPager(
                         state = pagerState,
                         userScrollEnabled = isPagerSwipeEnabled,
                         modifier = Modifier
                             .fillMaxSize()
                             .clipToBounds()
-                            .predictiveBackTransform(mainPredictiveState.progress, mainPredictiveState.swipeEdge)
+                            .predictiveBackTransform(effectivePredictiveProgress, mainPredictiveState.swipeEdge)
                             .haze(state = hazeState),
                         beyondViewportPageCount = 1
                     ) { pageIndex ->
@@ -578,6 +580,8 @@ class MainActivity : ComponentActivity() {
                             com.example.data.util.QuranData.SURAHS_DIRECTORY.find { it.number == playingSurahNumber }
                         }
                         val bookmarkedVerses by viewModel.bookmarks.collectAsStateWithLifecycle()
+                        val audioPositionMs by viewModel.audioPositionMs.collectAsStateWithLifecycle()
+                        val audioDurationMs by viewModel.audioDurationMs.collectAsStateWithLifecycle()
                         val isCurrentBookmarked = remember(playingSurahNumber, playingVerseNumber, bookmarkedVerses) {
                             val sNum = playingSurahNumber ?: 0
                             val vNum = playingVerseNumber ?: 0
@@ -591,6 +595,8 @@ class MainActivity : ComponentActivity() {
                             isPlaying = isPlayingAudio,
                             isLoading = isLoadingAudio,
                             audioProgress = audioProgress,
+                            audioPositionMs = audioPositionMs,
+                            audioDurationMs = audioDurationMs,
                             isBookmarked = isCurrentBookmarked,
                             onPlayPause = { viewModel.togglePlayPauseAudio() },
                             onSkipPrevious = { viewModel.playPreviousVerseAudio() },

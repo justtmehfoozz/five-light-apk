@@ -374,7 +374,7 @@ fun DockSearchResultsPanel(
                                             color = textPrimary
                                         )
                                         Text(
-                                            text = "${surah.englishTranslation} • ${surah.revelationPlace} (${surah.versesCount} verses)",
+                                            text = "${surah.englishTranslation} • ${surah.revelationPlace} (${if (surah.number == 1) 6 else surah.versesCount} verses)",
                                             fontSize = 12.sp,
                                             color = textSecondary,
                                             maxLines = 1,

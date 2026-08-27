@@ -108,21 +108,29 @@ fun AzaanOverlay(
         }
     }
 
+    val stopAzaanMedia = remember(mediaPlayer) {
+        {
+            try {
+                if (mediaPlayer?.isPlaying == true) {
+                    mediaPlayer.stop()
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     LaunchedEffect(activeState) {
-        mediaPlayer?.start()
+        try {
+            mediaPlayer?.start()
+        } catch (_: Exception) {}
         // Auto-stop after 3 minutes (180 seconds)
         delay(180_000L)
-        mediaPlayer?.let {
-            if (it.isPlaying) {
-                it.stop()
-            }
-        }
+        stopAzaanMedia()
     }
 
     DisposableEffect(Unit) {
         onDispose {
             try {
-                mediaPlayer?.stop()
+                stopAzaanMedia()
                 mediaPlayer?.release()
             } catch (e: Exception) {
                 // Ignore
@@ -145,7 +153,7 @@ fun AzaanOverlay(
 
     Dialog(
         onDismissRequest = {
-            mediaPlayer?.stop()
+            stopAzaanMedia()
             onDismiss()
         },
         properties = DialogProperties(
@@ -164,7 +172,7 @@ fun AzaanOverlay(
             // Close X button top right
             IconButton(
                 onClick = {
-                    mediaPlayer?.stop()
+                    stopAzaanMedia()
                     onDismiss()
                 },
                 modifier = Modifier
@@ -253,7 +261,7 @@ fun AzaanOverlay(
                 ) {
                     OutlinedButton(
                         onClick = {
-                            mediaPlayer?.stop()
+                            stopAzaanMedia()
                             onSnooze(prayerName)
                         },
                         modifier = Modifier
@@ -282,7 +290,7 @@ fun AzaanOverlay(
 
                     Button(
                         onClick = {
-                            mediaPlayer?.stop()
+                            stopAzaanMedia()
                             onDismiss()
                         },
                         modifier = Modifier

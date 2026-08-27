@@ -56,7 +56,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.RegisterPredictiveBackHandler
-import com.example.ui.components.predictiveBackChildTransform
 import com.example.ui.components.predictiveBackTransform
 import com.example.ui.components.rememberPredictiveBackState
 import com.example.data.db.DuaCategoryEntity
@@ -228,14 +227,45 @@ fun DuaLibraryScreen(
         }
     )
 
-    val isCategoryActive = activeCategory != null
-
-    Box(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .predictiveBackChildTransform(if (activeCategory != null) predictiveState.progress else 0f)
-        ) {
+    AnimatedContent(
+        targetState = activeCategory,
+        modifier = Modifier.predictiveBackTransform(predictiveState.progress, predictiveState.swipeEdge),
+        transitionSpec = {
+            if (targetState != null) {
+                // Subtle slide from right (35% offset) with soft fade-in
+                (slideInHorizontally(
+                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+                    initialOffsetX = { (it * 0.35f).toInt() }
+                ) + fadeIn(
+                    animationSpec = tween(durationMillis = 280, easing = LinearOutSlowInEasing)
+                )) togetherWith (
+                    slideOutHorizontally(
+                        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+                        targetOffsetX = { (-it * 0.20f).toInt() }
+                    ) + fadeOut(
+                        animationSpec = tween(durationMillis = 200)
+                    )
+                )
+            } else {
+                // Subtle return slide from left with fade
+                (slideInHorizontally(
+                    animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                    initialOffsetX = { (-it * 0.25f).toInt() }
+                ) + fadeIn(
+                    animationSpec = tween(durationMillis = 240, easing = LinearOutSlowInEasing)
+                )) togetherWith (
+                    slideOutHorizontally(
+                        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                        targetOffsetX = { (it * 0.35f).toInt() }
+                    ) + fadeOut(
+                        animationSpec = tween(durationMillis = 200)
+                    )
+                )
+            }
+        },
+        label = "dua_library_screen_transition"
+    ) { category ->
+        if (category == null) {
             DuaLibraryMainContent(
                 onBack = onBack,
                 onCategoryClick = { 
@@ -255,34 +285,25 @@ fun DuaLibraryScreen(
                 onFontSizeChange = { arabicFontSizeSp = it },
                 onInspectSource = { inspectedDuaForSource = it }
             )
-        }
-
-        if (activeCategory != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .predictiveBackTransform(predictiveState.progress, predictiveState.swipeEdge)
-            ) {
-                DuaCategoryDetailScreen(
-                    categoryTitle = activeCategory!!,
-                    arabicFontSizeSp = arabicFontSizeSp,
-                    onBack = { 
-                        activeCategory = null 
-                        targetDuaId = null
-                    },
-                    bookmarkedIds = bookmarkedIds,
-                    onToggleBookmark = { id ->
-                        toggleDuaBookmark(context, id)
-                        bookmarkedIds = getSavedDuaBookmarks(context)
-                    },
-                    showFontControls = showFontControls,
-                    onToggleFontControls = { showFontControls = !showFontControls },
-                    onFontSizeChange = { arabicFontSizeSp = it },
-                    onInspectSource = { inspectedDuaForSource = it },
-                    initialDuaId = targetDuaId
-                )
-            }
+        } else {
+            DuaCategoryDetailScreen(
+                categoryTitle = category,
+                arabicFontSizeSp = arabicFontSizeSp,
+                onBack = { 
+                    activeCategory = null 
+                    targetDuaId = null
+                },
+                bookmarkedIds = bookmarkedIds,
+                onToggleBookmark = { id ->
+                    toggleDuaBookmark(context, id)
+                    bookmarkedIds = getSavedDuaBookmarks(context)
+                },
+                showFontControls = showFontControls,
+                onToggleFontControls = { showFontControls = !showFontControls },
+                onFontSizeChange = { arabicFontSizeSp = it },
+                onInspectSource = { inspectedDuaForSource = it },
+                initialDuaId = targetDuaId
+            )
         }
     }
 

@@ -5,6 +5,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.snap
@@ -14,7 +15,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,8 +37,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -64,19 +62,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.Surah
@@ -93,9 +86,83 @@ import com.example.ui.theme.semanticPrimaryAccent
 import com.example.ui.theme.semanticPrimaryText
 import com.example.ui.theme.semanticSecondaryText
 import com.example.ui.theme.semanticSurface
+import com.example.ui.theme.semanticSurfaceElevated
 
 /**
- * Expandable Full Surah Audio Player Bottom Sheet (Phase 2).
+ * Format milliseconds to mm:ss or hh:mm:ss.
+ */
+private fun formatAudioTime(timeMs: Long): String {
+    if (timeMs <= 0) return "0:00"
+    val totalSeconds = timeMs / 1000
+    val seconds = totalSeconds % 60
+    val minutes = (totalSeconds / 60) % 60
+    val hours = totalSeconds / 3600
+    return if (hours > 0) {
+        String.format(java.util.Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(java.util.Locale.US, "%d:%02d", minutes, seconds)
+    }
+}
+
+/**
+ * Lightweight playback waveform indicator.
+ * Animates vertical bars only when audio is actively playing and reduced motion is off.
+ */
+@Composable
+private fun PlaybackWaveform(
+    isPlaying: Boolean,
+    isReducedMotion: Boolean,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val barHeights = if (isPlaying && !isReducedMotion) {
+        val infiniteTransition = rememberInfiniteTransition(label = "waveformAnim")
+        val b1 by infiniteTransition.animateFloat(
+            initialValue = 0.35f, targetValue = 0.95f,
+            animationSpec = infiniteRepeatable(tween(420, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "b1"
+        )
+        val b2 by infiniteTransition.animateFloat(
+            initialValue = 0.85f, targetValue = 0.25f,
+            animationSpec = infiniteRepeatable(tween(350, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "b2"
+        )
+        val b3 by infiniteTransition.animateFloat(
+            initialValue = 0.40f, targetValue = 1.00f,
+            animationSpec = infiniteRepeatable(tween(480, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "b3"
+        )
+        val b4 by infiniteTransition.animateFloat(
+            initialValue = 0.90f, targetValue = 0.30f,
+            animationSpec = infiniteRepeatable(tween(390, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "b4"
+        )
+        listOf(b1, b2, b3, b4)
+    } else if (isPlaying) {
+        listOf(0.6f, 0.4f, 0.7f, 0.5f)
+    } else {
+        listOf(0.25f, 0.25f, 0.25f, 0.25f)
+    }
+
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(2.5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        barHeights.forEach { fraction ->
+            Box(
+                modifier = Modifier
+                    .width(2.5.dp)
+                    .height((14.dp * fraction).coerceAtLeast(3.dp))
+                    .clip(CircleShape)
+                    .background(accentColor)
+            )
+        }
+    }
+}
+
+/**
+ * Expandable Full Surah Audio Player Bottom Sheet (Phase 3).
  * Synchronized with the compact player and Surah reading screen.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -107,6 +174,8 @@ fun ExpandedQuranPlayerSheet(
     isPlaying: Boolean,
     isLoading: Boolean = false,
     audioProgress: Float,
+    audioPositionMs: Long = 0L,
+    audioDurationMs: Long = 0L,
     isBookmarked: Boolean,
     onPlayPause: () -> Unit,
     onSkipPrevious: () -> Unit,
@@ -125,7 +194,7 @@ fun ExpandedQuranPlayerSheet(
     val sheetBg = Color.semanticSurface
     val haptic = LocalHapticFeedback.current
 
-    val totalVerses = surah?.versesCount ?: 1
+    val totalVerses = if (surah?.number == 1) 6 else (surah?.versesCount ?: 1)
     val displayVerseNumber = currentVerseNumber ?: verse?.verseNumber ?: 1
 
     ModalBottomSheet(
@@ -269,8 +338,10 @@ fun ExpandedQuranPlayerSheet(
                         if (isReducedMotion) {
                             fadeIn(animationSpec = snap()) togetherWith fadeOut(animationSpec = snap())
                         } else {
-                            (fadeIn(animationSpec = tween(280)) + slideInVertically(animationSpec = tween(280)) { 8 }) togetherWith
-                                    (fadeOut(animationSpec = tween(180)) + slideOutVertically(animationSpec = tween(180)) { -8 })
+                            (fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing)) +
+                                    slideInVertically(animationSpec = tween(200, easing = FastOutSlowInEasing)) { 6 }) togetherWith
+                                    (fadeOut(animationSpec = tween(150, easing = FastOutSlowInEasing)) +
+                                            slideOutVertically(animationSpec = tween(150, easing = FastOutSlowInEasing)) { -6 })
                         }
                     },
                     label = "activeVerseContentAnim"
@@ -293,19 +364,18 @@ fun ExpandedQuranPlayerSheet(
                                 )
                             }
 
-                            // Subtle active recitation indicator
+                            // Subtle active playback waveform indicator
                             Box(
                                 modifier = Modifier
-                                    .size(24.dp)
+                                    .size(width = 30.dp, height = 24.dp)
                                     .clip(CircleShape)
-                                    .background(accent.copy(alpha = if (isPlaying) 0.20f else 0.08f)),
+                                    .background(accent.copy(alpha = if (isPlaying) 0.18f else 0.08f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    imageVector = Icons.Filled.GraphicEq,
-                                    contentDescription = "Active recitation",
-                                    tint = accent,
-                                    modifier = Modifier.size(16.dp)
+                                PlaybackWaveform(
+                                    isPlaying = isPlaying,
+                                    isReducedMotion = isReducedMotion,
+                                    accentColor = accent
                                 )
                             }
                         }
@@ -347,27 +417,35 @@ fun ExpandedQuranPlayerSheet(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Reciter Info Bar
-            Row(
+            // Reciter Info Bar (Simple text-focused secondary metadata)
+            val reciterContainerBg = if (isDark) {
+                Color.semanticBorder.copy(alpha = 0.15f)
+            } else {
+                Color.semanticSurfaceElevated
+            }
+            val reciterContainerBorder = Color.semanticBorder.copy(alpha = if (isDark) 0.25f else 0.50f)
+
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color.semanticBorder.copy(alpha = if (isDark) 0.15f else 0.25f))
+                    .background(reciterContainerBg)
+                    .border(
+                        width = 1.dp,
+                        color = reciterContainerBorder,
+                        shape = RoundedCornerShape(12.dp)
+                    )
                     .padding(horizontal = 14.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Headphones,
-                    contentDescription = null,
-                    tint = accent,
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "Reciter: Mishary Rashid Alafasy",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                    color = textPrimary.copy(alpha = 0.85f)
+                    text = "Reciter • Mishary Rashid Alafasy",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.Medium,
+                        letterSpacing = 0.4.sp
+                    ),
+                    color = textSecondary.copy(alpha = 0.85f),
+                    textAlign = TextAlign.Center
                 )
             }
 
@@ -377,8 +455,16 @@ fun ExpandedQuranPlayerSheet(
             var isDraggingProgress by remember { mutableStateOf(false) }
             var dragProgressFraction by remember { mutableFloatStateOf(0f) }
             val currentDisplayProg = if (isDraggingProgress) dragProgressFraction else audioProgress.coerceIn(0f, 1f)
-            val trackHeight by animateDpAsState(if (isDraggingProgress) 6.dp else 4.dp, animationSpec = tween(180), label = "sheetTrackH")
-            val thumbSize by animateDpAsState(if (isDraggingProgress) 18.dp else 14.dp, animationSpec = tween(180), label = "sheetThumbS")
+            val trackHeight by animateDpAsState(
+                targetValue = if (isDraggingProgress && !isReducedMotion) 6.dp else 4.dp,
+                animationSpec = tween(180),
+                label = "sheetTrackH"
+            )
+            val thumbSize by animateDpAsState(
+                targetValue = if (isDraggingProgress && !isReducedMotion) 18.dp else 14.dp,
+                animationSpec = tween(180),
+                label = "sheetThumbS"
+            )
 
             Column(modifier = Modifier.fillMaxWidth()) {
                 Box(
@@ -464,25 +550,45 @@ fun ExpandedQuranPlayerSheet(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val percentInt = (currentDisplayProg * 100).toInt()
+                    val displayPosMs = if (isDraggingProgress && audioDurationMs > 0) {
+                        (dragProgressFraction * audioDurationMs).toLong()
+                    } else {
+                        audioPositionMs
+                    }
+
                     Text(
-                        text = "$percentInt%",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.semanticMutedText
+                        text = formatAudioTime(displayPosMs),
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                        color = textSecondary.copy(alpha = 0.85f)
                     )
+                    val totalDurText = if (isLoading) {
+                        "Loading..."
+                    } else if (audioDurationMs > 0) {
+                        "${formatAudioTime(displayPosMs)} / ${formatAudioTime(audioDurationMs)}"
+                    } else {
+                        "--:--"
+                    }
                     Text(
-                        text = if (isLoading) "Loading..." else if (currentDisplayProg >= 0.99f) "Completed" else if (isPlaying) "Reciting" else "Paused",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color.semanticMutedText
+                        text = totalDurText,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                        color = textSecondary.copy(alpha = 0.85f)
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Playback Controls Row: Stop, Skip Prev, Focal Play/Pause, Skip Next, Close/Stop
+            // Playback Controls Row: Stop, Skip Prev, Focal Play/Pause, Skip Next, Collapse
+            var isPlayPressed by remember { mutableStateOf(false) }
+            val playBtnScale by animateFloatAsState(
+                targetValue = if (isPlayPressed) 0.94f else 1f,
+                animationSpec = tween(120, easing = FastOutSlowInEasing),
+                label = "playBtnScale"
+            )
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -490,25 +596,26 @@ fun ExpandedQuranPlayerSheet(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Stop Button
+                // 3. Stop Button (Visually quieter 40dp button container)
                 IconButton(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         onStopAudio()
                     },
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(40.dp)
+                        .clip(CircleShape)
                         .testTag("full_player_stop_btn")
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Stop,
                         contentDescription = "Stop Audio",
-                        tint = textPrimary.copy(alpha = 0.65f),
-                        modifier = Modifier.size(24.dp)
+                        tint = textSecondary.copy(alpha = 0.55f),
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
-                // Skip Previous
+                // 2. Skip Previous (52dp button, prominent)
                 IconButton(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -516,46 +623,63 @@ fun ExpandedQuranPlayerSheet(
                     },
                     modifier = Modifier
                         .size(52.dp)
+                        .clip(CircleShape)
                         .testTag("full_player_prev_btn")
                 ) {
                     Icon(
                         imageVector = Icons.Filled.SkipPrevious,
                         contentDescription = "Previous Verse",
                         tint = textPrimary,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(30.dp)
                     )
                 }
 
-                // Focal Play / Pause 64dp Button (with Loading Spinner)
+                // 1. Focal Play / Pause 64dp Button (Dominant control)
                 Box(
                     modifier = Modifier
                         .size(64.dp)
+                        .graphicsLayer {
+                            scaleX = if (isReducedMotion) 1f else playBtnScale
+                            scaleY = if (isReducedMotion) 1f else playBtnScale
+                        }
                         .clip(CircleShape)
                         .background(accent)
                         .border(
-                            width = 2.dp,
+                            width = 1.5.dp,
                             color = accent.copy(alpha = 0.5f),
                             shape = CircleShape
                         )
-                        .testTag("full_player_play_pause_btn")
-                        .clickable {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onPlayPause()
-                        },
+                        .pointerInput(Unit) {
+                            detectTapGestures(
+                                onPress = {
+                                    isPlayPressed = true
+                                    tryAwaitRelease()
+                                    isPlayPressed = false
+                                },
+                                onTap = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onPlayPause()
+                                }
+                            )
+                        }
+                        .testTag("full_player_play_pause_btn"),
                     contentAlignment = Alignment.Center
                 ) {
                     if (isLoading) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(28.dp),
+                            modifier = Modifier.size(26.dp),
                             color = Color.semanticAccentForeground,
-                            strokeWidth = 3.dp
+                            strokeWidth = 2.5.dp
                         )
                     } else {
                         AnimatedContent(
                             targetState = isPlaying,
                             transitionSpec = {
-                                fadeIn(animationSpec = tween(180)) togetherWith
-                                        fadeOut(animationSpec = tween(140))
+                                if (isReducedMotion) {
+                                    fadeIn(animationSpec = snap()) togetherWith fadeOut(animationSpec = snap())
+                                } else {
+                                    fadeIn(animationSpec = tween(180)) togetherWith fadeOut(animationSpec = tween(140))
+                                }
                             },
                             label = "fullPlayerPlayPauseAnim"
                         ) { activePlaying ->
@@ -563,13 +687,13 @@ fun ExpandedQuranPlayerSheet(
                                 imageVector = if (activePlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                 contentDescription = if (activePlaying) "Pause" else "Play",
                                 tint = Color.semanticAccentForeground,
-                                modifier = Modifier.size(34.dp)
+                                modifier = Modifier.size(32.dp)
                             )
                         }
                     }
                 }
 
-                // Skip Next
+                // 2. Skip Next (52dp button, prominent)
                 IconButton(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -577,26 +701,29 @@ fun ExpandedQuranPlayerSheet(
                     },
                     modifier = Modifier
                         .size(52.dp)
+                        .clip(CircleShape)
                         .testTag("full_player_next_btn")
                 ) {
                     Icon(
                         imageVector = Icons.Filled.SkipNext,
                         contentDescription = "Next Verse",
                         tint = textPrimary,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(30.dp)
                     )
                 }
 
-                // Collapse Button
+                // 4. Collapse Button (Smallest and most understated 40dp button container)
                 IconButton(
                     onClick = onDismiss,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
                 ) {
                     Icon(
                         imageVector = Icons.Filled.KeyboardArrowDown,
-                        contentDescription = "Collapse",
-                        tint = textPrimary.copy(alpha = 0.65f),
-                        modifier = Modifier.size(24.dp)
+                        contentDescription = "Collapse Player",
+                        tint = textSecondary.copy(alpha = 0.55f),
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
