@@ -1,6 +1,7 @@
 package com.example.ui.screens
 import android.content.Intent
 import com.example.ui.components.RegisterPredictiveBackHandler
+import com.example.ui.components.predictiveBackChildTransform
 import com.example.ui.components.predictiveBackTransform
 import com.example.ui.components.rememberPredictiveBackState
 import com.example.ui.theme.semanticDockBorder
@@ -203,6 +204,8 @@ fun QuranScreen(
     onResetInitialReadingView: () -> Unit = {},
     onScrolledAwayFromActiveVerseChange: (Boolean) -> Unit = {},
     jumpToActiveVerseTrigger: Long = 0L,
+    isActiveTab: Boolean = true,
+    onReadingModeChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) } // 0: All Surahs, 1: Bookmarks
@@ -212,6 +215,10 @@ fun QuranScreen(
     var quickActionSurah by remember { mutableStateOf<Surah?>(null) }
     var contextMenuVerse by remember { mutableStateOf<Verse?>(null) }
     var feedbackMessage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(isReadingViewActive) {
+        onReadingModeChange(isReadingViewActive)
+    }
 
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -247,6 +254,7 @@ fun QuranScreen(
     LaunchedEffect(initialOpenReadingView) {
         if (initialOpenReadingView && selectedSurah != null) {
             isReadingViewActive = true
+            onReadingModeChange(true)
             onResetInitialReadingView()
         }
     }
@@ -262,7 +270,7 @@ fun QuranScreen(
     val isQuranBackActive = showFontSizeControls || activeLensVerse != null || quickActionSurah != null || contextMenuVerse != null || isReadingViewActive
 
     RegisterPredictiveBackHandler(
-        enabled = isQuranBackActive,
+        enabled = isActiveTab && isQuranBackActive,
         backState = quranPredictiveState,
         onBack = {
             if (showFontSizeControls) {
@@ -275,6 +283,7 @@ fun QuranScreen(
                 contextMenuVerse = null
             } else if (isReadingViewActive) {
                 isReadingViewActive = false
+                onReadingModeChange(false)
             }
         }
     )
@@ -285,22 +294,200 @@ fun QuranScreen(
             .statusBarsPadding()
             .background(bgContainer)
     ) {
-        val isMotionReduced = rememberIsReducedMotion()
         val currentSurah = selectedSurah
+        val isReaderView = isReadingViewActive && currentSurah != null
 
-        AnimatedContent(
-            targetState = isReadingViewActive && currentSurah != null,
-            modifier = Modifier.predictiveBackTransform(quranPredictiveState.progress, quranPredictiveState.swipeEdge),
-            transitionSpec = {
-                if (targetState) {
-                    FiveLightMotion.slideFadeForward(isMotionReduced)
-                } else {
-                    FiveLightMotion.slideFadeBackward(isMotionReduced)
+        // Base layer: Directory View (Surah List / Bookmarks)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .predictiveBackChildTransform(if (isReaderView) quranPredictiveState.progress else 0f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp)
+            ) {
+                PageHeader(
+                    title = "Holy Quran",
+                    subtitle = null,
+                    includeStatusBarPadding = false,
+                    horizontalPadding = 0.dp,
+                    titleColor = textPrimary
+                )
+
+                // Search Bar
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("surah_search_input"),
+                    placeholder = { Text("Search Surah name or number...") },
+                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.semanticControl,
+                        unfocusedContainerColor = Color.semanticControl,
+                        focusedBorderColor = if (com.example.ui.theme.isAppInDarkTheme()) Color.semanticPrimaryAccent else Color.semanticDockBorder,
+                        unfocusedBorderColor = if (com.example.ui.theme.isAppInDarkTheme()) Color.semanticBorder else Color.semanticDockBorder,
+                        focusedTextColor = Color.semanticPrimaryText,
+                        unfocusedTextColor = Color.semanticPrimaryText,
+                        focusedLeadingIconColor = if (com.example.ui.theme.isAppInDarkTheme()) Color.semanticPrimaryAccent else Color.semanticDockBorder,
+                        unfocusedLeadingIconColor = if (com.example.ui.theme.isAppInDarkTheme()) Color.semanticSecondaryText else Color.semanticDockBorder,
+                        focusedPlaceholderColor = Color.semanticMutedText,
+                        unfocusedPlaceholderColor = Color.semanticMutedText
+                    ),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                val quranTabs = remember { listOf("All Surahs", "Bookmarks") }
+                SegmentedTabs(
+                    tabs = quranTabs,
+                    selectedIndex = selectedTab,
+                    onTabSelected = { selectedTab = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    testTagPrefix = "quran_tab"
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                if (selectedTab == 0) {
+                    val filteredSurahs = remember(searchQuery) {
+                        QuranData.SURAHS_DIRECTORY.filter {
+                            it.nameEnglish.contains(searchQuery, ignoreCase = true) ||
+                                    it.englishTranslation.contains(searchQuery, ignoreCase = true) ||
+                                    it.number.toString() == searchQuery
+                        }
+                    }
+
+                    LazyColumn(
+                        state = surahListState,
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(
+                            items = filteredSurahs,
+                            key = { it.number },
+                            contentType = { "surah_list_item" }
+                        ) { surah ->
+                            val isPlayingThisSurah = playingSurahNumber == surah.number
+                            val isLastReadSurah = playingSurahNumber == null && lastReadPosition?.surahNumber == surah.number
+                            val isCurrent = isPlayingThisSurah || isLastReadSurah
+
+                            val audioProgressVal = surahPlaybackProgress[surah.number] ?: 0f
+                            val scrollPos = surahScrollPositions[surah.number]
+                            val readingProgressVal = if (scrollPos != null && surah.versesCount > 0) {
+                                ((scrollPos + 1).toFloat() / surah.versesCount.toFloat()).coerceIn(0f, 1f)
+                            } else {
+                                0f
+                            }
+                            val progress = if (audioProgressVal > 0f) audioProgressVal else readingProgressVal
+                            val dlStatus = surahDownloadStates[surah.number]
+
+                            SurahListItem(
+                                surah = surah,
+                                isCurrent = isCurrent,
+                                playbackProgress = progress,
+                                downloadStatus = dlStatus,
+                                onDownloadClick = { onDownloadSurah(surah.number) },
+                                onClick = {
+                                    onSelectSurah(surah)
+                                    isReadingViewActive = true
+                                },
+                                onLongClick = {
+                                    quickActionSurah = surah
+                                }
+                            )
+                        }
+
+                        item {
+                            Spacer(modifier = Modifier.height(120.dp))
+                        }
+                    }
+                } else if (selectedTab == 1) {
+                    if (bookmarks.isEmpty()) {
+                        QuietEmptyState(modifier = Modifier.fillMaxWidth()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(40.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No bookmarked verses yet.\nTap the bookmark icon while reading to save verses.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    textAlign = TextAlign.Center,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            state = bookmarksListState,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(
+                                items = bookmarks,
+                                key = { "${it.surahNumber}_${it.verseNumber}" },
+                                contentType = { "bookmark_list_item" }
+                            ) { bookmark ->
+                                Card(
+                                    onClick = {
+                                        val surahMeta = QuranData.SURAHS_DIRECTORY.find { it.number == bookmark.surahNumber }
+                                        if (surahMeta != null) {
+                                            onSelectSurah(surahMeta)
+                                            isReadingViewActive = true
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                ) {
+                                    val isDarkScreen = MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Text(
+                                            text = "${bookmark.surahNameEnglish} (${bookmark.surahNameArabic}) - Verse ${bookmark.verseNumber}",
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = if (isDarkScreen) Color(0xFFB0B0AA) else MaterialTheme.colorScheme.primary
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = bookmark.verseTextArabic,
+                                            style = ArabicTextStyle.copy(fontSize = 20.sp),
+                                            color = if (isDarkScreen) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface,
+                                            textAlign = TextAlign.End,
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = bookmark.verseTextTranslation,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (isDarkScreen) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            item {
+                                Spacer(modifier = Modifier.height(120.dp))
+                            }
+                        }
+                    }
                 }
-            },
-            label = "QuranScreenViewTransition"
-        ) { isReaderView ->
-            if (isReaderView && currentSurah != null) {
+            }
+        }
+
+        // Top Layer: Surah Reader View
+        if (isReaderView && currentSurah != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .predictiveBackTransform(quranPredictiveState.progress, quranPredictiveState.swipeEdge)
+            ) {
             val listState = remember(currentSurah.number) { androidx.compose.foundation.lazy.LazyListState() }
 
             val displayVerses = remember(selectedSurah.number, verses) {
@@ -451,7 +638,10 @@ fun QuranScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
-                        onClick = { isReadingViewActive = false },
+                        onClick = {
+                            isReadingViewActive = false
+                            onReadingModeChange(false)
+                        },
                         modifier = Modifier.testTag("quran_reader_back_btn")
                     ) {
                         Icon(
@@ -637,294 +827,6 @@ fun QuranScreen(
                                 ) {
                                     Spacer(modifier = Modifier.height(180.dp))
                                 }
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            // Directory View (Surah List / Bookmarks)
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 20.dp)
-            ) {
-                PageHeader(
-                    title = "Holy Quran",
-                    subtitle = null,
-                    includeStatusBarPadding = false,
-                    horizontalPadding = 0.dp,
-                    titleColor = textPrimary
-                )
-
-                // Search Bar
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = onSearchQueryChange,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("surah_search_input"),
-                    placeholder = { Text("Search Surah name or number...") },
-                    leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.semanticControl,
-                        unfocusedContainerColor = Color.semanticControl,
-                        focusedBorderColor = if (com.example.ui.theme.isAppInDarkTheme()) Color.semanticPrimaryAccent else Color.semanticDockBorder,
-                        unfocusedBorderColor = if (com.example.ui.theme.isAppInDarkTheme()) Color.semanticBorder else Color.semanticDockBorder,
-                        focusedTextColor = Color.semanticPrimaryText,
-                        unfocusedTextColor = Color.semanticPrimaryText,
-                        focusedLeadingIconColor = if (com.example.ui.theme.isAppInDarkTheme()) Color.semanticPrimaryAccent else Color.semanticDockBorder,
-                        unfocusedLeadingIconColor = if (com.example.ui.theme.isAppInDarkTheme()) Color.semanticSecondaryText else Color.semanticDockBorder,
-                        focusedPlaceholderColor = Color.semanticMutedText,
-                        unfocusedPlaceholderColor = Color.semanticMutedText
-                    ),
-                    singleLine = true
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Compact Minimal Segmented Tabs: All Surahs, Bookmarks, Planner
-                val quranTabs = remember { listOf("All Surahs", "Bookmarks", "Planner") }
-                SegmentedTabs(
-                    tabs = quranTabs,
-                    selectedIndex = selectedTab,
-                    onTabSelected = { selectedTab = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    testTagPrefix = "quran_tab"
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                if (selectedTab == 0) {
-                    // Filtered Surahs List - Memoized to prevent heavy allocations during scroll
-                    val filteredSurahs = remember(searchQuery) {
-                        QuranData.SURAHS_DIRECTORY.filter {
-                            it.nameEnglish.contains(searchQuery, ignoreCase = true) ||
-                                    it.englishTranslation.contains(searchQuery, ignoreCase = true) ||
-                                    it.number.toString() == searchQuery
-                        }
-                    }
-
-                    LazyColumn(
-                        state = surahListState,
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (searchQuery.isEmpty()) {
-                            item(key = "bulk_audio_download_banner") {
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(16.dp)),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                    border = BorderStroke(1.dp, Color.semanticBorder)
-                                ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(14.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(36.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color.semanticPrimaryAccent.copy(alpha = 0.12f)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Outlined.CloudDownload,
-                                                        contentDescription = null,
-                                                        tint = Color.semanticPrimaryAccent,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
-                                                }
-                                                Spacer(modifier = Modifier.width(12.dp))
-                                                Column {
-                                                    Text(
-                                                        text = "Offline-First Audio Recitation",
-                                                        style = MaterialTheme.typography.titleSmall,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = textPrimary
-                                                    )
-                                                    Text(
-                                                        text = if (isBulkDownloadingQuran) bulkDownloadStatusText else "Download all 114 Surahs for 100% offline playback",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                }
-                                            }
-
-                                            if (isBulkDownloadingQuran) {
-                                                IconButton(onClick = onCancelBulkDownload) {
-                                                    Icon(
-                                                        imageVector = Icons.Filled.Delete,
-                                                        contentDescription = "Cancel Download",
-                                                        tint = Color.semanticError
-                                                    )
-                                                }
-                                            } else {
-                                                Surface(
-                                                    onClick = onDownloadAll114Surahs,
-                                                    shape = RoundedCornerShape(10.dp),
-                                                    color = Color.semanticPrimaryAccent.copy(alpha = 0.12f)
-                                                ) {
-                                                    Row(
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.Download,
-                                                            contentDescription = null,
-                                                            tint = Color.semanticPrimaryAccent,
-                                                            modifier = Modifier.size(16.dp)
-                                                        )
-                                                        Spacer(modifier = Modifier.width(4.dp))
-                                                        Text(
-                                                            text = "Download All",
-                                                            style = MaterialTheme.typography.labelMedium,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Color.semanticPrimaryAccent
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        if (isBulkDownloadingQuran) {
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            androidx.compose.material3.LinearProgressIndicator(
-                                                progress = { bulkDownloadProgress },
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(6.dp)
-                                                    .clip(RoundedCornerShape(3.dp)),
-                                                color = Color.semanticPrimaryAccent,
-                                                trackColor = Color.semanticBorder
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        items(
-                            items = filteredSurahs,
-                            key = { it.number },
-                            contentType = { "surah_list_item" }
-                        ) { surah ->
-                            val isPlayingThisSurah = playingSurahNumber == surah.number
-                            val isLastReadSurah = playingSurahNumber == null && lastReadPosition?.surahNumber == surah.number
-                            val isCurrent = isPlayingThisSurah || isLastReadSurah
-
-                            val audioProgressVal = surahPlaybackProgress[surah.number] ?: 0f
-                            val scrollPos = surahScrollPositions[surah.number]
-                            val readingProgressVal = if (scrollPos != null && surah.versesCount > 0) {
-                                ((scrollPos + 1).toFloat() / surah.versesCount.toFloat()).coerceIn(0f, 1f)
-                            } else {
-                                0f
-                            }
-                            val progress = if (audioProgressVal > 0f) audioProgressVal else readingProgressVal
-                            val dlStatus = surahDownloadStates[surah.number]
-
-                            SurahListItem(
-                                surah = surah,
-                                isCurrent = isCurrent,
-                                playbackProgress = progress,
-                                downloadStatus = dlStatus,
-                                onDownloadClick = { onDownloadSurah(surah.number) },
-                                onClick = {
-                                    onSelectSurah(surah)
-                                    isReadingViewActive = true
-                                },
-                                onLongClick = {
-                                    quickActionSurah = surah
-                                }
-                            )
-                        }
-
-                        item {
-                            Spacer(modifier = Modifier.height(120.dp))
-                        }
-                    }
-                } else if (selectedTab == 1) {
-                    // Bookmarks List
-                    if (bookmarks.isEmpty()) {
-                        QuietEmptyState(modifier = Modifier.fillMaxWidth()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(40.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "No bookmarked verses yet.\nTap the bookmark icon while reading to save verses.",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    textAlign = TextAlign.Center,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    } else {
-                        LazyColumn(
-                            state = bookmarksListState,
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            items(
-                                items = bookmarks,
-                                key = { "${it.surahNumber}_${it.verseNumber}" },
-                                contentType = { "bookmark_list_item" }
-                            ) { bookmark ->
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            val surahMeta = QuranData.SURAHS_DIRECTORY.find { it.number == bookmark.surahNumber }
-                                            if (surahMeta != null) {
-                                                onSelectSurah(surahMeta)
-                                                isReadingViewActive = true
-                                            }
-                                        },
-                                    shape = RoundedCornerShape(16.dp),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                                ) {
-                                    val isDarkScreen = MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
-                                    Column(modifier = Modifier.padding(16.dp)) {
-                                        Text(
-                                            text = "${bookmark.surahNameEnglish} (${bookmark.surahNameArabic}) - Verse ${bookmark.verseNumber}",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            color = if (isDarkScreen) Color(0xFFB0B0AA) else MaterialTheme.colorScheme.primary
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text(
-                                            text = bookmark.verseTextArabic,
-                                            style = ArabicTextStyle.copy(fontSize = 20.sp),
-                                            color = if (isDarkScreen) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface,
-                                            textAlign = TextAlign.End,
-                                            modifier = Modifier.fillMaxWidth()
-                                        )
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text(
-                                            text = bookmark.verseTextTranslation,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = if (isDarkScreen) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-
-                            item {
-                                Spacer(modifier = Modifier.height(120.dp))
                             }
                         }
                     }
@@ -1728,6 +1630,7 @@ fun BismillahHeader(
             Box(
                 modifier = Modifier
                     .size(48.dp)
+                    .clip(CircleShape)
                     .clickable(onClick = onPlayAudio),
                 contentAlignment = Alignment.Center
             ) {
@@ -1772,6 +1675,7 @@ fun BismillahHeader(
                 Box(
                     modifier = Modifier
                         .size(48.dp)
+                        .clip(CircleShape)
                         .clickable(onClick = onOpenLens),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1788,6 +1692,7 @@ fun BismillahHeader(
             Box(
                 modifier = Modifier
                     .size(48.dp)
+                    .clip(CircleShape)
                     .clickable(onClick = onToggleBookmark),
                 contentAlignment = Alignment.Center
             ) {
@@ -1928,6 +1833,7 @@ fun VerseCard(
                 Box(
                     modifier = Modifier
                         .size(48.dp)
+                        .clip(CircleShape)
                         .clickable(onClick = onPlayAudio),
                     contentAlignment = Alignment.Center
                 ) {
@@ -1972,6 +1878,7 @@ fun VerseCard(
                     Box(
                         modifier = Modifier
                             .size(48.dp)
+                            .clip(CircleShape)
                             .clickable(onClick = onOpenLens),
                         contentAlignment = Alignment.Center
                     ) {
@@ -1988,6 +1895,7 @@ fun VerseCard(
                 Box(
                     modifier = Modifier
                         .size(48.dp)
+                        .clip(CircleShape)
                         .clickable(onClick = onToggleBookmark),
                     contentAlignment = Alignment.Center
                 ) {

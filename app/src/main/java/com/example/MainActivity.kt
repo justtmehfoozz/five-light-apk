@@ -34,6 +34,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import com.example.ui.screens.SplashScreen
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToDown
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.RegisterPredictiveBackHandler
 import com.example.ui.components.predictiveBackTransform
@@ -80,6 +84,7 @@ class MainActivity : ComponentActivity() {
                 val selectorController = rememberDockSelectorController(initialIndex = pagerState.currentPage)
                 val currentRoute = selectorController.activeNavItem.value.route
                 var openQuranReadingDirectly by remember { mutableStateOf(false) }
+                var isQuranReadingModeActive by remember { mutableStateOf(false) }
                 var showSettingsSheet by remember { mutableStateOf(false) }
                 var showSearchOverlay by remember { mutableStateOf(false) }
                 var dockFifthSlotMode by remember { mutableStateOf("more") }
@@ -132,7 +137,8 @@ class MainActivity : ComponentActivity() {
                 var jumpToActiveVerseTrigger by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
 
                 val mainPredictiveState = rememberPredictiveBackState()
-                val canPopAppLevel = showSearchOverlay || showSettingsSheet || showExpandedPlayerSheet || tabStack.size > 1
+                val canPopAppLevel = showSearchOverlay || showSettingsSheet || showExpandedPlayerSheet ||
+                    (tabStack.size > 1 && !isQuranReadingModeActive && exploreSubRoute == "main" && showPrayerMode == null)
 
                 RegisterPredictiveBackHandler(
                     enabled = canPopAppLevel,
@@ -158,6 +164,9 @@ class MainActivity : ComponentActivity() {
                 var splashExitProgress by remember { mutableFloatStateOf(0f) }
                 var isSplashFinished by remember { mutableStateOf(false) }
 
+                val isPagerSwipeEnabled = !showSearchOverlay && !showSettingsSheet && !showExpandedPlayerSheet &&
+                    (showPrayerMode == null) && !isQuranReadingModeActive && (exploreSubRoute == "main")
+
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -177,6 +186,7 @@ class MainActivity : ComponentActivity() {
                     ) {
                     HorizontalPager(
                         state = pagerState,
+                        userScrollEnabled = isPagerSwipeEnabled,
                         modifier = Modifier
                             .fillMaxSize()
                             .clipToBounds()
@@ -246,7 +256,8 @@ class MainActivity : ComponentActivity() {
                                     onQuickAccessNavigate = { navItem ->
                                         coroutineScope.launch { pagerState.animateScrollToPage(navItem.ordinal) }
                                     },
-                                    onOpenSettings = { showSettingsSheet = true }
+                                    onOpenSettings = { showSettingsSheet = true },
+                                    isActiveTab = (pagerState.currentPage == 0)
                                 )
                             }
 
@@ -347,7 +358,9 @@ class MainActivity : ComponentActivity() {
                                     onScrolledAwayFromActiveVerseChange = { isAway ->
                                         isScrolledAwayFromActiveVerse = isAway
                                     },
-                                    jumpToActiveVerseTrigger = jumpToActiveVerseTrigger
+                                    jumpToActiveVerseTrigger = jumpToActiveVerseTrigger,
+                                    isActiveTab = (pagerState.currentPage == 2),
+                                    onReadingModeChange = { isQuranReadingModeActive = it }
                                 )
                             }
 
@@ -379,7 +392,8 @@ class MainActivity : ComponentActivity() {
                                     },
                                     onUpdateCustomDhikr = { preset -> viewModel.updateCustomDhikr(preset) },
                                     onDeleteCustomDhikr = { id -> viewModel.deleteCustomDhikr(id) },
-                                    onDeleteCustomTarget = { t -> viewModel.deleteCustomTarget(t) }
+                                    onDeleteCustomTarget = { t -> viewModel.deleteCustomTarget(t) },
+                                    isActiveTab = (pagerState.currentPage == 3)
                                 )
                             }
 
@@ -403,7 +417,8 @@ class MainActivity : ComponentActivity() {
                                     targetDuaCategory = targetDuaCategory,
                                     targetDuaId = targetDuaId,
                                     targetAdhkarTitle = targetAdhkarTitle,
-                                    targetNameNumber = targetNameNumber
+                                    targetNameNumber = targetNameNumber,
+                                    isActiveTab = (pagerState.currentPage == 4)
                                 )
                             }
                         }

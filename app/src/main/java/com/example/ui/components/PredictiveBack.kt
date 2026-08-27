@@ -61,13 +61,13 @@ fun RegisterPredictiveBackHandler(
 
 fun Modifier.predictiveBackTransform(progress: Float, swipeEdge: Int = BackEventCompat.EDGE_LEFT): Modifier {
     if (progress <= 0f) return this
-    val scale = 1f - (progress * 0.08f)
+    val scale = 1f - (progress * 0.10f)
     val translationXPx = if (swipeEdge == BackEventCompat.EDGE_RIGHT) {
-        -progress * 60f
+        -progress * 90f
     } else {
-        progress * 60f
+        progress * 90f
     }
-    val alpha = 1f - (progress * 0.12f)
+    val alpha = 1f - (progress * 0.15f)
 
     return this.graphicsLayer {
         this.scaleX = scale
@@ -75,6 +75,18 @@ fun Modifier.predictiveBackTransform(progress: Float, swipeEdge: Int = BackEvent
         this.translationX = translationXPx
         this.alpha = alpha
         this.clip = true
-        this.shape = RoundedCornerShape((progress * 20).dp)
+        this.shape = RoundedCornerShape((progress * 24).dp)
+    }
+}
+
+fun Modifier.predictiveBackChildTransform(progress: Float): Modifier {
+    if (progress <= 0f) return this
+    val scale = 0.92f + (progress * 0.08f)
+    val alpha = 0.4f + (progress * 0.6f)
+
+    return this.graphicsLayer {
+        this.scaleX = scale
+        this.scaleY = scale
+        this.alpha = alpha
     }
 }

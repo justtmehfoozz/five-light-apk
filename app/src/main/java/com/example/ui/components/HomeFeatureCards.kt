@@ -159,10 +159,9 @@ fun ContinueReadingCard(
     val progress = (lastRead.surahNumber.toFloat() / 114f).coerceIn(0f, 1f)
 
     Card(
+        onClick = onContinueClick,
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
-            .clickable { onContinueClick() }
             .testTag("continue_reading_card"),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
@@ -171,79 +170,168 @@ fun ContinueReadingCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(18.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center
+                val isNarrow = maxWidth < 380.dp
+                if (isNarrow) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.AutoStories,
-                            contentDescription = "Continue Reading",
-                            tint = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.AutoStories,
+                                    contentDescription = "Continue Reading",
+                                    tint = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(14.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Continue Reading",
+                                    fontFamily = SpaceGrotesk,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary,
+                                    letterSpacing = 0.5.sp
+                                )
+
+                                Spacer(modifier = Modifier.height(2.dp))
+
+                                Text(
+                                    text = "${lastRead.surahNameEnglish} • Verse ${lastRead.verseNumber}",
+                                    fontFamily = SerifHeaderFont,
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            Surface(
+                                onClick = onContinueClick,
+                                shape = CircleShape,
+                                color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Continue",
+                                        fontFamily = SpaceGrotesk,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onPrimary
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                        contentDescription = null,
+                                        tint = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
-
-                    Spacer(modifier = Modifier.width(14.dp))
-
-                    Column {
-                        Text(
-                            text = "Continue Reading",
-                            fontFamily = SpaceGrotesk,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary,
-                            letterSpacing = 0.5.sp
-                        )
-
-                        Spacer(modifier = Modifier.height(2.dp))
-
-                        Text(
-                            text = "${lastRead.surahNameEnglish} • Verse ${lastRead.verseNumber}",
-                            fontFamily = SerifHeaderFont,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                }
-
-                Surface(
-                    shape = CircleShape,
-                    color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.clickable { onContinueClick() }
-                ) {
+                } else {
                     Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Continue",
-                            fontFamily = SpaceGrotesk,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onPrimary
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = null,
-                            tint = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(14.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.AutoStories,
+                                    contentDescription = "Continue Reading",
+                                    tint = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(14.dp))
+
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                Text(
+                                    text = "Continue Reading",
+                                    fontFamily = SpaceGrotesk,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary,
+                                    letterSpacing = 0.5.sp
+                                )
+
+                                Spacer(modifier = Modifier.height(2.dp))
+
+                                Text(
+                                    text = "${lastRead.surahNameEnglish} • Verse ${lastRead.verseNumber}",
+                                    fontFamily = SerifHeaderFont,
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        Surface(
+                            onClick = onContinueClick,
+                            shape = CircleShape,
+                            color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Continue",
+                                    fontFamily = SpaceGrotesk,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onPrimary
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = null,
+                                    tint = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -359,9 +447,9 @@ fun PrayerPrepCard(
                 horizontalArrangement = Arrangement.End
             ) {
                 Surface(
+                    onClick = onQiblaClick,
                     shape = RoundedCornerShape(12.dp),
-                    color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.clickable { onQiblaClick() }
+                    color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
@@ -388,6 +476,12 @@ fun PrayerPrepCard(
     }
 }
 
+private enum class TahajjudCardState {
+    BEFORE_ISHA,
+    AFTER_ISHA_BEFORE_LAST_THIRD,
+    DURING_LAST_THIRD
+}
+
 @Composable
 fun TonightCard(
     tonight: TonightSummary,
@@ -411,7 +505,7 @@ fun TonightCard(
     // 1. Authoritative Real-Time Clock Provider
     var currentMillis by remember { mutableStateOf(System.currentTimeMillis()) }
 
-    // Update on lifecycle RESUME (returns from background / screen unlock / timezone change)
+    // Update immediately on lifecycle RESUME (returns from background / unlock / clock change)
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
@@ -424,31 +518,98 @@ fun TonightCard(
         }
     }
 
-    // Live minute updates + timezone/clock shift sync
+    // Live minute updates synchronized to minute boundaries
     LaunchedEffect(Unit) {
         while (true) {
             val now = System.currentTimeMillis()
             currentMillis = now
-            val msToNextMinute = (60000L - (now % 60000L)).coerceIn(1000L, 60000L)
+            val msToNextMinute = (60000L - (now % 60000L)).coerceIn(500L, 60000L)
             delay(msToNextMinute)
             currentMillis = System.currentTimeMillis()
         }
     }
 
-    val ishaMillis = tonight.ishaTimeMillis
-    val fajrMillis = tonight.fajrTimeMillis
-    val lastThirdMillis = tonight.lastThirdStartMillis
+    val rawIshaMillis = tonight.ishaTimeMillis
+    val rawFajrMillis = tonight.fajrTimeMillis
+    val rawLastThirdMillis = tonight.lastThirdStartMillis
 
-    // 2. Continuous Night Timeline Progress (Normalized 0f..1f with overnight handling)
-    val targetNightProgress = remember(currentMillis, ishaMillis, fajrMillis) {
-        if (ishaMillis > 0L && fajrMillis > ishaMillis) {
-            var adjustedNow = currentMillis
-            if (adjustedNow < ishaMillis - 12 * 3600 * 1000L) {
-                adjustedNow += 24 * 3600 * 1000L
-            }
-            ((adjustedNow - ishaMillis).toFloat() / (fajrMillis - ishaMillis).toFloat()).coerceIn(0f, 1f)
+    // 2. Active Overnight Interval Resolution (Crossing midnight & next-day rollover)
+    val (activeIsha, activeFajr, activeLastThird) = remember(currentMillis, rawIshaMillis, rawFajrMillis, rawLastThirdMillis) {
+        if (rawIshaMillis <= 0L || rawFajrMillis <= rawIshaMillis) {
+            Triple(rawIshaMillis, rawFajrMillis, rawLastThirdMillis)
+        } else if (currentMillis >= rawFajrMillis) {
+            // Passed Fajr: smoothly advance to the next night's timeline
+            val shiftedIsha = rawIshaMillis + 24 * 3600 * 1000L
+            val shiftedFajr = rawFajrMillis + 24 * 3600 * 1000L
+            val duration = shiftedFajr - shiftedIsha
+            val shiftedLastThird = shiftedFajr - (duration / 3)
+            Triple(shiftedIsha, shiftedFajr, shiftedLastThird)
         } else {
-            0.5f
+            Triple(rawIshaMillis, rawFajrMillis, rawLastThirdMillis)
+        }
+    }
+
+    // 3. Explicit Time State Determination
+    val cardState = remember(currentMillis, activeIsha, activeFajr, activeLastThird) {
+        when {
+            activeIsha <= 0L || activeFajr <= activeIsha -> TahajjudCardState.BEFORE_ISHA
+            currentMillis < activeIsha -> TahajjudCardState.BEFORE_ISHA
+            currentMillis >= activeIsha && currentMillis < activeLastThird -> TahajjudCardState.AFTER_ISHA_BEFORE_LAST_THIRD
+            else -> TahajjudCardState.DURING_LAST_THIRD
+        }
+    }
+
+    val isCurrentlyInLastThird = cardState == TahajjudCardState.DURING_LAST_THIRD
+    val isIshaHighlighted = cardState == TahajjudCardState.AFTER_ISHA_BEFORE_LAST_THIRD
+    val isTahajjudHighlighted = cardState == TahajjudCardState.DURING_LAST_THIRD
+
+    // 4. Live Countdown String strictly derived from current state and authoritative timestamps
+    val countdownText = remember(currentMillis, cardState, activeIsha, activeLastThird, activeFajr) {
+        if (activeIsha <= 0L || activeFajr <= activeIsha) {
+            "Last third at ${tonight.lastThirdStartFormatted}"
+        } else {
+            when (cardState) {
+                TahajjudCardState.BEFORE_ISHA,
+                TahajjudCardState.AFTER_ISHA_BEFORE_LAST_THIRD -> {
+                    val remainingMillis = (activeLastThird - currentMillis).coerceAtLeast(0L)
+                    val totalMinutes = remainingMillis / 60000L
+                    val hours = totalMinutes / 60
+                    val minutes = totalMinutes % 60
+                    when {
+                        totalMinutes <= 0L -> "Last third is beginning now"
+                        hours > 0L && minutes > 0L -> "Last third begins in ${hours}h ${minutes}m"
+                        hours > 0L -> "Last third begins in ${hours}h"
+                        else -> "Last third begins in ${minutes}m"
+                    }
+                }
+                TahajjudCardState.DURING_LAST_THIRD -> {
+                    val remainingMillis = (activeFajr - currentMillis).coerceAtLeast(0L)
+                    val totalMinutes = remainingMillis / 60000L
+                    val hours = totalMinutes / 60
+                    val minutes = totalMinutes % 60
+                    when {
+                        totalMinutes <= 0L -> "Fajr time has arrived"
+                        hours > 0L && minutes > 0L -> "Fajr begins in ${hours}h ${minutes}m"
+                        hours > 0L -> "Fajr begins in ${hours}h"
+                        else -> "Fajr begins in ${minutes}m"
+                    }
+                }
+            }
+        }
+    }
+
+    // 5. Continuous Night Timeline Progress (0f..1f synchronized with card state)
+    val targetNightProgress = remember(currentMillis, cardState, activeIsha, activeFajr) {
+        if (activeIsha <= 0L || activeFajr <= activeIsha) {
+            0f
+        } else {
+            when (cardState) {
+                TahajjudCardState.BEFORE_ISHA -> 0f
+                TahajjudCardState.AFTER_ISHA_BEFORE_LAST_THIRD,
+                TahajjudCardState.DURING_LAST_THIRD -> {
+                    ((currentMillis - activeIsha).toFloat() / (activeFajr - activeIsha).toFloat()).coerceIn(0f, 1f)
+                }
+            }
         }
     }
 
@@ -458,51 +619,18 @@ fun TonightCard(
         label = "nightProgress"
     )
 
-    val lastThirdProgress = remember(ishaMillis, fajrMillis, lastThirdMillis) {
-        if (ishaMillis > 0L && fajrMillis > ishaMillis && lastThirdMillis >= ishaMillis && lastThirdMillis <= fajrMillis) {
-            ((lastThirdMillis - ishaMillis).toFloat() / (fajrMillis - ishaMillis).toFloat()).coerceIn(0f, 1f)
-        } else if (ishaMillis > 0L && fajrMillis > ishaMillis) {
-            (2f / 3f).coerceIn(0f, 1f)
+    val lastThirdProgress = remember(activeIsha, activeFajr, activeLastThird) {
+        if (activeIsha > 0L && activeFajr > activeIsha && activeLastThird in activeIsha..activeFajr) {
+            ((activeLastThird - activeIsha).toFloat() / (activeFajr - activeIsha).toFloat()).coerceIn(0f, 1f)
         } else {
-            (2f / 3f)
+            2f / 3f
         }
     }
 
-    // 3. Last-Third State Detection
-    val isCurrentlyInLastThird = remember(targetNightProgress, lastThirdProgress) {
-        targetNightProgress >= lastThirdProgress
-    }
-
-    // 4. Live Fajr Countdown calculation derived from the single clock source
-    val fajrCountdownText = remember(currentMillis, fajrMillis) {
-        if (fajrMillis > 0L) {
-            var diff = fajrMillis - currentMillis
-            if (diff < 0L && diff > -12 * 3600 * 1000L) {
-                diff = 0L
-            } else if (diff < -12 * 3600 * 1000L) {
-                diff += 24 * 3600 * 1000L
-            }
-
-            val totalMinutes = (diff / 60000L).coerceAtLeast(0L)
-            val hours = totalMinutes / 60
-            val minutes = totalMinutes % 60
-
-            if (totalMinutes <= 0) {
-                "Fajr time has arrived"
-            } else if (hours > 0) {
-                "Fajr begins in ${hours}h ${minutes}m"
-            } else {
-                "Fajr begins in ${minutes}m"
-            }
-        } else {
-            "Fajr at ${tonight.fajrTimeFormatted}"
-        }
-    }
-
-    // 5. Theme Accent: Warm Gold for Light (#8D6B1E), Muted Slate-Violet for Dark (#494556)
+    // 6. Theme Accent: Warm Gold for Light (#8D6B1E), Muted Slate-Violet for Dark (#494556)
     val accentColor: Color = if (isDark) Color(0xFF494556) else Color(0xFF8D6B1E)
 
-    // 6. One-Time Entrance Animation & Crescent Pulse
+    // 7. One-Time Entrance Animation & Crescent Pulse
     val cardAlpha = remember { Animatable(if (isReducedMotion) 1f else 0f) }
     val cardScale = remember { Animatable(if (isReducedMotion) 1f else 0.96f) }
     val crescentPulse = remember { Animatable(1f) }
@@ -514,24 +642,6 @@ fun TonightCard(
             // One-time subtle crescent accent pulse
             crescentPulse.animateTo(1.25f, animationSpec = tween(280, easing = FastOutSlowInEasing))
             crescentPulse.animateTo(1f, animationSpec = tween(320, easing = FastOutSlowInEasing))
-        }
-    }
-
-    // Optional temporary tap feedback for current time marker
-    var showCurrentTimePopup by remember { mutableStateOf(false) }
-    val currentTimeString = remember(currentMillis) {
-        val cal = java.util.Calendar.getInstance(PrayerCalc.activeTimeZone)
-        cal.timeInMillis = currentMillis
-        val hour = cal.get(java.util.Calendar.HOUR).let { if (it == 0) 12 else it }
-        val minute = cal.get(java.util.Calendar.MINUTE)
-        val amPm = if (cal.get(java.util.Calendar.AM_PM) == java.util.Calendar.AM) "AM" else "PM"
-        String.format(java.util.Locale.US, "%02d:%02d %s", hour, minute, amPm)
-    }
-
-    LaunchedEffect(showCurrentTimePopup) {
-        if (showCurrentTimePopup) {
-            delay(1800L)
-            showCurrentTimePopup = false
         }
     }
 
@@ -638,14 +748,13 @@ fun TonightCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 // Isha
-                val isIshaActive = !isCurrentlyInLastThird && tonight.isIshaActive
                 Column {
                     Text(
                         text = "Isha",
                         fontFamily = SpaceGrotesk,
                         fontSize = 12.sp,
-                        fontWeight = if (isIshaActive) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isIshaActive) {
+                        fontWeight = if (isIshaHighlighted) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isIshaHighlighted) {
                             if (isDark) Color(0xFFB5B5AE) else MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
@@ -656,7 +765,7 @@ fun TonightCard(
                         fontFamily = SpaceGrotesk,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isIshaActive) {
+                        color = if (isIshaHighlighted) {
                             if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.onSurface
@@ -670,8 +779,8 @@ fun TonightCard(
                         text = "Tahajjud Window",
                         fontFamily = SpaceGrotesk,
                         fontSize = 12.sp,
-                        fontWeight = if (isCurrentlyInLastThird) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isCurrentlyInLastThird) {
+                        fontWeight = if (isTahajjudHighlighted) FontWeight.Bold else FontWeight.Normal,
+                        color = if (isTahajjudHighlighted) {
                             if (isDark) Color(0xFFB5B5AE) else MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
@@ -682,7 +791,7 @@ fun TonightCard(
                         fontFamily = SpaceGrotesk,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isCurrentlyInLastThird) {
+                        color = if (isTahajjudHighlighted) {
                             if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.onSurface
@@ -691,34 +800,25 @@ fun TonightCard(
                 }
 
                 // Fajr
-                val isFajrActive = tonight.isFajrActive
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = "Fajr",
                         fontFamily = SpaceGrotesk,
                         fontSize = 12.sp,
-                        fontWeight = if (isFajrActive) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isFajrActive) {
-                            if (isDark) Color(0xFFB5B5AE) else MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
+                        fontWeight = FontWeight.Normal,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         text = tonight.fajrTimeFormatted,
                         fontFamily = SpaceGrotesk,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isFajrActive) {
-                            if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        }
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
 
-            // PASSIVE NIGHT TIMELINE: Isha → Last Third Tick → Current Time (NOW) → Fajr
+            // PASSIVE NIGHT TIMELINE: Isha ───────── Last Third Tick ───────── Fajr
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -777,7 +877,7 @@ fun TonightCard(
                         )
                     }
 
-                    // 5. Current-Time Marker (Represents NOW - small, clean, non-draggable)
+                    // 5. Current-Time Marker (Represents NOW - small, clean, non-draggable visual indicator)
                     val markerOffset = (totalWidth * animatedNightProgress - 4.5.dp).coerceIn(0.dp, totalWidth - 9.dp)
                     Box(
                         modifier = Modifier
@@ -787,37 +887,11 @@ fun TonightCard(
                             .clip(CircleShape)
                             .background(accentColor)
                             .border(1.5.dp, MaterialTheme.colorScheme.surface, CircleShape)
-                            .pointerInput(Unit) {
-                                detectTapGestures {
-                                    showCurrentTimePopup = true
-                                }
-                            }
                     )
-
-                    // Optional temporary popup on tap
-                    if (showCurrentTimePopup) {
-                        Surface(
-                            modifier = Modifier
-                                .offset(x = (markerOffset - 32.dp).coerceIn(0.dp, totalWidth - 76.dp), y = (-22).dp)
-                                .align(Alignment.CenterStart),
-                            shape = RoundedCornerShape(6.dp),
-                            color = MaterialTheme.colorScheme.inverseSurface,
-                            shadowElevation = 2.dp
-                        ) {
-                            Text(
-                                text = "NOW · $currentTimeString",
-                                fontFamily = SpaceGrotesk,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.inverseOnSurface,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
-                    }
                 }
             }
 
-            // Bottom Inset Bar: Live Fajr Countdown with subtle crossfade
+            // Bottom Inset Bar: State-Aware Live Countdown with subtle crossfade
             Surface(
                 shape = RoundedCornerShape(12.dp),
                 color = if (isDark) Color(0xFF494556).copy(alpha = 0.20f) else Color(0xFF8D6B1E).copy(alpha = 0.08f),
@@ -831,7 +905,7 @@ fun TonightCard(
                     contentAlignment = Alignment.Center
                 ) {
                     AnimatedContent(
-                        targetState = fajrCountdownText,
+                        targetState = countdownText,
                         transitionSpec = {
                             if (isReducedMotion) {
                                 fadeIn(animationSpec = snap()) togetherWith fadeOut(animationSpec = snap())
@@ -839,7 +913,7 @@ fun TonightCard(
                                 fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
                             }
                         },
-                        label = "fajrCountdownCrossfade"
+                        label = "countdownCrossfade"
                     ) { countdown ->
                         Text(
                             text = countdown,
@@ -910,9 +984,9 @@ fun NextOpportunityCard(
             }
 
             Surface(
+                onClick = onActionClick,
                 shape = CircleShape,
-                color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable { onActionClick() }
+                color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary
             ) {
                 Text(
                     text = item.actionText,
@@ -1023,9 +1097,9 @@ fun FiveLightMomentCard(
                     horizontalArrangement = Arrangement.End
                 ) {
                     Surface(
+                        onClick = onActionClick,
                         shape = CircleShape,
-                        color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.clickable { onActionClick() }
+                        color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary
                     ) {
                         Text(
                             text = moment.actionText ?: "",
@@ -1252,11 +1326,11 @@ fun ReflectionOfTheDayCard(
                 }
 
                 Surface(
-                    shape = CircleShape,
-                    color = buttonBg,
-                    modifier = Modifier.clickable {
+                    onClick = {
                         onReflectClick(reflection.surahNumber, reflection.verseNumber)
-                    }
+                    },
+                    shape = CircleShape,
+                    color = buttonBg
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),

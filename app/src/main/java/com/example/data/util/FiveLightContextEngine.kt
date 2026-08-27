@@ -79,32 +79,24 @@ object FiveLightContextEngine {
         is24Hour: Boolean,
         nowMillis: Long
     ): TonightSummary? {
-        val maghrib = fardPrayers.find { it.name == PrayerName.MAGHRIB } ?: return null
-        val isha = fardPrayers.find { it.name == PrayerName.ISHA } ?: return null
-        val fajr = fardPrayers.find { it.name == PrayerName.FAJR } ?: return null
-
         val tahajjudWindow = PrayerCalc.calculateTahajjudWindow(fardPrayers, is24Hour, nowMillis) ?: return null
 
-        // Handle overnight timeline for Isha/Fajr bounding
-        val (nightIshaMillis, nightFajrMillis) = if (nowMillis < fajr.timeMillis) {
-            Pair(isha.timeMillis - 24 * 3600 * 1000L, fajr.timeMillis)
-        } else {
-            val adjustedFajr = if (fajr.timeMillis <= maghrib.timeMillis) fajr.timeMillis + 24 * 3600 * 1000L else fajr.timeMillis
-            Pair(isha.timeMillis, adjustedFajr)
-        }
+        val nightIshaMillis = tahajjudWindow.ishaMillis
+        val nightFajrMillis = tahajjudWindow.fajrMillis
+        val lastThirdStartMillis = tahajjudWindow.startMillis
 
-        val ishaStr = isha.timeFormatted
-        val fajrStr = fajr.timeFormatted
+        val ishaStr = tahajjudWindow.ishaFormatted
+        val fajrStr = tahajjudWindow.endFormatted
         val lastThirdStartStr = tahajjudWindow.startFormatted
         val tahajjudWindowStr = tahajjudWindow.windowFormatted
 
         val isLastThirdActive = tahajjudWindow.isCurrent
-        val isIshaActive = nowMillis >= nightIshaMillis && nowMillis < tahajjudWindow.startMillis
+        val isIshaActive = nowMillis >= nightIshaMillis && nowMillis < lastThirdStartMillis
         val isFajrActive = nowMillis >= nightFajrMillis && nowMillis < (nightFajrMillis + 90 * 60 * 1000L)
         val isNightActive = nowMillis >= (nightIshaMillis - 2 * 3600 * 1000L) || nowMillis < nightFajrMillis
 
-        val headerTitle = if (isLastThirdActive) "The Last Third Has Begun" else "Night is Coming"
-        val subtitleText = if (isLastThirdActive) "A blessed time for Qiyam al-Layl." else "A quiet part of the night is ahead."
+        val headerTitle = if (isLastThirdActive) "The Last Third Has Begun" else "The Last Third Is Approaching"
+        val subtitleText = if (isLastThirdActive) "A blessed time for Qiyam al-Layl." else "A blessed time for Qiyam al-Layl is near."
 
         return TonightSummary(
             ishaTimeFormatted = ishaStr,
@@ -120,7 +112,7 @@ object FiveLightContextEngine {
             subtitleText = subtitleText,
             ishaTimeMillis = nightIshaMillis,
             fajrTimeMillis = nightFajrMillis,
-            lastThirdStartMillis = tahajjudWindow.startMillis
+            lastThirdStartMillis = lastThirdStartMillis
         )
     }
 

@@ -47,6 +47,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1229,13 +1231,16 @@ private fun QiblaLiveHeadingRow(
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.5.sp,
                 color = accentColor,
-                modifier = Modifier.clickable {
-                    Toast.makeText(
-                        context,
-                        "Move your phone in a figure-eight pattern to calibrate compass.",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable {
+                        Toast.makeText(
+                            context,
+                            "Move your phone in a figure-eight pattern to calibrate compass.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
             )
         } else {
             Text(

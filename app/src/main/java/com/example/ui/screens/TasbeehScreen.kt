@@ -159,6 +159,7 @@ fun TasbeehScreen(
     onAddCustomDhikr: (transliteration: String, arabicText: String, meaning: String, target: Int) -> Unit = { _, _, _, _ -> },
     onUpdateCustomDhikr: (DhikrPreset) -> Unit = {},
     onDeleteCustomDhikr: (String) -> Unit = {},
+    isActiveTab: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -201,7 +202,7 @@ fun TasbeehScreen(
     val isTasbeehOverlayActive = showHistorySheet || showCustomDhikrDialog || showAddTargetDialog || dhikrToDelete != null || targetToDelete != null || showFeedbackSettings
 
     RegisterPredictiveBackHandler(
-        enabled = isTasbeehOverlayActive,
+        enabled = isActiveTab && isTasbeehOverlayActive,
         backState = tasbeehPredictiveState,
         onBack = {
             if (showHistorySheet) {
@@ -484,6 +485,7 @@ fun TasbeehScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .predictiveBackTransform(tasbeehPredictiveState.progress, tasbeehPredictiveState.swipeEdge)
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(scrollState)
     ) {

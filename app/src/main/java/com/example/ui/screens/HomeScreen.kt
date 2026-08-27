@@ -515,6 +515,7 @@ fun HomeScreen(
     onAddPrayerToQada: (PrayerName, String) -> Unit = { _, _ -> },
     onQuickAccessNavigate: (NavItem) -> Unit,
     onOpenSettings: () -> Unit,
+    isActiveTab: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val isDark = MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
@@ -532,7 +533,7 @@ fun HomeScreen(
     val isHomeOverlayActive = showPrayerMode != null || showPrayerJourneySheet || showPersonalLogSheet || showDuaModal || showHadithModal || activeEvidenceNaflType != null
 
     RegisterPredictiveBackHandler(
-        enabled = isHomeOverlayActive,
+        enabled = isActiveTab && isHomeOverlayActive,
         backState = homePredictiveState,
         onBack = {
             if (showPrayerMode != null) {
@@ -580,6 +581,7 @@ fun HomeScreen(
         state = listState,
         modifier = modifier
             .fillMaxSize()
+            .predictiveBackTransform(homePredictiveState.progress, homePredictiveState.swipeEdge)
             .background(MaterialTheme.colorScheme.background),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -2149,11 +2151,9 @@ fun RightNowCard(
                 horizontalArrangement = Arrangement.End
             ) {
                 Surface(
+                    onClick = onActionClick,
                     shape = CircleShape,
-                    color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .clickable { onActionClick() }
+                    color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),

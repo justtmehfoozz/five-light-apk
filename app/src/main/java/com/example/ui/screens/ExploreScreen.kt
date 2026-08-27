@@ -42,6 +42,7 @@ import com.example.data.model.IslamicDateState
 import com.example.data.util.PrayerDisplayUtils
 import com.example.ui.components.PageHeader
 import com.example.ui.components.RegisterPredictiveBackHandler
+import com.example.ui.components.predictiveBackChildTransform
 import com.example.ui.components.predictiveBackTransform
 import com.example.ui.components.rememberPredictiveBackState
 import com.example.ui.theme.*
@@ -109,94 +110,97 @@ fun ExploreScreen(
     targetDuaId: String? = null,
     targetAdhkarTitle: String? = null,
     targetNameNumber: Int? = null,
+    isActiveTab: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val predictiveState = rememberPredictiveBackState()
     val isSubRouteDirectBack = activeSubRoute != "main"
 
     RegisterPredictiveBackHandler(
-        enabled = isSubRouteDirectBack,
+        enabled = isActiveTab && isSubRouteDirectBack,
         backState = predictiveState,
         onBack = { onSubRouteChange("main") }
     )
 
-    AnimatedContent(
-        targetState = activeSubRoute,
-        modifier = Modifier.predictiveBackTransform(predictiveState.progress, predictiveState.swipeEdge),
-        transitionSpec = {
-            if (targetState == "main") {
-                slideInHorizontally(animationSpec = tween(280)) { -it / 3 } + fadeIn(animationSpec = tween(280)) togetherWith
-                        slideOutHorizontally(animationSpec = tween(240)) { it / 3 } + fadeOut(animationSpec = tween(240))
-            } else {
-                slideInHorizontally(animationSpec = tween(280)) { it / 3 } + fadeIn(animationSpec = tween(280)) togetherWith
-                        slideOutHorizontally(animationSpec = tween(240)) { -it / 3 } + fadeOut(animationSpec = tween(240))
-            }
-        },
-        label = "explore_screen_nav"
-    ) { route ->
-        when (route) {
-            "main" -> {
-                ExploreMainContent(
-                    hijriDate = hijriDate,
-                    onNavigate = { destination -> onSubRouteChange(destination) },
-                    modifier = modifier
-                )
-            }
-            "adhkar" -> {
-                AdhkarScreen(
-                    onBack = { onSubRouteChange("main") },
-                    initialItemTitle = targetAdhkarTitle
-                )
-            }
-            "dua" -> {
-                DuaLibraryScreen(
-                    onBack = { onSubRouteChange("main") },
-                    initialCategory = targetDuaCategory,
-                    initialDuaId = targetDuaId
-                )
-            }
-            "names" -> {
-                NamesOfAllahScreen(
-                    onBack = { onSubRouteChange("main") },
-                    initialNameNumber = targetNameNumber
-                )
-            }
-            "calendar" -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                        .statusBarsPadding()
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        IconButton(
-                            onClick = { onSubRouteChange("main") },
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .testTag("calendar_back_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.ArrowBack,
-                                contentDescription = "Back",
-                                tint = MaterialTheme.colorScheme.onBackground
-                            )
-                        }
-                        Text(
-                            text = "Hijri Calendar",
-                            fontFamily = SerifHeaderFont,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.padding(start = 8.dp)
+    Box(modifier = modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .predictiveBackChildTransform(if (isSubRouteDirectBack) predictiveState.progress else 0f)
+        ) {
+            ExploreMainContent(
+                hijriDate = hijriDate,
+                onNavigate = { destination -> onSubRouteChange(destination) },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        if (isSubRouteDirectBack) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .predictiveBackTransform(predictiveState.progress, predictiveState.swipeEdge)
+            ) {
+                when (activeSubRoute) {
+                    "adhkar" -> {
+                        AdhkarScreen(
+                            onBack = { onSubRouteChange("main") },
+                            initialItemTitle = targetAdhkarTitle,
+                            isActiveTab = isActiveTab
                         )
                     }
-                    if (islamicDateState != null) {
-                        CalendarScreen(hijriDate = hijriDate, islamicDateState = islamicDateState)
-                    } else {
-                        CalendarScreen(hijriDate = hijriDate)
+                    "dua" -> {
+                        DuaLibraryScreen(
+                            onBack = { onSubRouteChange("main") },
+                            initialCategory = targetDuaCategory,
+                            initialDuaId = targetDuaId,
+                            isActiveTab = isActiveTab
+                        )
+                    }
+                    "names" -> {
+                        NamesOfAllahScreen(
+                            onBack = { onSubRouteChange("main") },
+                            initialNameNumber = targetNameNumber
+                        )
+                    }
+                    "calendar" -> {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background)
+                                .statusBarsPadding()
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                IconButton(
+                                    onClick = { onSubRouteChange("main") },
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .testTag("calendar_back_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.ArrowBack,
+                                        contentDescription = "Back",
+                                        tint = MaterialTheme.colorScheme.onBackground
+                                    )
+                                }
+                                Text(
+                                    text = "Hijri Calendar",
+                                    fontFamily = SerifHeaderFont,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
+                            if (islamicDateState != null) {
+                                CalendarScreen(hijriDate = hijriDate, islamicDateState = islamicDateState)
+                            } else {
+                                CalendarScreen(hijriDate = hijriDate)
+                            }
+                        }
                     }
                 }
             }
@@ -552,6 +556,7 @@ fun FeaturedRotatingCard(
                     )
                 }
             }
+            .clip(RoundedCornerShape(22.dp))
             .clickable(
                 interactionSource = interactionSource,
                 indication = ripple(),
@@ -748,19 +753,16 @@ fun CategoryGridCard(
     )
 
     Surface(
+        onClick = onClick,
         shape = RoundedCornerShape(18.dp),
         color = cardBg,
         border = BorderStroke(1.dp, cardBorder),
+        interactionSource = interactionSource,
         modifier = modifier
             .graphicsLayer {
                 scaleX = cardScale
                 scaleY = cardScale
             }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = ripple(),
-                onClick = onClick
-            )
     ) {
         Column(
             modifier = Modifier
@@ -879,20 +881,17 @@ fun CategoryWideCard(
     )
 
     Surface(
+        onClick = onClick,
         shape = RoundedCornerShape(18.dp),
         color = cardBg,
         border = BorderStroke(1.dp, cardBorder),
+        interactionSource = interactionSource,
         modifier = modifier
             .fillMaxWidth()
             .graphicsLayer {
                 scaleX = cardScale
                 scaleY = cardScale
             }
-            .clickable(
-                interactionSource = interactionSource,
-                indication = ripple(),
-                onClick = onClick
-            )
     ) {
         Row(
             modifier = Modifier

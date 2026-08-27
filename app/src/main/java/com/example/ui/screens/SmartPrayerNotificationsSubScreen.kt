@@ -61,8 +61,6 @@ fun SmartPrayerNotificationsSubScreen(
     val context = LocalContext.current
     val manager = remember { SmartPrayerNotificationManager(context) }
 
-    BackHandler(onBack = onBack)
-
     var isSmartEnabled by remember { mutableStateOf(manager.isSmartNotificationsEnabled) }
     var isPrayerTimeEnabled by remember { mutableStateOf(manager.isPrayerTimeNotificationsEnabled) }
     var preReminderOffset by remember { mutableStateOf(manager.preReminderOffset) }
@@ -473,20 +471,19 @@ fun SmartPrayerNotificationsSubScreen(
                                     PrePrayerReminderOffset.entries.forEach { option ->
                                         val isSelected = preReminderOffset == option
                                         Surface(
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .clickable {
-                                                    preReminderOffset = option
-                                                    updateSettings()
-                                                }
-                                                .testTag("offset_chip_${option.name}"),
+                                            onClick = {
+                                                preReminderOffset = option
+                                                updateSettings()
+                                            },
                                             shape = RoundedCornerShape(8.dp),
                                             color = if (isSelected) (if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primaryContainer) else (if (isDark) Color(0xFF242426) else LightSurface),
                                             border = BorderStroke(
                                                 1.dp,
                                                 if (isSelected) (if (isDark) Color.White.copy(alpha = 0.35f) else MaterialTheme.colorScheme.primary) else (if (isDark) Color.White.copy(alpha = 0.12f) else LightBorder)
-                                            )
+                                            ),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .testTag("offset_chip_${option.name}")
                                         ) {
                                             Box(
                                                 modifier = Modifier.padding(vertical = 10.dp),

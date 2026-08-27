@@ -91,13 +91,11 @@ fun RecentlyReadSection(
         ) {
             items(displayList, key = { "${it.surahNumber}_${it.verseNumber}_${it.timestamp}" }) { item ->
                 Surface(
+                    onClick = { onSelectReadItem(item.surahNumber, item.verseIndex) },
                     shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.surface,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable { onSelectReadItem(item.surahNumber, item.verseIndex) }
-                        .testTag("recent_read_chip_${item.surahNumber}")
+                    modifier = Modifier.testTag("recent_read_chip_${item.surahNumber}")
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),

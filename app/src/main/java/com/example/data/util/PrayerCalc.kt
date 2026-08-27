@@ -227,31 +227,37 @@ object PrayerCalc {
         is24Hour: Boolean = false,
         nowMillis: Long = System.currentTimeMillis()
     ): TahajjudWindow? {
-        val maghrib = fardPrayers.find { it.name == PrayerName.MAGHRIB } ?: return null
+        val isha = fardPrayers.find { it.name == PrayerName.ISHA } ?: return null
         val fajr = fardPrayers.find { it.name == PrayerName.FAJR } ?: return null
 
-        // Handle overnight timeline
-        val (nightMaghribMillis, nightFajrMillis) = if (nowMillis < fajr.timeMillis) {
-            // Early morning before Fajr (between 00:00 midnight and Fajr): night belongs to yesterday Maghrib -> today Fajr
-            Pair(maghrib.timeMillis - 24 * 3600 * 1000L, fajr.timeMillis)
+        // Handle overnight timeline: Isha -> next Fajr
+        val (nightIshaMillis, nightFajrMillis) = if (nowMillis < fajr.timeMillis) {
+            // Early morning before Fajr (between 00:00 midnight and Fajr): night belongs to yesterday Isha -> today Fajr
+            val adjustedIsha = if (isha.timeMillis >= fajr.timeMillis) {
+                isha.timeMillis - 24 * 3600 * 1000L
+            } else {
+                isha.timeMillis
+            }
+            Pair(adjustedIsha, fajr.timeMillis)
         } else {
-            // Daytime or evening: night belongs to today Maghrib -> tomorrow Fajr
-            val adjustedFajr = if (fajr.timeMillis <= maghrib.timeMillis) {
+            // Daytime or evening: night belongs to today Isha -> tomorrow Fajr
+            val adjustedFajr = if (fajr.timeMillis <= isha.timeMillis) {
                 fajr.timeMillis + 24 * 3600 * 1000L
             } else {
                 fajr.timeMillis
             }
-            Pair(maghrib.timeMillis, adjustedFajr)
+            Pair(isha.timeMillis, adjustedFajr)
         }
 
-        val nightDuration = (nightFajrMillis - nightMaghribMillis).coerceAtLeast(1000L)
+        val nightDuration = (nightFajrMillis - nightIshaMillis).coerceAtLeast(1000L)
         val tahajjudStartMillis = nightFajrMillis - (nightDuration / 3)
         val tahajjudEndMillis = nightFajrMillis
 
         val startStr = formatTime(tahajjudStartMillis, is24Hour, activeTimeZone)
-        val fajrStr = fajr.timeFormatted
+        val fajrStr = formatTime(nightFajrMillis, is24Hour, activeTimeZone)
+        val ishaStr = formatTime(nightIshaMillis, is24Hour, activeTimeZone)
         val windowStr = "$startStr – $fajrStr"
-        val isCurrent = nowMillis in tahajjudStartMillis..<nightFajrMillis
+        val isCurrent = nowMillis >= tahajjudStartMillis && nowMillis < nightFajrMillis
 
         return TahajjudWindow(
             startMillis = tahajjudStartMillis,
@@ -259,7 +265,10 @@ object PrayerCalc {
             startFormatted = startStr,
             endFormatted = fajrStr,
             windowFormatted = windowStr,
-            isCurrent = isCurrent
+            isCurrent = isCurrent,
+            ishaMillis = nightIshaMillis,
+            fajrMillis = nightFajrMillis,
+            ishaFormatted = ishaStr
         )
     }
 }
@@ -270,6 +279,9 @@ data class TahajjudWindow(
     val startFormatted: String,
     val endFormatted: String,
     val windowFormatted: String,
-    val isCurrent: Boolean
+    val isCurrent: Boolean,
+    val ishaMillis: Long = 0L,
+    val fajrMillis: Long = endMillis,
+    val ishaFormatted: String = ""
 )
 

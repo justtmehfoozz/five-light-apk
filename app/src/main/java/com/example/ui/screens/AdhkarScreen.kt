@@ -348,7 +348,8 @@ val eveningAdhkar = listOf(
 @Composable
 fun AdhkarScreen(
     onBack: () -> Unit,
-    initialItemTitle: String? = null
+    initialItemTitle: String? = null,
+    isActiveTab: Boolean = true
 ) {
     val isDark = isAppInDarkTheme()
     val haptic = LocalHapticFeedback.current
@@ -418,7 +419,8 @@ fun AdhkarScreen(
             items = adhkarList,
             progressMap = activeProgressMap,
             onClose = { isFocusMode = false },
-            isDark = isDark
+            isDark = isDark,
+            isActiveTab = isActiveTab
         )
         return
     }
@@ -632,6 +634,7 @@ fun AdhkarItemCard(
                         )
                     }
                 }
+                .clip(RoundedCornerShape(16.dp))
                 .clickable {
                     if (!isComplete) {
                         onIncrement()
@@ -751,7 +754,8 @@ fun AdhkarFocusModeScreen(
     items: List<AdhkarItem>,
     progressMap: MutableMap<Int, Int>,
     onClose: () -> Unit,
-    isDark: Boolean
+    isDark: Boolean,
+    isActiveTab: Boolean = true
 ) {
     val haptic = LocalHapticFeedback.current
     var currentIndex by remember { mutableStateOf(0) }
@@ -760,7 +764,7 @@ fun AdhkarFocusModeScreen(
 
     val adhkarBackState = rememberPredictiveBackState()
     RegisterPredictiveBackHandler(
-        enabled = true,
+        enabled = isActiveTab,
         backState = adhkarBackState,
         onBack = onClose
     )
@@ -964,6 +968,7 @@ fun AdhkarFocusModeScreen(
                                     scaleX = buttonScale
                                     scaleY = buttonScale
                                 }
+                                .clip(CircleShape)
                                 .clickable {
                                     if (!itemIsComplete) {
                                         progressMap[targetIdx] = itemCurrentCount + 1
