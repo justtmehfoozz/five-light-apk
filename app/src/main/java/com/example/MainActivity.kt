@@ -40,7 +40,6 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.RegisterPredictiveBackHandler
-import com.example.ui.components.predictiveBackTransform
 import com.example.ui.components.rememberPredictiveBackState
 import com.example.data.util.DuaItem
 import com.example.ui.components.ExploreSearchScope
@@ -98,11 +97,13 @@ class MainActivity : ComponentActivity() {
                 // Top-level tab navigation stack history
                 val tabStack = remember { androidx.compose.runtime.mutableStateListOf(0) }
 
-                androidx.compose.runtime.LaunchedEffect(pagerState.currentPage, pagerState.currentPageOffsetFraction) {
-                    if (!selectorController.isDragging.value) {
-                        val fraction = pagerState.currentPage + pagerState.currentPageOffsetFraction
-                        selectorController.syncWithPager(fraction)
-                    }
+                androidx.compose.runtime.LaunchedEffect(pagerState) {
+                    androidx.compose.runtime.snapshotFlow { pagerState.currentPage to pagerState.currentPageOffsetFraction }
+                        .collect { (page, offset) ->
+                            if (!selectorController.isDragging.value) {
+                                selectorController.syncWithPager(page + offset)
+                            }
+                        }
                 }
 
                 androidx.compose.runtime.LaunchedEffect(pagerState.currentPage) {
@@ -130,27 +131,19 @@ class MainActivity : ComponentActivity() {
                 val playingVerse by viewModel.playingVerse.collectAsStateWithLifecycle()
                 val isPlayingAudio by viewModel.isPlayingAudio.collectAsStateWithLifecycle()
                 val isLoadingAudio by viewModel.isLoadingAudio.collectAsStateWithLifecycle()
-                val audioProgress by viewModel.audioProgress.collectAsStateWithLifecycle()
                 val showPrayerMode by viewModel.showPrayerMode.collectAsStateWithLifecycle()
                 var showExpandedPlayerSheet by remember { mutableStateOf(false) }
                 var isScrolledAwayFromActiveVerse by remember { mutableStateOf(false) }
                 var jumpToActiveVerseTrigger by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
 
                 val mainPredictiveState = rememberPredictiveBackState()
-                val canPopAppLevel = showSearchOverlay || showSettingsSheet || showExpandedPlayerSheet ||
-                    (tabStack.size > 1 && !isQuranReadingModeActive && exploreSubRoute == "main" && showPrayerMode == null)
+                val canPopAppLevel = tabStack.size > 1 && !isQuranReadingModeActive && exploreSubRoute == "main" && showPrayerMode == null
 
                 RegisterPredictiveBackHandler(
                     enabled = canPopAppLevel,
                     backState = mainPredictiveState,
                     onBack = {
-                        if (showExpandedPlayerSheet) {
-                            showExpandedPlayerSheet = false
-                        } else if (showSearchOverlay) {
-                            showSearchOverlay = false
-                        } else if (showSettingsSheet) {
-                            showSettingsSheet = false
-                        } else if (tabStack.size > 1) {
+                        if (tabStack.size > 1) {
                             tabStack.removeAt(tabStack.lastIndex)
                             val prevPage = tabStack.last()
                             coroutineScope.launch {
@@ -184,7 +177,6 @@ class MainActivity : ComponentActivity() {
                                 scaleY = appContentScale
                             }
                     ) {
-                    val effectivePredictiveProgress = if (showExpandedPlayerSheet || showSearchOverlay || showSettingsSheet) 0f else mainPredictiveState.progress
 
                     HorizontalPager(
                         state = pagerState,
@@ -192,7 +184,6 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier
                             .fillMaxSize()
                             .clipToBounds()
-                            .predictiveBackTransform(effectivePredictiveProgress, mainPredictiveState.swipeEdge)
                             .haze(state = hazeState),
                         beyondViewportPageCount = 1
                     ) { pageIndex ->
@@ -256,7 +247,16 @@ class MainActivity : ComponentActivity() {
                                     onSavePrayerNote = { pName, dStr, note -> viewModel.savePrayerNote(prayerName = pName, dateString = dStr, note = note) },
                                     onAddPrayerToQada = { pName, dStr -> viewModel.addPrayerToQada(prayerName = pName, dateString = dStr) },
                                     onQuickAccessNavigate = { navItem ->
-                                        coroutineScope.launch { pagerState.animateScrollToPage(navItem.ordinal) }
+                                        coroutineScope.launch { 
+                                            val targetPage = navItem.ordinal
+                                            val currentPage = pagerState.currentPage
+                                            if (targetPage != currentPage) {
+                                                if (kotlin.math.abs(targetPage - currentPage) > 1) {
+                                                    pagerState.scrollToPage(if (targetPage > currentPage) targetPage - 1 else targetPage + 1)
+                                                }
+                                                pagerState.animateScrollToPage(targetPage)
+                                            }
+                                        }
                                     },
                                     onOpenSettings = { showSettingsSheet = true },
                                     isActiveTab = (pagerState.currentPage == 0)
@@ -310,7 +310,6 @@ class MainActivity : ComponentActivity() {
                                 val playingSurahNumber by viewModel.playingSurahNumber.collectAsStateWithLifecycle()
                                 val isPlayingAudio by viewModel.isPlayingAudio.collectAsStateWithLifecycle()
                                 val isLoadingAudio by viewModel.isLoadingAudio.collectAsStateWithLifecycle()
-                                val audioProgress by viewModel.audioProgress.collectAsStateWithLifecycle()
                                 val surahPlaybackProgress by viewModel.surahPlaybackProgress.collectAsStateWithLifecycle()
                                 val surahDownloadStates by viewModel.surahDownloadStates.collectAsStateWithLifecycle()
                                 val isBulkDownloadingQuran by viewModel.isBulkDownloadingQuran.collectAsStateWithLifecycle()
@@ -318,6 +317,7 @@ class MainActivity : ComponentActivity() {
                                 val bulkDownloadStatusText by viewModel.bulkDownloadStatusText.collectAsStateWithLifecycle()
 
                                 val dailyQuranGoal by viewModel.dailyQuranGoal.collectAsStateWithLifecycle()
+
                                 QuranScreen(
                                     dailyQuranGoal = dailyQuranGoal,
                                     onSetDailyGoal = { viewModel.setDailyQuranGoal(it) },
@@ -336,7 +336,7 @@ class MainActivity : ComponentActivity() {
                                     playingVerseNumber = playingVerseNumber,
                                     isPlayingAudio = isPlayingAudio,
                                     isLoadingAudio = isLoadingAudio,
-                                    audioProgress = audioProgress,
+                                    audioProgress = 0f,
                                     surahPlaybackProgress = surahPlaybackProgress,
                                     surahDownloadStates = surahDownloadStates,
                                     onDownloadSurah = { viewModel.downloadSurahAudio(it) },
@@ -475,7 +475,13 @@ class MainActivity : ComponentActivity() {
                                     "calendar", "search", "explore" -> 4
                                     else -> navItem.ordinal.coerceAtMost(4)
                                 }
-                                pagerState.scrollToPage(targetPage)
+                                val currentPage = pagerState.currentPage
+                                if (targetPage != currentPage) {
+                                    if (kotlin.math.abs(targetPage - currentPage) > 1) {
+                                        pagerState.scrollToPage(if (targetPage > currentPage) targetPage - 1 else targetPage + 1)
+                                    }
+                                    pagerState.animateScrollToPage(targetPage)
+                                }
                             }
                         },
                         hazeState = hazeState,
@@ -486,7 +492,7 @@ class MainActivity : ComponentActivity() {
                         playingVerseNumber = playingVerseNumber,
                         isPlaying = isPlayingAudio,
                         isLoading = isLoadingAudio,
-                        audioProgress = audioProgress,
+                        audioProgressProvider = { viewModel.audioProgress.value },
                         onPlayPause = { viewModel.togglePlayPauseAudio() },
                         onSkipPrevious = { viewModel.playPreviousVerseAudio() },
                         onSkipNext = { viewModel.playNextVerseAudio() },
@@ -580,8 +586,6 @@ class MainActivity : ComponentActivity() {
                             com.example.data.util.QuranData.SURAHS_DIRECTORY.find { it.number == playingSurahNumber }
                         }
                         val bookmarkedVerses by viewModel.bookmarks.collectAsStateWithLifecycle()
-                        val audioPositionMs by viewModel.audioPositionMs.collectAsStateWithLifecycle()
-                        val audioDurationMs by viewModel.audioDurationMs.collectAsStateWithLifecycle()
                         val isCurrentBookmarked = remember(playingSurahNumber, playingVerseNumber, bookmarkedVerses) {
                             val sNum = playingSurahNumber ?: 0
                             val vNum = playingVerseNumber ?: 0
@@ -594,9 +598,9 @@ class MainActivity : ComponentActivity() {
                             currentVerseNumber = playingVerseNumber,
                             isPlaying = isPlayingAudio,
                             isLoading = isLoadingAudio,
-                            audioProgress = audioProgress,
-                            audioPositionMs = audioPositionMs,
-                            audioDurationMs = audioDurationMs,
+                            audioProgressFlow = viewModel.audioProgress,
+                            audioPositionMsFlow = viewModel.audioPositionMs,
+                            audioDurationMsFlow = viewModel.audioDurationMs,
                             isBookmarked = isCurrentBookmarked,
                             onPlayPause = { viewModel.togglePlayPauseAudio() },
                             onSkipPrevious = { viewModel.playPreviousVerseAudio() },

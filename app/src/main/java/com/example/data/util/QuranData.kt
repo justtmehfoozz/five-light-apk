@@ -161,13 +161,17 @@ object QuranData {
     }
 
     @Synchronized
-    private fun ensureDataLoaded(context: Context) {
+    fun ensureDataLoaded(context: Context) {
         if (cachedVersesMap == null || cachedVerseIdentityMap == null || cachedTranslationIdentityMap == null) {
             val (surahMap, identityMap, transMap) = loadAllVersesFromAssets(context)
             cachedVersesMap = surahMap
             cachedVerseIdentityMap = identityMap
             cachedTranslationIdentityMap = transMap
         }
+    }
+
+    fun preload(context: Context) {
+        ensureDataLoaded(context)
     }
 
     fun getVersesForSurah(context: Context, surahNumber: Int): List<Verse> {

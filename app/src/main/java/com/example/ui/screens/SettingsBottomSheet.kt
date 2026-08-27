@@ -2,7 +2,6 @@ package com.example.ui.screens
 
 import com.example.ui.components.RegisterPredictiveBackHandler
 import com.example.ui.components.rememberPredictiveBackState
-import com.example.ui.components.predictiveBackTransform
 
 import com.example.ui.theme.semanticPrimaryAccent
 import com.example.ui.theme.semanticAccentForeground
@@ -213,7 +212,6 @@ fun SettingsBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .predictiveBackTransform(settingsPredictiveState.progress, settingsPredictiveState.swipeEdge)
                 .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
             AnimatedContent(

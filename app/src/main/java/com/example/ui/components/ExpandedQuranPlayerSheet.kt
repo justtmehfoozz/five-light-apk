@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -40,6 +42,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import com.example.ui.theme.fiveLightPressable
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Stop
@@ -115,48 +118,46 @@ private fun PlaybackWaveform(
     accentColor: Color,
     modifier: Modifier = Modifier
 ) {
-    val barHeights = if (isPlaying && !isReducedMotion) {
-        val infiniteTransition = rememberInfiniteTransition(label = "waveformAnim")
-        val b1 by infiniteTransition.animateFloat(
-            initialValue = 0.35f, targetValue = 0.95f,
-            animationSpec = infiniteRepeatable(tween(420, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-            label = "b1"
-        )
-        val b2 by infiniteTransition.animateFloat(
-            initialValue = 0.85f, targetValue = 0.25f,
-            animationSpec = infiniteRepeatable(tween(350, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-            label = "b2"
-        )
-        val b3 by infiniteTransition.animateFloat(
-            initialValue = 0.40f, targetValue = 1.00f,
-            animationSpec = infiniteRepeatable(tween(480, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-            label = "b3"
-        )
-        val b4 by infiniteTransition.animateFloat(
-            initialValue = 0.90f, targetValue = 0.30f,
-            animationSpec = infiniteRepeatable(tween(390, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-            label = "b4"
-        )
-        listOf(b1, b2, b3, b4)
-    } else if (isPlaying) {
-        listOf(0.6f, 0.4f, 0.7f, 0.5f)
-    } else {
-        listOf(0.25f, 0.25f, 0.25f, 0.25f)
-    }
+    val infiniteTransition = rememberInfiniteTransition(label = "waveformAnim")
+    val b1 = infiniteTransition.animateFloat(
+        initialValue = if (isPlaying && !isReducedMotion) 0.35f else 0.25f, targetValue = if (isPlaying && !isReducedMotion) 0.95f else 0.25f,
+        animationSpec = if (isPlaying && !isReducedMotion) infiniteRepeatable(tween(420, easing = FastOutSlowInEasing), RepeatMode.Reverse) else infiniteRepeatable(tween(300)),
+        label = "b1"
+    )
+    val b2 = infiniteTransition.animateFloat(
+        initialValue = if (isPlaying && !isReducedMotion) 0.85f else 0.25f, targetValue = if (isPlaying && !isReducedMotion) 0.25f else 0.25f,
+        animationSpec = if (isPlaying && !isReducedMotion) infiniteRepeatable(tween(350, easing = FastOutSlowInEasing), RepeatMode.Reverse) else infiniteRepeatable(tween(300)),
+        label = "b2"
+    )
+    val b3 = infiniteTransition.animateFloat(
+        initialValue = if (isPlaying && !isReducedMotion) 0.40f else 0.25f, targetValue = if (isPlaying && !isReducedMotion) 1.00f else 0.25f,
+        animationSpec = if (isPlaying && !isReducedMotion) infiniteRepeatable(tween(480, easing = FastOutSlowInEasing), RepeatMode.Reverse) else infiniteRepeatable(tween(300)),
+        label = "b3"
+    )
+    val b4 = infiniteTransition.animateFloat(
+        initialValue = if (isPlaying && !isReducedMotion) 0.90f else 0.25f, targetValue = if (isPlaying && !isReducedMotion) 0.30f else 0.25f,
+        animationSpec = if (isPlaying && !isReducedMotion) infiniteRepeatable(tween(390, easing = FastOutSlowInEasing), RepeatMode.Reverse) else infiniteRepeatable(tween(300)),
+        label = "b4"
+    )
 
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(2.5.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        barHeights.forEach { fraction ->
-            Box(
-                modifier = Modifier
-                    .width(2.5.dp)
-                    .height((14.dp * fraction).coerceAtLeast(3.dp))
-                    .clip(CircleShape)
-                    .background(accentColor)
+    androidx.compose.foundation.Canvas(modifier = modifier.width(18.dp).height(14.dp)) {
+        val spacing = 2.5.dp.toPx()
+        val barWidth = 2.5.dp.toPx()
+        val totalHeight = 14.dp.toPx()
+        val cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f, barWidth / 2f)
+        
+        val fractions = listOf(b1.value, b2.value, b3.value, b4.value)
+        var xOffset = 0f
+        for (fraction in fractions) {
+            val barHeight = (totalHeight * fraction).coerceAtLeast(3.dp.toPx())
+            val yOffset = (totalHeight - barHeight) / 2f
+            drawRoundRect(
+                color = accentColor,
+                topLeft = androidx.compose.ui.geometry.Offset(xOffset, yOffset),
+                size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                cornerRadius = cornerRadius
             )
+            xOffset += barWidth + spacing
         }
     }
 }
@@ -173,9 +174,12 @@ fun ExpandedQuranPlayerSheet(
     currentVerseNumber: Int?,
     isPlaying: Boolean,
     isLoading: Boolean = false,
-    audioProgress: Float,
+    audioProgress: Float = 0f,
     audioPositionMs: Long = 0L,
     audioDurationMs: Long = 0L,
+    audioProgressFlow: StateFlow<Float>? = null,
+    audioPositionMsFlow: StateFlow<Long>? = null,
+    audioDurationMsFlow: StateFlow<Long>? = null,
     isBookmarked: Boolean,
     onPlayPause: () -> Unit,
     onSkipPrevious: () -> Unit,
@@ -186,6 +190,10 @@ fun ExpandedQuranPlayerSheet(
     onDismiss: () -> Unit,
     sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 ) {
+    val currentAudioProgress = audioProgressFlow?.collectAsStateWithLifecycle()?.value ?: audioProgress
+    val currentAudioPositionMs = audioPositionMsFlow?.collectAsStateWithLifecycle()?.value ?: audioPositionMs
+    val currentAudioDurationMs = audioDurationMsFlow?.collectAsStateWithLifecycle()?.value ?: audioDurationMs
+
     val isDark = isAppInDarkTheme()
     val isReducedMotion = rememberIsReducedMotion()
     val accent = Color.semanticPrimaryAccent
@@ -454,7 +462,7 @@ fun ExpandedQuranPlayerSheet(
             // Scrubbable Progress Bar & Timers
             var isDraggingProgress by remember { mutableStateOf(false) }
             var dragProgressFraction by remember { mutableFloatStateOf(0f) }
-            val currentDisplayProg = if (isDraggingProgress) dragProgressFraction else audioProgress.coerceIn(0f, 1f)
+            val currentDisplayProg = if (isDraggingProgress) dragProgressFraction else currentAudioProgress.coerceIn(0f, 1f)
             val trackHeight by animateDpAsState(
                 targetValue = if (isDraggingProgress && !isReducedMotion) 6.dp else 4.dp,
                 animationSpec = tween(180),
@@ -553,10 +561,10 @@ fun ExpandedQuranPlayerSheet(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val displayPosMs = if (isDraggingProgress && audioDurationMs > 0) {
-                        (dragProgressFraction * audioDurationMs).toLong()
+                    val displayPosMs = if (isDraggingProgress && currentAudioDurationMs > 0) {
+                        (dragProgressFraction * currentAudioDurationMs).toLong()
                     } else {
-                        audioPositionMs
+                        currentAudioPositionMs
                     }
 
                     Text(
@@ -566,8 +574,8 @@ fun ExpandedQuranPlayerSheet(
                     )
                     val totalDurText = if (isLoading) {
                         "Loading..."
-                    } else if (audioDurationMs > 0) {
-                        "${formatAudioTime(displayPosMs)} / ${formatAudioTime(audioDurationMs)}"
+                    } else if (currentAudioDurationMs > 0) {
+                        "${formatAudioTime(displayPosMs)} / ${formatAudioTime(currentAudioDurationMs)}"
                     } else {
                         "--:--"
                     }
@@ -582,13 +590,6 @@ fun ExpandedQuranPlayerSheet(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Playback Controls Row: Stop, Skip Prev, Focal Play/Pause, Skip Next, Collapse
-            var isPlayPressed by remember { mutableStateOf(false) }
-            val playBtnScale by animateFloatAsState(
-                targetValue = if (isPlayPressed) 0.94f else 1f,
-                animationSpec = tween(120, easing = FastOutSlowInEasing),
-                label = "playBtnScale"
-            )
-
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -597,15 +598,13 @@ fun ExpandedQuranPlayerSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // 3. Stop Button (Visually quieter 40dp button container)
-                IconButton(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onStopAudio()
-                    },
+                Box(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .testTag("full_player_stop_btn")
+                        .fiveLightPressable(onClick = onStopAudio)
+                        .testTag("full_player_stop_btn"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Stop,
@@ -616,15 +615,13 @@ fun ExpandedQuranPlayerSheet(
                 }
 
                 // 2. Skip Previous (52dp button, prominent)
-                IconButton(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onSkipPrevious()
-                    },
+                Box(
                     modifier = Modifier
                         .size(52.dp)
                         .clip(CircleShape)
-                        .testTag("full_player_prev_btn")
+                        .fiveLightPressable(onClick = onSkipPrevious)
+                        .testTag("full_player_prev_btn"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Filled.SkipPrevious,
@@ -638,10 +635,6 @@ fun ExpandedQuranPlayerSheet(
                 Box(
                     modifier = Modifier
                         .size(64.dp)
-                        .graphicsLayer {
-                            scaleX = if (isReducedMotion) 1f else playBtnScale
-                            scaleY = if (isReducedMotion) 1f else playBtnScale
-                        }
                         .clip(CircleShape)
                         .background(accent)
                         .border(
@@ -649,19 +642,7 @@ fun ExpandedQuranPlayerSheet(
                             color = accent.copy(alpha = 0.5f),
                             shape = CircleShape
                         )
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onPress = {
-                                    isPlayPressed = true
-                                    tryAwaitRelease()
-                                    isPlayPressed = false
-                                },
-                                onTap = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    onPlayPause()
-                                }
-                            )
-                        }
+                        .fiveLightPressable(onClick = onPlayPause)
                         .testTag("full_player_play_pause_btn"),
                     contentAlignment = Alignment.Center
                 ) {
@@ -694,15 +675,13 @@ fun ExpandedQuranPlayerSheet(
                 }
 
                 // 2. Skip Next (52dp button, prominent)
-                IconButton(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onSkipNext()
-                    },
+                Box(
                     modifier = Modifier
                         .size(52.dp)
                         .clip(CircleShape)
-                        .testTag("full_player_next_btn")
+                        .fiveLightPressable(onClick = onSkipNext)
+                        .testTag("full_player_next_btn"),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Filled.SkipNext,
@@ -713,11 +692,12 @@ fun ExpandedQuranPlayerSheet(
                 }
 
                 // 4. Collapse Button (Smallest and most understated 40dp button container)
-                IconButton(
-                    onClick = onDismiss,
+                Box(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
+                        .fiveLightPressable(onClick = onDismiss),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Filled.KeyboardArrowDown,

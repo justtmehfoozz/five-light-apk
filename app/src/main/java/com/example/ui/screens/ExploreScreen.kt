@@ -42,7 +42,6 @@ import com.example.data.model.IslamicDateState
 import com.example.data.util.PrayerDisplayUtils
 import com.example.ui.components.PageHeader
 import com.example.ui.components.RegisterPredictiveBackHandler
-import com.example.ui.components.predictiveBackTransform
 import com.example.ui.components.rememberPredictiveBackState
 import com.example.ui.theme.*
 
@@ -123,7 +122,6 @@ fun ExploreScreen(
 
     AnimatedContent(
         targetState = activeSubRoute,
-        modifier = Modifier.predictiveBackTransform(predictiveState.progress, predictiveState.swipeEdge),
         transitionSpec = {
             if (targetState == "main") {
                 slideInHorizontally(animationSpec = tween(280)) { -it / 3 } + fadeIn(animationSpec = tween(280)) togetherWith

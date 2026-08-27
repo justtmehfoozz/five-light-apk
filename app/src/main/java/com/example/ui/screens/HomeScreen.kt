@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import com.example.ui.components.RegisterPredictiveBackHandler
-import com.example.ui.components.predictiveBackTransform
 import com.example.ui.components.rememberPredictiveBackState
 
 import com.example.ui.theme.semanticPrimaryAccent
@@ -521,7 +520,7 @@ fun HomeScreen(
     val isDark = MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     val coroutineScope = rememberCoroutineScope()
-    val todayStr = remember(hijriDate, System.currentTimeMillis() / 60000L) { java.time.LocalDate.now().toString() }
+    val todayStr = remember(hijriDate, todayLog?.date) { java.time.LocalDate.now().toString() }
 
     var showDuaModal by remember { mutableStateOf(false) }
     var showHadithModal by remember { mutableStateOf(false) }
@@ -581,7 +580,6 @@ fun HomeScreen(
         state = listState,
         modifier = modifier
             .fillMaxSize()
-            .predictiveBackTransform(homePredictiveState.progress, homePredictiveState.swipeEdge)
             .background(MaterialTheme.colorScheme.background),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {

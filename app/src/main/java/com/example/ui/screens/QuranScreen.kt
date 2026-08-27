@@ -1,7 +1,6 @@
 package com.example.ui.screens
 import android.content.Intent
 import com.example.ui.components.RegisterPredictiveBackHandler
-import com.example.ui.components.predictiveBackTransform
 import com.example.ui.components.rememberPredictiveBackState
 import com.example.ui.theme.semanticDockBorder
 
@@ -298,7 +297,6 @@ fun QuranScreen(
 
         AnimatedContent(
             targetState = isReadingViewActive && currentSurah != null,
-            modifier = Modifier.predictiveBackTransform(quranPredictiveState.progress, quranPredictiveState.swipeEdge),
             transitionSpec = {
                 if (targetState) {
                     FiveLightMotion.slideFadeForward(isMotionReduced)
@@ -708,12 +706,12 @@ fun QuranScreen(
                 Spacer(modifier = Modifier.height(14.dp))
 
                 if (selectedTab == 0) {
-                    // Filtered Surahs List - Memoized to prevent heavy allocations during scroll
+                    // Filtered Surahs List - Uses shared GlobalSearchEngine for smart matching and ranking
                     val filteredSurahs = remember(searchQuery) {
-                        QuranData.SURAHS_DIRECTORY.filter {
-                            it.nameEnglish.contains(searchQuery, ignoreCase = true) ||
-                                    it.englishTranslation.contains(searchQuery, ignoreCase = true) ||
-                                    it.number.toString() == searchQuery
+                        if (searchQuery.isBlank()) {
+                            QuranData.SURAHS_DIRECTORY
+                        } else {
+                            com.example.data.util.GlobalSearchEngine.searchSurahs(searchQuery)
                         }
                     }
 
@@ -1740,7 +1738,7 @@ fun BismillahHeader(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .clickable(onClick = onPlayAudio),
+                    .fiveLightPressable(onClick = onPlayAudio),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
@@ -1943,7 +1941,7 @@ fun VerseCard(
                     modifier = Modifier
                         .size(48.dp)
                         .clip(CircleShape)
-                        .clickable(onClick = onPlayAudio),
+                        .fiveLightPressable(onClick = onPlayAudio),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(

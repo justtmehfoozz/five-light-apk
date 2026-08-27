@@ -3,7 +3,6 @@ package com.example.ui.screens
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import com.example.ui.components.RegisterPredictiveBackHandler
-import com.example.ui.components.predictiveBackTransform
 import com.example.ui.components.rememberPredictiveBackState
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -777,7 +776,6 @@ fun AdhkarFocusModeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .predictiveBackTransform(adhkarBackState.progress, adhkarBackState.swipeEdge)
             .background(Color.semanticBackground)
             .statusBarsPadding()
             .navigationBarsPadding()

@@ -563,11 +563,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         refreshQadaCounts()
         _dailyQuranGoal.value = repository.getDailyQuranGoal()
 
-        loadSurahVerses(QuranData.SURAHS_DIRECTORY[0])
-        refreshDownloadStates()
-
         viewModelScope.launch(Dispatchers.IO) {
             try {
+                QuranData.preload(getApplication())
+                loadSurahVerses(QuranData.SURAHS_DIRECTORY[0])
+                refreshDownloadStates()
+
                 val catEntities = DuaData.CATEGORIES.mapIndexed { index, cat ->
                     DuaCategoryEntity(
                         id = cat.title,
@@ -1464,6 +1465,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         } catch (e: Exception) { }
     }
 
+    private var lastSurahProgressUpdateTime = 0L
+
     private fun startProgressTracker() {
         progressJob?.cancel()
         progressJob = viewModelScope.launch {
@@ -1477,11 +1480,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
                         _audioDurationMs.value = durMs
                         val intraProg = (curPos.toFloat() / durMs.toFloat()).coerceIn(0f, 1f)
                         _audioProgress.value = intraProg
-                        val sNum = _playingSurahNumber.value
-                        val vNum = _playingVerseNumber.value ?: 1
-                        if (sNum != null) {
-                            val surahProg = computeCurrentSurahProgress(sNum, vNum, intraProg)
-                            updateSurahProgress(sNum, surahProg)
+                        
+                        val now = System.currentTimeMillis()
+                        if (now - lastSurahProgressUpdateTime > 1000) {
+                            lastSurahProgressUpdateTime = now
+                            val sNum = _playingSurahNumber.value
+                            val vNum = _playingVerseNumber.value ?: 1
+                            if (sNum != null) {
+                                val surahProg = computeCurrentSurahProgress(sNum, vNum, intraProg)
+                                updateSurahProgress(sNum, surahProg)
+                            }
                         }
                     }
                 } catch (e: Exception) { }

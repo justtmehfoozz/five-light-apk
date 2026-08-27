@@ -42,6 +42,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import com.example.ui.theme.fiveLightPressable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -289,6 +290,7 @@ fun SereneBottomNavBar(
     isPlaying: Boolean = false,
     isLoading: Boolean = false,
     audioProgress: Float = 0f,
+    audioProgressProvider: (() -> Float)? = null,
     onPlayPause: () -> Unit = {},
     onSkipPrevious: () -> Unit = {},
     onSkipNext: () -> Unit = {},
@@ -1232,7 +1234,7 @@ fun SereneBottomNavBar(
                                                         translationY = flankYOffset.value.dp.toPx()
                                                     }
                                                     .clip(CircleShape)
-                                                    .clickable {
+                                                    .fiveLightPressable {
                                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                         onSkipPrevious()
                                                     },
@@ -1258,7 +1260,7 @@ fun SereneBottomNavBar(
                                                     }
                                                     .clip(CircleShape)
                                                     .background(Color.semanticPrimaryAccent)
-                                                    .clickable {
+                                                    .fiveLightPressable {
                                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                         onPlayPause()
                                                     },
@@ -1300,7 +1302,7 @@ fun SereneBottomNavBar(
                                                         translationY = flankYOffset.value.dp.toPx()
                                                     }
                                                     .clip(CircleShape)
-                                                    .clickable {
+                                                    .fiveLightPressable {
                                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                         onSkipNext()
                                                     },
@@ -1321,7 +1323,8 @@ fun SereneBottomNavBar(
                                     val inactiveTrackColor = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.14f)
                                     var isDraggingProgress by remember { mutableStateOf(false) }
                                     var dragProgressFraction by remember { mutableFloatStateOf(0f) }
-                                    val currentDisplayProg = if (isDraggingProgress) dragProgressFraction else audioProgress.coerceIn(0f, 1f)
+                                    val effectiveProg = audioProgressProvider?.invoke() ?: audioProgress
+                                    val currentDisplayProg = if (isDraggingProgress) dragProgressFraction else effectiveProg.coerceIn(0f, 1f)
                                     val trackHeight by animateDpAsState(if (isDraggingProgress) 4.dp else 2.dp, animationSpec = tween(180), label = "trackH")
                                     val thumbWidth by animateDpAsState(if (isDraggingProgress) 12.dp else 8.dp, animationSpec = tween(180), label = "thumbW")
                                     val thumbHeight by animateDpAsState(if (isDraggingProgress) 6.dp else 4.dp, animationSpec = tween(180), label = "thumbH")
@@ -1451,7 +1454,6 @@ fun SereneBottomNavBar(
                     Row(
                         modifier = Modifier
                             .fillMaxSize()
-                            .predictiveBackTransform(searchPredictiveState.progress, searchPredictiveState.swipeEdge)
                             .graphicsLayer { alpha = searchContentAlpha }
                             .padding(start = 16.dp, end = 12.dp),
                         verticalAlignment = Alignment.CenterVertically

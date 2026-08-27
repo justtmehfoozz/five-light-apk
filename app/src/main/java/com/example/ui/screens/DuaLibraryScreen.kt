@@ -56,7 +56,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.RegisterPredictiveBackHandler
-import com.example.ui.components.predictiveBackTransform
 import com.example.ui.components.rememberPredictiveBackState
 import com.example.data.db.DuaCategoryEntity
 import com.example.data.db.DuaCategoryWithDuas
@@ -229,7 +228,6 @@ fun DuaLibraryScreen(
 
     AnimatedContent(
         targetState = activeCategory,
-        modifier = Modifier.predictiveBackTransform(predictiveState.progress, predictiveState.swipeEdge),
         transitionSpec = {
             if (targetState != null) {
                 // Subtle slide from right (35% offset) with soft fade-in
