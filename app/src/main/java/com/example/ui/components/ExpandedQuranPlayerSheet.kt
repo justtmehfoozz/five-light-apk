@@ -113,11 +113,12 @@ private fun formatAudioTime(timeMs: Long): String {
  */
 @Composable
 private fun PlaybackWaveform(
-    isPlaying: Boolean,
+    isPlayingProvider: () -> Boolean = { false },
     isReducedMotion: Boolean,
     accentColor: Color,
     modifier: Modifier = Modifier
 ) {
+    val isPlaying = isPlayingProvider()
     val infiniteTransition = rememberInfiniteTransition(label = "waveformAnim")
     val b1 = infiniteTransition.animateFloat(
         initialValue = if (isPlaying && !isReducedMotion) 0.35f else 0.25f, targetValue = if (isPlaying && !isReducedMotion) 0.95f else 0.25f,
@@ -171,9 +172,9 @@ private fun PlaybackWaveform(
 fun ExpandedQuranPlayerSheet(
     surah: Surah?,
     verse: Verse?,
-    currentVerseNumber: Int?,
-    isPlaying: Boolean,
-    isLoading: Boolean = false,
+    currentVerseNumberProvider: () -> Int? = { null },
+    isPlayingProvider: () -> Boolean = { false },
+    isLoadingProvider: () -> Boolean = { false },
     audioProgress: Float = 0f,
     audioPositionMs: Long = 0L,
     audioDurationMs: Long = 0L,
@@ -195,6 +196,9 @@ fun ExpandedQuranPlayerSheet(
     val currentAudioDurationMs = audioDurationMsFlow?.collectAsStateWithLifecycle()?.value ?: audioDurationMs
 
     val isDark = isAppInDarkTheme()
+    val isPlaying = isPlayingProvider()
+    val isLoading = isLoadingProvider()
+    val currentVerseNumber = currentVerseNumberProvider()
     val isReducedMotion = rememberIsReducedMotion()
     val accent = Color.semanticPrimaryAccent
     val textPrimary = Color.semanticPrimaryText
@@ -381,7 +385,7 @@ fun ExpandedQuranPlayerSheet(
                                 contentAlignment = Alignment.Center
                             ) {
                                 PlaybackWaveform(
-                                    isPlaying = isPlaying,
+                                    isPlayingProvider = { isPlaying },
                                     isReducedMotion = isReducedMotion,
                                     accentColor = accent
                                 )

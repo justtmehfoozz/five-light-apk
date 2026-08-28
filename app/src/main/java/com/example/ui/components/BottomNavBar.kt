@@ -284,11 +284,11 @@ fun SereneBottomNavBar(
     pagerFraction: Float? = null,
     pagerFractionProvider: (() -> Float)? = null,
     selectorController: DockSelectorStateController? = null,
-    isPlaybackMode: Boolean = false,
-    playingSurahNumber: Int? = null,
-    playingVerseNumber: Int? = null,
-    isPlaying: Boolean = false,
-    isLoading: Boolean = false,
+    isPlaybackModeProvider: (() -> Boolean) = { false },
+    playingSurahNumberProvider: (() -> Int?) = { null },
+    playingVerseNumberProvider: (() -> Int?) = { null },
+    isPlayingProvider: (() -> Boolean) = { false },
+    isLoadingProvider: (() -> Boolean) = { false },
     audioProgress: Float = 0f,
     audioProgressProvider: (() -> Float)? = null,
     onPlayPause: () -> Unit = {},
@@ -314,6 +314,11 @@ fun SereneBottomNavBar(
     onJumpToActiveVerse: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val isPlaybackMode = isPlaybackModeProvider()
+    val playingSurahNumber = playingSurahNumberProvider()
+    val playingVerseNumber = playingVerseNumberProvider()
+    val isPlaying = isPlayingProvider()
+    val isLoading = isLoadingProvider()
     val currentRouteState by rememberUpdatedState(currentRoute)
     val currentOnOpenSearch by rememberUpdatedState(onOpenSearch)
     val currentOnFifthSlotMoreTap by rememberUpdatedState(onFifthSlotMoreTap)

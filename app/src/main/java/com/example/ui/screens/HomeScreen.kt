@@ -490,7 +490,7 @@ fun HomeScreen(
     qadaEverAdded: Map<PrayerName, Boolean> = emptyMap(),
     onUpdateQadaCount: (PrayerName, Int) -> Unit = { _, _ -> },
     onMakeUpQadaPrayer: (PrayerName) -> Unit = {},
-    countdownFormatted: String,
+    countdownFormatted: androidx.compose.runtime.State<String>,
     selectedCity: CityLocation,
     hijriDate: HijriDate,
     islamicDateState: com.example.data.model.IslamicDateState = com.example.data.model.IslamicDateState(),
@@ -1321,7 +1321,7 @@ fun QuickActionChip(
 @Composable
 fun FeaturedPrayerHeroCard(
     prayer: PrayerItem,
-    countdown: String,
+    countdown: androidx.compose.runtime.State<String>,
     status: com.example.data.model.PrayerStatus,
     onToggle: () -> Unit,
     onSetStatus: (com.example.data.model.PrayerStatus) -> Unit = {},
@@ -1353,12 +1353,12 @@ fun FeaturedPrayerHeroCard(
 
     // Base color transition when active prayer changes
     val (targetStart, targetEnd) = getPrayerGradientColors(prayer.name, isFriday)
-    val animStartColor by animateColorAsState(
+    val animStartColorState = animateColorAsState(
         targetValue = targetStart,
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
         label = "hero_bg_start"
     )
-    val animEndColor by animateColorAsState(
+    val animEndColorState = animateColorAsState(
         targetValue = targetEnd,
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
         label = "hero_bg_end"
@@ -1366,7 +1366,7 @@ fun FeaturedPrayerHeroCard(
 
     // Feature 1: Ambient Breathing Gradient Drift (8.5s slow continuous loop, 3-5% subtle variation)
     val infiniteTransition = rememberInfiniteTransition(label = "hero_alive_transitions")
-    val driftProgress by if (!isReducedMotion) {
+    val driftProgressState = if (!isReducedMotion) {
         infiniteTransition.animateFloat(
             initialValue = 0f,
             targetValue = 1f,
@@ -1381,26 +1381,27 @@ fun FeaturedPrayerHeroCard(
     }
 
     // Feature 2: Last 15 Minutes Urgency State
-    val isUrgent = remember(prayer.timeMillis, countdown) {
+    val isUrgent by remember(prayer.timeMillis, countdown) {
+        androidx.compose.runtime.derivedStateOf {
         val now = System.currentTimeMillis()
         val diff = prayer.timeMillis - now
-        val clean = countdown.removePrefix("-")
+        val clean = countdown.value.removePrefix("-")
         val parts = clean.split(":")
         val h = parts.getOrNull(0)?.toIntOrNull() ?: 0
         val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
         val stringMatches = h == 0 && m <= 15
         (diff in 1..(15 * 60 * 1000 + 999)) || (stringMatches && clean != "00:00:00" && clean != "00")
+        }
     }
-
     // Subtle 6% size emphasis when <=15m (350ms smooth transition)
-    val urgencyBaseScale by animateFloatAsState(
+    val urgencyBaseScaleState = animateFloatAsState(
         targetValue = if (isUrgent) 1.06f else 1.0f,
         animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
         label = "hero_urgency_scale"
     )
 
     // Calm heartbeat pulse (1.00 -> 1.025 -> 1.00 over 1.7s cycle, low amplitude)
-    val heartbeatPulse by if (isUrgent && !isReducedMotion) {
+    val heartbeatPulseState = if (isUrgent && !isReducedMotion) {
         infiniteTransition.animateFloat(
             initialValue = 1.0f,
             targetValue = 1.025f,
@@ -1419,10 +1420,10 @@ fun FeaturedPrayerHeroCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .drawWithContent {
-                val currentDrift = driftProgress
-                val subtleStart = lerp(animStartColor, animEndColor, 0.04f * currentDrift)
-                val subtleEnd = lerp(animEndColor, animStartColor, 0.05f * (1f - currentDrift))
-                val subtleMid = lerp(animStartColor, animEndColor, 0.5f + 0.03f * (currentDrift - 0.5f))
+                val currentDrift = driftProgressState.value
+                val subtleStart = lerp(animStartColorState.value, animEndColorState.value, 0.04f * currentDrift)
+                val subtleEnd = lerp(animEndColorState.value, animStartColorState.value, 0.05f * (1f - currentDrift))
+                val subtleMid = lerp(animStartColorState.value, animEndColorState.value, 0.5f + 0.03f * (currentDrift - 0.5f))
 
                 // Feature 1: Ambient breathing background gradient with subtle angle/offset drift
                 val startX = size.width * (0.00f + 0.04f * currentDrift)
@@ -1537,71 +1538,12 @@ fun FeaturedPrayerHeroCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom
             ) {
-                Column {
-                    Text(
-                        text = "PRAYER IN",
-                        fontFamily = SpaceGrotesk,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 10.sp,
-                        letterSpacing = 1.2.sp,
-                        color = Color.White.copy(alpha = 0.6f)
-                    )
-
-                    val cleanCountdown = countdown.removePrefix("-")
-                    val parts = cleanCountdown.split(":")
-                    val h = parts.getOrNull(0)?.toIntOrNull() ?: 0
-                    val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
-                    val hoursStr = parts.getOrNull(0) ?: "00"
-                    val minutesStr = parts.getOrNull(1) ?: "00"
-                    val secondsStr = parts.getOrNull(2) ?: cleanCountdown
-
-                    val showHours = h > 0
-                    val showMinutes = h > 0 || m > 0
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.graphicsLayer {
-                            val totalCountdownScale = urgencyBaseScale * heartbeatPulse
-                            scaleX = totalCountdownScale
-                            scaleY = totalCountdownScale
-                            transformOrigin = TransformOrigin(0f, 0.5f)
-                        }
-                    ) {
-                        AnimatedVisibility(
-                            visible = showHours,
-                            enter = fadeIn(tween(400)) + expandHorizontally(tween(400), expandFrom = Alignment.Start),
-                            exit = fadeOut(tween(400)) + shrinkHorizontally(tween(400), shrinkTowards = Alignment.Start)
-                        ) {
-                            Text(
-                                text = "$hoursStr:",
-                                fontFamily = SpaceGrotesk,
-                                fontWeight = if (isUrgent) FontWeight.ExtraBold else FontWeight.Bold,
-                                fontSize = 32.sp,
-                                color = Color.White
-                            )
-                        }
-                        AnimatedVisibility(
-                            visible = showMinutes,
-                            enter = fadeIn(tween(400)) + expandHorizontally(tween(400), expandFrom = Alignment.Start),
-                            exit = fadeOut(tween(400)) + shrinkHorizontally(tween(400), shrinkTowards = Alignment.Start)
-                        ) {
-                            Text(
-                                text = "$minutesStr:",
-                                fontFamily = SpaceGrotesk,
-                                fontWeight = if (isUrgent) FontWeight.ExtraBold else FontWeight.Bold,
-                                fontSize = 32.sp,
-                                color = Color.White
-                            )
-                        }
-                        Text(
-                            text = secondsStr,
-                            fontFamily = SpaceGrotesk,
-                            fontWeight = if (isUrgent) FontWeight.ExtraBold else FontWeight.Bold,
-                            fontSize = 32.sp,
-                            color = Color.White
-                        )
-                    }
-                }
+                HeroCountdownDisplay(
+                    countdown = countdown,
+                    isUrgent = isUrgent,
+                    urgencyBaseScaleState = urgencyBaseScaleState,
+                    heartbeatPulseState = heartbeatPulseState
+                )
 
                 // Completion Toggle Button & Time
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1741,18 +1683,18 @@ fun PrayerGridCard(
     val isFuture = status == com.example.data.model.PrayerStatus.FUTURE
 
     val (targetStart, targetEnd) = getSeasonalPrayerGradientColors(prayer.name, prayer.timeMillis, isFriday)
-    val animStartColor by animateColorAsState(
+    val animStartColorState = animateColorAsState(
         targetValue = targetStart,
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
         label = "grid_bg_start"
     )
-    val animEndColor by animateColorAsState(
+    val animEndColorState = animateColorAsState(
         targetValue = targetEnd,
         animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
         label = "grid_bg_end"
     )
-    val gradientBrush = remember(animStartColor, animEndColor) {
-        Brush.linearGradient(listOf(animStartColor, animEndColor))
+    val gradientBrush = remember(animStartColorState.value, animEndColorState.value) {
+        Brush.linearGradient(listOf(animStartColorState.value, animEndColorState.value))
     }
 
     Box(
@@ -2457,3 +2399,76 @@ fun NaflEvidenceModalBottomSheet(
     }
 }
 
+
+@Composable
+fun HeroCountdownDisplay(
+    countdown: androidx.compose.runtime.State<String>,
+    isUrgent: Boolean,
+    urgencyBaseScaleState: androidx.compose.runtime.State<Float>,
+    heartbeatPulseState: androidx.compose.runtime.State<Float>
+) {
+    Column {
+        Text(
+            text = "PRAYER IN",
+            fontFamily = SpaceGrotesk,
+            fontWeight = FontWeight.Bold,
+            fontSize = 10.sp,
+            letterSpacing = 1.2.sp,
+            color = Color.White.copy(alpha = 0.6f)
+        )
+        val cleanCountdown = countdown.value.removePrefix("-")
+        val parts = cleanCountdown.split(":")
+        val h = parts.getOrNull(0)?.toIntOrNull() ?: 0
+        val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
+        val hoursStr = parts.getOrNull(0) ?: "00"
+        val minutesStr = parts.getOrNull(1) ?: "00"
+        val secondsStr = parts.getOrNull(2) ?: cleanCountdown
+
+        val showHours = h > 0
+        val showMinutes = h > 0 || m > 0
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.graphicsLayer {
+                val totalCountdownScale = urgencyBaseScaleState.value * heartbeatPulseState.value
+                scaleX = totalCountdownScale
+                scaleY = totalCountdownScale
+                transformOrigin = TransformOrigin(0f, 0.5f)
+            }
+        ) {
+            AnimatedVisibility(
+                visible = showHours,
+                enter = fadeIn(tween(400)) + expandHorizontally(tween(400), expandFrom = Alignment.Start),
+                exit = fadeOut(tween(400)) + shrinkHorizontally(tween(400), shrinkTowards = Alignment.Start)
+            ) {
+                Text(
+                    text = "$hoursStr:",
+                    fontFamily = SpaceGrotesk,
+                    fontWeight = if (isUrgent) FontWeight.ExtraBold else FontWeight.Bold,
+                    fontSize = 32.sp,
+                    color = Color.White
+                )
+            }
+            AnimatedVisibility(
+                visible = showMinutes,
+                enter = fadeIn(tween(400)) + expandHorizontally(tween(400), expandFrom = Alignment.Start),
+                exit = fadeOut(tween(400)) + shrinkHorizontally(tween(400), shrinkTowards = Alignment.Start)
+            ) {
+                Text(
+                    text = "$minutesStr:",
+                    fontFamily = SpaceGrotesk,
+                    fontWeight = if (isUrgent) FontWeight.ExtraBold else FontWeight.Bold,
+                    fontSize = 32.sp,
+                    color = Color.White
+                )
+            }
+            Text(
+                text = secondsStr,
+                fontFamily = SpaceGrotesk,
+                fontWeight = if (isUrgent) FontWeight.ExtraBold else FontWeight.Bold,
+                fontSize = 32.sp,
+                color = Color.White
+            )
+        }
+    }
+}

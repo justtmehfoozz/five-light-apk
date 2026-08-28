@@ -175,12 +175,12 @@ fun QuranScreen(
     onToggleEnglish: () -> Unit,
     isNightReadingMode: Boolean,
     onToggleNightReading: () -> Unit,
-    playingSurahNumber: Int?,
-    playingVerseNumber: Int?,
-    isPlayingAudio: Boolean,
-    isLoadingAudio: Boolean = false,
-    audioProgress: Float = 0f,
-    surahPlaybackProgress: Map<Int, Float> = emptyMap(),
+    playingSurahNumberProvider: () -> Int?,
+    playingVerseNumberProvider: () -> Int?,
+    isPlayingAudioProvider: () -> Boolean,
+    isLoadingAudioProvider: () -> Boolean = { false },
+    audioProgressProvider: () -> Float = { 0f },
+    surahPlaybackProgress: androidx.compose.runtime.State<Map<Int, Float>>,
     surahDownloadStates: Map<Int, SurahDownloadStatus> = emptyMap(),
     onDownloadSurah: (Int) -> Unit = {},
     onDeleteDownloadedSurah: (Int) -> Unit = {},
@@ -195,7 +195,7 @@ fun QuranScreen(
     onToggleBookmark: (Verse, Boolean) -> Unit,
     onToggleSurahBookmark: (Surah, Boolean) -> Unit = { _, _ -> },
     lastReadPosition: QuranLastRead? = null,
-    surahScrollPositions: Map<Int, Int> = emptyMap(),
+    surahScrollPositions: androidx.compose.runtime.State<Map<Int, Int>>,
     onSaveScrollPosition: (surahNumber: Int, verseIndex: Int) -> Unit = { _, _ -> },
     onGetScrollPosition: (surahNumber: Int) -> Int = { 0 },
     initialOpenReadingView: Boolean = false,
@@ -351,12 +351,12 @@ fun QuranScreen(
             val hasBismillah = remember(selectedSurah.number, displayVerses) {
                 selectedSurah.number != 9 && displayVerses.none { it.verseNumber == 0 }
             }
-            val currentPlayingIndex = remember(playingVerseNumber, playingSurahNumber, currentSurah.number, displayVerses, hasBismillah) {
-                if (playingSurahNumber == currentSurah.number && playingVerseNumber != null && displayVerses.isNotEmpty()) {
-                    val rawIndex = displayVerses.indexOfFirst { it.verseNumber == playingVerseNumber }
+            val currentPlayingIndex = remember(playingVerseNumberProvider(), playingSurahNumberProvider(), currentSurah.number, displayVerses, hasBismillah) {
+                if (playingSurahNumberProvider() == currentSurah.number && playingVerseNumberProvider() != null && displayVerses.isNotEmpty()) {
+                    val rawIndex = displayVerses.indexOfFirst { it.verseNumber == playingVerseNumberProvider() }
                     if (rawIndex >= 0) {
                         if (hasBismillah) rawIndex + 1 else rawIndex
-                    } else if (playingVerseNumber == 0 && hasBismillah) {
+                    } else if (playingVerseNumberProvider() == 0 && hasBismillah) {
                         0
                     } else -1
                 } else -1
@@ -406,8 +406,8 @@ fun QuranScreen(
             }
 
             // Sync scrolled-away status with parent / bottom audio dock
-            LaunchedEffect(userPausedAutoScroll, currentPlayingIndex, isReadingViewActive, selectedSurah.number, playingSurahNumber) {
-                val isAway = userPausedAutoScroll && (currentPlayingIndex >= 0) && isReadingViewActive && (selectedSurah.number == playingSurahNumber)
+            LaunchedEffect(userPausedAutoScroll, currentPlayingIndex, isReadingViewActive, selectedSurah.number, playingSurahNumberProvider()) {
+                val isAway = userPausedAutoScroll && (currentPlayingIndex >= 0) && isReadingViewActive && (selectedSurah.number == playingSurahNumberProvider())
                 onScrolledAwayFromActiveVerseChange(isAway)
             }
 
@@ -592,14 +592,14 @@ fun QuranScreen(
                                             )
                                         }
                                         val isBismillahBookmarked = bookmarkedKeys.contains("${bismillahVerse.surahNumber}_${bismillahVerse.verseNumber}")
-                                        val isBismillahActive = (playingSurahNumber == bismillahVerse.surahNumber) && (playingVerseNumber == bismillahVerse.verseNumber)
+                                        val isBismillahActive = (playingSurahNumberProvider() == bismillahVerse.surahNumber) && (playingVerseNumberProvider() == bismillahVerse.verseNumber)
 
                                         BismillahHeader(
                                             verse = bismillahVerse,
                                             fontSizeSp = fontSizeSp,
                                             showTranslation = showEnglishTranslation,
-                                            isPlaying = isBismillahActive && isPlayingAudio,
-                                            isLoading = isBismillahActive && isLoadingAudio,
+                                            isPlaying = isBismillahActive && isPlayingAudioProvider(),
+                                            isLoading = isBismillahActive && isLoadingAudioProvider(),
                                             isBookmarked = isBismillahBookmarked,
                                             isVerseActive = isBismillahActive,
                                             onPlayAudio = { onPlayVerseAudio(bismillahVerse) },
@@ -619,7 +619,7 @@ fun QuranScreen(
                                     contentType = { "verse_card" }
                                 ) { verse ->
                                     val isBookmarked = bookmarkedKeys.contains("${verse.surahNumber}_${verse.verseNumber}")
-                                    val isVerseActive = (playingSurahNumber == verse.surahNumber) && (playingVerseNumber == verse.verseNumber)
+                                    val isVerseActive = (playingSurahNumberProvider() == verse.surahNumber) && (playingVerseNumberProvider() == verse.verseNumber)
 
                                     VerseCard(
                                         verse = verse,
@@ -627,8 +627,8 @@ fun QuranScreen(
                                         showTranslation = showEnglishTranslation,
                                         isNightMode = isNightReadingMode,
                                         isVerseActive = isVerseActive,
-                                        isPlaying = isVerseActive && isPlayingAudio,
-                                        isLoading = isVerseActive && isLoadingAudio,
+                                        isPlaying = isVerseActive && isPlayingAudioProvider(),
+                                        isLoading = isVerseActive && isLoadingAudioProvider(),
                                         isBookmarked = isBookmarked,
                                         onPlayAudio = { onPlayVerseAudio(verse) },
                                         onToggleBookmark = { onToggleBookmark(verse, isBookmarked) },
@@ -831,14 +831,15 @@ fun QuranScreen(
                             key = { it.number },
                             contentType = { "surah_list_item" }
                         ) { surah ->
-                            val isPlayingThisSurah = playingSurahNumber == surah.number
-                            val isLastReadSurah = playingSurahNumber == null && lastReadPosition?.surahNumber == surah.number
+                            val isPlayingThisSurah = playingSurahNumberProvider() == surah.number
+                            val isLastReadSurah = playingSurahNumberProvider() == null && lastReadPosition?.surahNumber == surah.number
                             val isCurrent = isPlayingThisSurah || isLastReadSurah
 
-                            val audioProgressVal = surahPlaybackProgress[surah.number] ?: 0f
-                            val scrollPos = surahScrollPositions[surah.number]
-                            val readingProgressVal = if (scrollPos != null && surah.versesCount > 0) {
-                                ((scrollPos + 1).toFloat() / surah.versesCount.toFloat()).coerceIn(0f, 1f)
+                            val audioProgressVal by remember(surah.number) { androidx.compose.runtime.derivedStateOf { surahPlaybackProgress.value[surah.number] ?: 0f } }
+                            val scrollPos by remember(surah.number) { androidx.compose.runtime.derivedStateOf { surahScrollPositions.value[surah.number] } }
+                            val pos = scrollPos
+                            val readingProgressVal = if (pos != null && surah.versesCount > 0) {
+                                ((pos + 1).toFloat() / surah.versesCount.toFloat()).coerceIn(0f, 1f)
                             } else {
                                 0f
                             }
@@ -943,7 +944,7 @@ fun QuranScreen(
         // Part 5: Long-Press Surah Quick Actions Bottom Sheet
         quickActionSurah?.let { surah ->
             val isSurahBookmarked = bookmarks.any { it.surahNumber == surah.number }
-            val savedVerseIndex = surahScrollPositions[surah.number]
+            val savedVerseIndex = surahScrollPositions.value[surah.number]
             val status = surahDownloadStates[surah.number]
 
             SurahQuickActionSheet(

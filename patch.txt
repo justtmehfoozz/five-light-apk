@@ -1,0 +1,42 @@
+1383,1392c1383,1394
+<     val isUrgent = remember(prayer.timeMillis, countdown.value) {
+<         val now = System.currentTimeMillis()
+<         val diff = prayer.timeMillis - now
+<         val clean = countdown.value.removePrefix("-")
+<         val parts = clean.split(":")
+<         val h = parts.getOrNull(0)?.toIntOrNull() ?: 0
+<         val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
+<         val stringMatches = h == 0 && m <= 15
+<         (diff in 1..(15 * 60 * 1000 + 999)) || (stringMatches && clean != "00:00:00" && clean != "00")
+<     }
+---
+>     val isUrgent by remember(prayer.timeMillis, countdown) {
+>         androidx.compose.runtime.derivedStateOf {
+>             val now = System.currentTimeMillis()
+>             val diff = prayer.timeMillis - now
+>             val clean = countdown.value.removePrefix("-")
+>             val parts = clean.split(":")
+>             val h = parts.getOrNull(0)?.toIntOrNull() ?: 0
+>             val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
+>             val stringMatches = h == 0 && m <= 15
+>             (diff in 1..(15 * 60 * 1000 + 999)) || (stringMatches && clean != "00:00:00" && clean != "00")
+>         }
+>     }
+1395c1397
+<     val urgencyBaseScale by animateFloatAsState(
+---
+>     val urgencyBaseScale = animateFloatAsState(
+1401c1403
+<     val heartbeatPulse by if (isUrgent && !isReducedMotion) {
+---
+>     val heartbeatPulse = if (isUrgent && !isReducedMotion) {
+1415,1417c1417,1419
+<                 val currentDrift = driftProgress
+<                 val subtleStart = lerp(animStartColor, animEndColor, 0.04f * currentDrift)
+<                 val subtleEnd = lerp(animEndColor, animStartColor, 0.05f * (1f - currentDrift))
+<                 val subtleMid = lerp(animStartColor, animEndColor, 0.5f + 0.03f * (currentDrift - 0.5f))
+---
+>                 val currentDrift = driftProgress.value
+>                 val subtleStart = lerp(animStartColor.value, animEndColor.value, 0.04f * currentDrift)
+>                 val subtleEnd = lerp(animEndColor.value, animStartColor.value, 0.05f * (1f - currentDrift))
+>                 val subtleMid = lerp(animStartColor.value, animEndColor.value, 0.5f + 0.03f * (currentDrift - 0.5f))
