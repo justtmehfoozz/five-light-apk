@@ -1,15 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Crescent Moon Motif -->
-    <path
-        android:fillColor="#D4A359"
-        android:pathData="M54,30 C40.7,30 30,40.7 30,54 C30,67.3 40.7,78 54,78 C62.3,78 69.5,73.8 73.8,67.4 C70.5,69.7 66.5,71 62.2,71 C50.1,71 40.2,61.1 40.2,49 C40.2,40.8 44.7,33.7 51.3,30.1 C52.2,30 53.1,30 54,30 Z" />
-    <!-- Glowing Light Star Accent -->
-    <path
-        android:fillColor="#F0C376"
-        android:pathData="M66,38 C66,42 63,45 59,45 C63,45 66,48 66,52 C66,48 69,45 73,45 C69,45 66,42 66,38 Z" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="72dp"
+        android:height="72dp"
+        android:drawable="@drawable/fivelight_icon_light"
+        android:gravity="center" />
+</layer-list>
