@@ -127,10 +127,6 @@ class MainActivity : ComponentActivity() {
                 val hazeState = remember { HazeState() }
 
                 val playingSurahNumber  = viewModel.playingSurahNumber.collectAsStateWithLifecycle()
-                val playingVerseNumber  = viewModel.playingVerseNumber.collectAsStateWithLifecycle()
-                val playingVerse  = viewModel.playingVerse.collectAsStateWithLifecycle()
-                val isPlayingAudio  = viewModel.isPlayingAudio.collectAsStateWithLifecycle()
-                val isLoadingAudio  = viewModel.isLoadingAudio.collectAsStateWithLifecycle()
                 val showPrayerMode  = viewModel.showPrayerMode.collectAsStateWithLifecycle()
                 var showExpandedPlayerSheet by remember { mutableStateOf(false) }
                 var isScrolledAwayFromActiveVerse by remember { mutableStateOf(false) }
@@ -302,7 +298,6 @@ class MainActivity : ComponentActivity() {
                                 val fontSizeSp by viewModel.fontSizeSp.collectAsStateWithLifecycle()
                                 val showEnglishTranslation by viewModel.showEnglishTranslation.collectAsStateWithLifecycle()
                                 val isNightReadingMode by viewModel.isNightReadingMode.collectAsStateWithLifecycle()
-                                val playingVerseNumber by viewModel.playingVerseNumber.collectAsStateWithLifecycle()
                                 val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
                                 val lastReadPosition by viewModel.lastReadPosition.collectAsStateWithLifecycle()
                                 val surahScrollPositions = viewModel.surahScrollPositions.collectAsStateWithLifecycle()
@@ -489,9 +484,9 @@ class MainActivity : ComponentActivity() {
                         selectorController = selectorController,
                         isPlaybackModeProvider = { playingSurahNumber.value != null },
                         playingSurahNumberProvider = { playingSurahNumber.value },
-                        playingVerseNumberProvider = { playingVerseNumber.value },
-                        isPlayingProvider = { isPlayingAudio.value },
-                        isLoadingProvider = { isLoadingAudio.value },
+                        playingVerseNumberProvider = { viewModel.playingVerseNumber.value },
+                        isPlayingProvider = { viewModel.isPlayingAudio.value },
+                        isLoadingProvider = { viewModel.isLoadingAudio.value },
                         audioProgressProvider = { viewModel.audioProgress.value },
                         onPlayPause = { viewModel.togglePlayPauseAudio() },
                         onSkipPrevious = { viewModel.playPreviousVerseAudio() },
@@ -574,7 +569,7 @@ class MainActivity : ComponentActivity() {
                         onExpandPlayer = {
                             showExpandedPlayerSheet = true
                         },
-                        isScrolledAwayFromActiveVerse = isScrolledAwayFromActiveVerse && (playingSurahNumber.value != null) && (playingVerseNumber.value != null) && !showExpandedPlayerSheet && (currentRoute == "quran" || pagerState.currentPage == 2),
+                        isScrolledAwayFromActiveVerse = isScrolledAwayFromActiveVerse && (playingSurahNumber.value != null) && (viewModel.playingVerseNumber.value != null) && !showExpandedPlayerSheet && (currentRoute == "quran" || pagerState.currentPage == 2),
                         onJumpToActiveVerse = {
                             jumpToActiveVerseTrigger = System.currentTimeMillis()
                         },
@@ -586,22 +581,27 @@ class MainActivity : ComponentActivity() {
                             com.example.data.util.QuranData.SURAHS_DIRECTORY.find { it.number == playingSurahNumber.value }
                         }
                         val bookmarkedVerses by viewModel.bookmarks.collectAsStateWithLifecycle()
-                        val isCurrentBookmarked = remember(playingSurahNumber.value, playingVerseNumber.value, bookmarkedVerses) {
+                        val isCurrentBookmarked = remember(playingSurahNumber.value, viewModel.playingVerseNumber.value, bookmarkedVerses) {
                             val sNum = playingSurahNumber.value ?: 0
-                            val vNum = playingVerseNumber.value ?: 0
+                            val vNum = viewModel.playingVerseNumber.value ?: 0
                             bookmarkedVerses.any { it.surahNumber == sNum && it.verseNumber == vNum }
                         }
 
                         ExpandedQuranPlayerSheet(
                             surah = playingSurah,
-                            verse = playingVerse.value,
-                            currentVerseNumberProvider = { playingVerseNumber.value },
-                            isPlayingProvider = { isPlayingAudio.value },
-                            isLoadingProvider = { isLoadingAudio.value },
+                            verseProvider = { viewModel.playingVerse.value },
+                            currentVerseNumberProvider = { viewModel.playingVerseNumber.value },
+                            isPlayingProvider = { viewModel.isPlayingAudio.value },
+                            isLoadingProvider = { viewModel.isLoadingAudio.value },
                             audioProgressFlow = viewModel.audioProgress,
                             audioPositionMsFlow = viewModel.audioPositionMs,
                             audioDurationMsFlow = viewModel.audioDurationMs,
-                            isBookmarked = isCurrentBookmarked,
+                            isBookmarkedProvider = { 
+                                val sNum = playingSurahNumber.value ?: 0
+                                val vNum = viewModel.playingVerseNumber.value ?: 0
+                                val bk = viewModel.bookmarks.value
+                                bk.any { it.surahNumber == sNum && it.verseNumber == vNum }
+                            },
                             onPlayPause = { viewModel.togglePlayPauseAudio() },
                             onSkipPrevious = { viewModel.playPreviousVerseAudio() },
                             onSkipNext = { viewModel.playNextVerseAudio() },
@@ -611,7 +611,7 @@ class MainActivity : ComponentActivity() {
                                 showExpandedPlayerSheet = false
                             },
                             onToggleBookmark = {
-                                val curV = playingVerse.value
+                                val curV = viewModel.playingVerse.value
                                 if (curV != null) {
                                     viewModel.toggleVerseBookmark(curV)
                                 }

@@ -592,16 +592,17 @@ fun QuranScreen(
                                             )
                                         }
                                         val isBismillahBookmarked = bookmarkedKeys.contains("${bismillahVerse.surahNumber}_${bismillahVerse.verseNumber}")
-                                        val isBismillahActive = (playingSurahNumberProvider() == bismillahVerse.surahNumber) && (playingVerseNumberProvider() == bismillahVerse.verseNumber)
+                                        
 
                                         BismillahHeader(
                                             verse = bismillahVerse,
                                             fontSizeSp = fontSizeSp,
                                             showTranslation = showEnglishTranslation,
-                                            isPlaying = isBismillahActive && isPlayingAudioProvider(),
-                                            isLoading = isBismillahActive && isLoadingAudioProvider(),
+                                            isPlayingAudioProvider = isPlayingAudioProvider,
+                                            isLoadingAudioProvider = isLoadingAudioProvider,
                                             isBookmarked = isBismillahBookmarked,
-                                            isVerseActive = isBismillahActive,
+                                            playingSurahNumberProvider = playingSurahNumberProvider,
+                                            playingVerseNumberProvider = playingVerseNumberProvider,
                                             onPlayAudio = { onPlayVerseAudio(bismillahVerse) },
                                             onToggleBookmark = { onToggleBookmark(bismillahVerse, isBismillahBookmarked) },
                                             onOpenLens = { activeLensVerse = bismillahVerse },
@@ -619,16 +620,17 @@ fun QuranScreen(
                                     contentType = { "verse_card" }
                                 ) { verse ->
                                     val isBookmarked = bookmarkedKeys.contains("${verse.surahNumber}_${verse.verseNumber}")
-                                    val isVerseActive = (playingSurahNumberProvider() == verse.surahNumber) && (playingVerseNumberProvider() == verse.verseNumber)
+                                    
 
                                     VerseCard(
                                         verse = verse,
                                         fontSizeSp = fontSizeSp,
                                         showTranslation = showEnglishTranslation,
                                         isNightMode = isNightReadingMode,
-                                        isVerseActive = isVerseActive,
-                                        isPlaying = isVerseActive && isPlayingAudioProvider(),
-                                        isLoading = isVerseActive && isLoadingAudioProvider(),
+                                        playingSurahNumberProvider = playingSurahNumberProvider,
+                                        playingVerseNumberProvider = playingVerseNumberProvider,
+                                        isPlayingAudioProvider = isPlayingAudioProvider,
+                                        isLoadingAudioProvider = isLoadingAudioProvider,
                                         isBookmarked = isBookmarked,
                                         onPlayAudio = { onPlayVerseAudio(verse) },
                                         onToggleBookmark = { onToggleBookmark(verse, isBookmarked) },
@@ -1592,10 +1594,11 @@ fun BismillahHeader(
     verse: Verse,
     fontSizeSp: Float,
     showTranslation: Boolean,
-    isPlaying: Boolean,
-    isLoading: Boolean = false,
+    isPlayingAudioProvider: () -> Boolean = { false },
+    isLoadingAudioProvider: () -> Boolean = { false },
     isBookmarked: Boolean,
-    isVerseActive: Boolean,
+    playingSurahNumberProvider: () -> Int? = { null },
+    playingVerseNumberProvider: () -> Int? = { null },
     onPlayAudio: () -> Unit,
     onToggleBookmark: () -> Unit,
     onOpenLens: (() -> Unit)? = null,
@@ -1606,6 +1609,9 @@ fun BismillahHeader(
     val accent = Color.semanticPrimaryAccent
     val textPrimary = Color.semanticPrimaryText
     val isReducedMotion = rememberIsReducedMotion()
+    val isVerseActive by remember(verse.surahNumber, verse.verseNumber) { androidx.compose.runtime.derivedStateOf { (playingSurahNumberProvider() == verse.surahNumber) && (playingVerseNumberProvider() == verse.verseNumber) } }
+    val isPlaying by remember { androidx.compose.runtime.derivedStateOf { isVerseActive && isPlayingAudioProvider() } }
+    val isLoading by remember { androidx.compose.runtime.derivedStateOf { isVerseActive && isLoadingAudioProvider() } }
 
     // 8. Subtle first-appearance animation in the current reading session
     val hasBeenSeen = rememberSaveable(verse.verseKey) { mutableStateOf(false) }
@@ -1849,9 +1855,10 @@ fun VerseCard(
     fontSizeSp: Float,
     showTranslation: Boolean,
     isNightMode: Boolean,
-    isVerseActive: Boolean,
-    isPlaying: Boolean,
-    isLoading: Boolean = false,
+    playingSurahNumberProvider: () -> Int? = { null },
+    playingVerseNumberProvider: () -> Int? = { null },
+    isPlayingAudioProvider: () -> Boolean = { false },
+    isLoadingAudioProvider: () -> Boolean = { false },
     isBookmarked: Boolean,
     onPlayAudio: () -> Unit,
     onToggleBookmark: () -> Unit,
@@ -1863,6 +1870,9 @@ fun VerseCard(
     val accent = Color.semanticPrimaryAccent
     val textPrimary = Color.semanticPrimaryText
     val isReducedMotion = rememberIsReducedMotion()
+    val isVerseActive by remember(verse.surahNumber, verse.verseNumber) { androidx.compose.runtime.derivedStateOf { (playingSurahNumberProvider() == verse.surahNumber) && (playingVerseNumberProvider() == verse.verseNumber) } }
+    val isPlaying by remember { androidx.compose.runtime.derivedStateOf { isVerseActive && isPlayingAudioProvider() } }
+    val isLoading by remember { androidx.compose.runtime.derivedStateOf { isVerseActive && isLoadingAudioProvider() } }
 
     // 8. Subtle first-appearance animation in the current reading session
     val hasBeenSeen = rememberSaveable(verse.verseKey) { mutableStateOf(false) }

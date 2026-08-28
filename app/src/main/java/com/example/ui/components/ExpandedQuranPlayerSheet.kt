@@ -171,7 +171,7 @@ private fun PlaybackWaveform(
 @Composable
 fun ExpandedQuranPlayerSheet(
     surah: Surah?,
-    verse: Verse?,
+    verseProvider: () -> Verse? = { null },
     currentVerseNumberProvider: () -> Int? = { null },
     isPlayingProvider: () -> Boolean = { false },
     isLoadingProvider: () -> Boolean = { false },
@@ -181,7 +181,7 @@ fun ExpandedQuranPlayerSheet(
     audioProgressFlow: StateFlow<Float>? = null,
     audioPositionMsFlow: StateFlow<Long>? = null,
     audioDurationMsFlow: StateFlow<Long>? = null,
-    isBookmarked: Boolean,
+    isBookmarkedProvider: () -> Boolean = { false },
     onPlayPause: () -> Unit,
     onSkipPrevious: () -> Unit,
     onSkipNext: () -> Unit,
@@ -191,14 +191,13 @@ fun ExpandedQuranPlayerSheet(
     onDismiss: () -> Unit,
     sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 ) {
-    val currentAudioProgress = audioProgressFlow?.collectAsStateWithLifecycle()?.value ?: audioProgress
-    val currentAudioPositionMs = audioPositionMsFlow?.collectAsStateWithLifecycle()?.value ?: audioPositionMs
-    val currentAudioDurationMs = audioDurationMsFlow?.collectAsStateWithLifecycle()?.value ?: audioDurationMs
 
     val isDark = isAppInDarkTheme()
     val isPlaying = isPlayingProvider()
     val isLoading = isLoadingProvider()
     val currentVerseNumber = currentVerseNumberProvider()
+    val verse = verseProvider()
+    val isBookmarked = isBookmarkedProvider()
     val isReducedMotion = rememberIsReducedMotion()
     val accent = Color.semanticPrimaryAccent
     val textPrimary = Color.semanticPrimaryText
@@ -463,133 +462,24 @@ fun ExpandedQuranPlayerSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Scrubbable Progress Bar & Timers
-            var isDraggingProgress by remember { mutableStateOf(false) }
-            var dragProgressFraction by remember { mutableFloatStateOf(0f) }
-            val currentDisplayProg = if (isDraggingProgress) dragProgressFraction else currentAudioProgress.coerceIn(0f, 1f)
-            val trackHeight by animateDpAsState(
-                targetValue = if (isDraggingProgress && !isReducedMotion) 6.dp else 4.dp,
-                animationSpec = tween(180),
-                label = "sheetTrackH"
+            // Scrubbable Progress Bar
+            PlayerProgressBar(
+                audioProgressFlow = audioProgressFlow,
+                audioProgress = audioProgress,
+                isReducedMotion = isReducedMotion,
+                isDark = isDark,
+                accent = accent,
+                haptic = haptic,
+                onSeekAudio = onSeekAudio
             )
-            val thumbSize by animateDpAsState(
-                targetValue = if (isDraggingProgress && !isReducedMotion) 18.dp else 14.dp,
-                animationSpec = tween(180),
-                label = "sheetThumbS"
+            PlayerTimers(
+                audioPositionMsFlow = audioPositionMsFlow,
+                audioDurationMsFlow = audioDurationMsFlow,
+                audioPositionMs = audioPositionMs,
+                audioDurationMs = audioDurationMs,
+                isLoading = isLoading,
+                textSecondary = textSecondary
             )
-
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(30.dp)
-                        .testTag("full_player_seekbar")
-                        .pointerInput(Unit) {
-                            detectTapGestures(
-                                onPress = { offset ->
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    val fraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                    dragProgressFraction = fraction
-                                    isDraggingProgress = true
-                                    onSeekAudio(fraction)
-                                    tryAwaitRelease()
-                                    isDraggingProgress = false
-                                }
-                            )
-                        }
-                        .pointerInput(Unit) {
-                            detectHorizontalDragGestures(
-                                onDragStart = { offset ->
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    isDraggingProgress = true
-                                    dragProgressFraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                    onSeekAudio(dragProgressFraction)
-                                },
-                                onDragEnd = {
-                                    isDraggingProgress = false
-                                    onSeekAudio(dragProgressFraction)
-                                },
-                                onDragCancel = {
-                                    isDraggingProgress = false
-                                },
-                                onHorizontalDrag = { change, _ ->
-                                    change.consume()
-                                    dragProgressFraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                    onSeekAudio(dragProgressFraction)
-                                }
-                            )
-                        },
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    val inactiveTrackColor = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.12f)
-
-                    // Inactive Track
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(trackHeight)
-                            .clip(CircleShape)
-                            .background(inactiveTrackColor)
-                    )
-
-                    // Active Track
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(fraction = currentDisplayProg)
-                            .height(trackHeight)
-                            .clip(CircleShape)
-                            .background(accent)
-                    )
-
-                    // Thumb indicator
-                    if (currentDisplayProg > 0f) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(fraction = currentDisplayProg)
-                                .height(20.dp),
-                            contentAlignment = Alignment.CenterEnd
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(thumbSize)
-                                    .clip(CircleShape)
-                                    .background(Color.White)
-                                    .border(2.dp, accent, CircleShape)
-                            )
-                        }
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val displayPosMs = if (isDraggingProgress && currentAudioDurationMs > 0) {
-                        (dragProgressFraction * currentAudioDurationMs).toLong()
-                    } else {
-                        currentAudioPositionMs
-                    }
-
-                    Text(
-                        text = formatAudioTime(displayPosMs),
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                        color = textSecondary.copy(alpha = 0.85f)
-                    )
-                    val totalDurText = if (isLoading) {
-                        "Loading..."
-                    } else if (currentAudioDurationMs > 0) {
-                        "${formatAudioTime(displayPosMs)} / ${formatAudioTime(currentAudioDurationMs)}"
-                    } else {
-                        "--:--"
-                    }
-                    Text(
-                        text = totalDurText,
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                        color = textSecondary.copy(alpha = 0.85f)
-                    )
-                }
-            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -714,5 +604,154 @@ fun ExpandedQuranPlayerSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+}
+
+@Composable
+private fun PlayerProgressBar(
+    audioProgressFlow: StateFlow<Float>?,
+    audioProgress: Float,
+    isReducedMotion: Boolean,
+    isDark: Boolean,
+    accent: Color,
+    haptic: androidx.compose.ui.hapticfeedback.HapticFeedback,
+    onSeekAudio: (Float) -> Unit
+) {
+    var isDraggingProgress by remember { mutableStateOf(false) }
+    var dragProgressFraction by remember { mutableFloatStateOf(0f) }
+    val currentAudioProgress = audioProgressFlow?.collectAsStateWithLifecycle()?.value ?: audioProgress
+    val currentDisplayProg = if (isDraggingProgress) dragProgressFraction else currentAudioProgress.coerceIn(0f, 1f)
+
+    val trackHeight by animateDpAsState(
+        targetValue = if (isDraggingProgress && !isReducedMotion) 6.dp else 4.dp,
+        animationSpec = tween(180),
+        label = "sheetTrackH"
+    )
+
+    val thumbSize by animateDpAsState(
+        targetValue = if (isDraggingProgress && !isReducedMotion) 18.dp else 14.dp,
+        animationSpec = tween(180),
+        label = "sheetThumbS"
+    )
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(30.dp)
+                .testTag("full_player_seekbar")
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = { offset ->
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            val fraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                            dragProgressFraction = fraction
+                            isDraggingProgress = true
+                            onSeekAudio(fraction)
+                            tryAwaitRelease()
+                            isDraggingProgress = false
+                        }
+                    )
+                }
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { offset ->
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            isDraggingProgress = true
+                            dragProgressFraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
+                            onSeekAudio(dragProgressFraction)
+                        },
+                        onDragEnd = {
+                            isDraggingProgress = false
+                            onSeekAudio(dragProgressFraction)
+                        },
+                        onDragCancel = {
+                            isDraggingProgress = false
+                        },
+                        onHorizontalDrag = { change, _ ->
+                            change.consume()
+                            dragProgressFraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
+                            onSeekAudio(dragProgressFraction)
+                        }
+                    )
+                },
+            contentAlignment = Alignment.CenterStart
+        ) {
+            val inactiveTrackColor = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.12f)
+            // Inactive Track
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(trackHeight)
+                    .clip(CircleShape)
+                    .background(inactiveTrackColor)
+            )
+            // Active Track
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction = currentDisplayProg)
+                    .height(trackHeight)
+                    .clip(CircleShape)
+                    .background(accent)
+            )
+            // Thumb indicator
+            if (currentDisplayProg > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(fraction = currentDisplayProg)
+                        .height(20.dp),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(thumbSize)
+                            .clip(CircleShape)
+                            .background(androidx.compose.ui.graphics.Color.White)
+                            .border(2.dp, accent, CircleShape)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerTimers(
+    audioPositionMsFlow: StateFlow<Long>?,
+    audioDurationMsFlow: StateFlow<Long>?,
+    audioPositionMs: Long,
+    audioDurationMs: Long,
+    isLoading: Boolean,
+    textSecondary: Color
+) {
+    val currentAudioPositionMs = audioPositionMsFlow?.collectAsStateWithLifecycle()?.value ?: audioPositionMs
+    val currentAudioDurationMs = audioDurationMsFlow?.collectAsStateWithLifecycle()?.value ?: audioDurationMs
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        val formatTime = { ms: Long ->
+            val totalSec = ms / 1000
+            val m = totalSec / 60
+            val s = totalSec % 60
+            String.format("%02d:%02d", m, s)
+        }
+        Text(
+            text = formatTime(currentAudioPositionMs),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+            color = textSecondary,
+            modifier = Modifier.testTag("full_player_current_time")
+        )
+        val totalDurText = if (isLoading) {
+            "--:--"
+        } else {
+            if (currentAudioDurationMs > 0) formatTime(currentAudioDurationMs) else "00:00"
+        }
+        Text(
+            text = totalDurText,
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+            color = textSecondary,
+            modifier = Modifier.testTag("full_player_total_time")
+        )
     }
 }
