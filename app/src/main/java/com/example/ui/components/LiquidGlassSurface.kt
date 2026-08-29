@@ -1,5 +1,7 @@
 package com.example.ui.components
 
+import android.os.Build
+import android.widget.Toast
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
@@ -30,6 +32,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -95,6 +98,18 @@ fun LiquidGlassSurface(
 
     var sizePx by remember { mutableStateOf(Size.Zero) }
     val cornerRadiusPx = with(LocalDensity.current) { cornerRadius.toPx() }
+    val context = LocalContext.current
+
+    LaunchedEffect(sizePx) {
+        if (sizePx != Size.Zero) {
+            val isApi33 = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+            Toast.makeText(
+                context,
+                "Debug: SDK ${Build.VERSION.SDK_INT} (API33+=$isApi33) | Refraction=1.0, Curve=2.0 | Size=${sizePx.width.toInt()}x${sizePx.height.toInt()}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
 
     Box(
         modifier = modifier.onSizeChanged { sizePx = it.toSize() }
@@ -104,9 +119,9 @@ fun LiquidGlassSurface(
                 lensCenter = Offset(sizePx.width / 2f, sizePx.height / 2f),
                 lensSize = sizePx,
                 cornerRadius = cornerRadiusPx,
-                refraction = 0.85f + (refractionAnim * 0.15f),
-                curve = 0.5f,
-                dispersion = 0.06f,
+                refraction = 1.0f,
+                curve = 2.0f,
+                dispersion = 0.15f,
                 saturation = 1.3f,
                 contrast = 1.1f,
                 tint = blendedBackgroundColor,
@@ -129,7 +144,7 @@ fun LiquidGlassSurface(
                     style = HazeStyle(
                         backgroundColor = Color.Transparent, // Let liquidGlass handle the tint
                         tint = HazeTint(Color.Transparent),
-                        blurRadius = 4.dp
+                        blurRadius = 0.dp
                     )
                 )
                 .then(glassModifier)
