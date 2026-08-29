@@ -116,6 +116,7 @@ dependencies {
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.haze)
   implementation(libs.haze.materials)
+  implementation(libs.cloudy)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.core.splashscreen)
   implementation(libs.androidx.profileinstaller)

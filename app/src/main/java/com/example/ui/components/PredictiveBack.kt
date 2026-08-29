@@ -54,7 +54,17 @@ fun RegisterPredictiveBackHandler(
 ) {
     if (enabled) {
         PredictiveBackHandler(enabled = true) { progressFlow ->
-            backState.processBackFlow(progressFlow, onBack)
+            try {
+                progressFlow.collect { backEvent ->
+                    backState.progress = backEvent.progress
+                    backState.swipeEdge = backEvent.swipeEdge
+                }
+                backState.progress = 0f
+                onBack()
+            } catch (e: CancellationException) {
+                backState.progress = 0f
+                throw e
+            }
         }
     }
 }

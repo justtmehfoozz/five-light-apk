@@ -53,12 +53,14 @@ import com.example.data.util.QuranData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -187,8 +189,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
     private val _maghribOverlayAlpha = MutableStateFlow(0f)
     val maghribOverlayAlpha: StateFlow<Float> = _maghribOverlayAlpha.asStateFlow()
 
-    // Today's Prayer Log
-    val todayPrayerLog: StateFlow<PrayerLogEntity?> = repository.getPrayerLogForToday()
+    // Date & Friday detection
+    private val _currentDateString = MutableStateFlow(repository.getTodayDateString())
+    val currentDateString: StateFlow<String> = _currentDateString.asStateFlow()
+
+    // Today's Prayer Log (reactively updates when currentDateString changes, e.g. at midnight)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val todayPrayerLog: StateFlow<PrayerLogEntity?> = _currentDateString
+        .flatMapLatest { date -> repository.getPrayerLogForDateFlow(date) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     // Centralized FiveLight Context State
@@ -223,10 +231,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
             nowMillis = System.currentTimeMillis()
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    // Date & Friday detection
-    private val _currentDateString = MutableStateFlow(repository.getTodayDateString())
-    val currentDateString: StateFlow<String> = _currentDateString.asStateFlow()
 
     val isFriday: StateFlow<Boolean> = _currentDateString.map { dateStr ->
         try {
@@ -706,20 +710,32 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
     fun isAfterMaghrib() = islamicDateRepository.isAfterMaghrib()
     fun getCurrentIslamicDateState() = islamicDateRepository.getCurrentIslamicDateState()
 
+    private var lastTickMillis = System.currentTimeMillis()
+
     private fun startCountdownTicker() {
         tickerJob?.cancel()
         tickerJob = viewModelScope.launch {
             while (isActive) {
+                val now = System.currentTimeMillis()
                 // Check if calendar date changed (e.g. midnight rollover)
                 val todayDate = repository.getTodayDateString()
                 if (todayDate != _currentDateString.value) {
                     _currentDateString.value = todayDate
                     refreshPrayerTimes()
+                } else {
+                    // Check if any prayer time boundary was crossed since last tick
+                    val times = _prayerTimes.value
+                    val crossedBoundary = times.any { p ->
+                        p.timeMillis in (lastTickMillis + 1)..now
+                    }
+                    if (crossedBoundary) {
+                        refreshPrayerTimes()
+                    }
                 }
+                lastTickMillis = now
 
                 var next = _nextPrayer.value
                 if (next != null) {
-                    val now = System.currentTimeMillis()
                     var diffMillis = next.timeMillis - now
                     if (diffMillis < 0) {
                         refreshPrayerTimes()
@@ -749,7 +765,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
 
     fun togglePrayerCompleted(prayerName: PrayerName) {
         viewModelScope.launch {
-            repository.togglePrayerCompleted(prayerName, todayPrayerLog.value)
+            val todayStr = repository.getTodayDateString()
+            val prayer = _prayerTimes.value.find { it.name == prayerName }
+            if (prayer != null && System.currentTimeMillis() < prayer.timeMillis) {
+                // Do not allow toggling upcoming prayer as completed
+                return@launch
+            }
+            repository.togglePrayerCompleted(prayerName, todayPrayerLog.value, todayStr)
         }
     }
 
@@ -759,6 +781,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         status: com.example.data.model.PrayerStatus
     ) {
         viewModelScope.launch {
+            val todayStr = repository.getTodayDateString()
+            if (dateString == todayStr && status == com.example.data.model.PrayerStatus.PRAYED) {
+                val prayer = _prayerTimes.value.find { it.name == prayerName }
+                if (prayer != null && System.currentTimeMillis() < prayer.timeMillis) {
+                    // Do not allow setting upcoming prayer as completed
+                    return@launch
+                }
+            }
             repository.setPrayerStatus(prayerName, dateString, status)
             refreshQadaCounts()
         }

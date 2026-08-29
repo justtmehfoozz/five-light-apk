@@ -7,7 +7,6 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -18,23 +17,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.toSize
+import com.skydoves.cloudy.liquidGlass
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
@@ -88,10 +86,32 @@ fun LiquidGlassSurface(
         animationSpec = spring(stiffness = 350f, dampingRatio = 0.8f),
         label = "glassRefractionBoost"
     )
+    
+    val tintOpacity = if (isDark) 0.35f else 0.25f
+    val baseTint = if (isDark) Color(0xFF1E1C25) else Color(0xFFF7F4F0)
+    val blendedBackgroundColor = baseTint.copy(alpha = tintOpacity)
+
+    var sizePx by remember { mutableStateOf(Size.Zero) }
+    val cornerRadiusPx = with(LocalDensity.current) { cornerRadius.toPx() }
 
     Box(
-        modifier = modifier
+        modifier = modifier.onSizeChanged { sizePx = it.toSize() }
     ) {
+        val glassModifier = if (sizePx != Size.Zero) {
+            Modifier.liquidGlass(
+                lensCenter = Offset(sizePx.width / 2f, sizePx.height / 2f),
+                lensSize = sizePx,
+                cornerRadius = cornerRadiusPx,
+                refraction = 0.85f + (refractionAnim * 0.15f),
+                curve = 0.5f,
+                dispersion = 0.4f,
+                saturation = 1.35f,
+                contrast = 1.15f,
+                tint = blendedBackgroundColor,
+                edge = if (isDark) 0.5f else 0.4f
+            )
+        } else Modifier
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -105,98 +125,18 @@ fun LiquidGlassSurface(
                 .hazeChild(
                     state = hazeState,
                     style = HazeStyle(
-                        backgroundColor = backgroundColor,
+                        backgroundColor = Color.Transparent, // Let liquidGlass handle the tint
                         tint = HazeTint(Color.Transparent),
                         blurRadius = 24.dp
                     )
                 )
+                .then(glassModifier)
                 .border(
                     width = borderWidth,
                     color = borderColor,
                     shape = shape
                 )
-        ) {
-            // SVG/Canvas Refraction & Specular Edge Simulation Layer
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val w = size.width
-                val h = size.height
-                val radiusPx = cornerRadius.toPx().coerceAtMost(h / 2f).coerceAtMost(w / 2f)
-
-                val refractionStrength = 0.14f + (refractionAnim * 0.18f)
-                val specularStrength = if (isDark) {
-                    0.28f + (refractionAnim * 0.25f)
-                } else {
-                    0.40f + (refractionAnim * 0.25f)
-                }
-
-                val glassPath = Path().apply {
-                    addRoundRect(
-                        RoundRect(
-                            left = 0f,
-                            top = 0f,
-                            right = w,
-                            bottom = h,
-                            cornerRadius = CornerRadius(radiusPx, radiusPx)
-                        )
-                    )
-                }
-
-                clipPath(glassPath) {
-                    // 1. Curved Glass Lens Refraction Gradient (Internal Rim reflection)
-                    val rimRefractionBrush = Brush.radialGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            if (isDark) Color.White.copy(alpha = refractionStrength * 0.20f) else Color.White.copy(alpha = refractionStrength * 0.45f),
-                            if (isDark) Color(0xFFD4AF37).copy(alpha = refractionStrength * 0.15f) else Color(0xFFC5A059).copy(alpha = refractionStrength * 0.25f)
-                        ),
-                        center = Offset(w * 0.5f, 0f),
-                        radius = w * 0.75f
-                    )
-                    drawRect(brush = rimRefractionBrush)
-
-                    // 2. Chromatic rim separation along horizontal curvature
-                    val chromaticBrush = Brush.horizontalGradient(
-                        0.0f to if (isDark) Color(0xFF4EE8B0).copy(alpha = refractionStrength * 0.08f) else Color(0xFF3B82F6).copy(alpha = refractionStrength * 0.06f),
-                        0.5f to Color.Transparent,
-                        1.0f to if (isDark) Color(0xFFD4AF37).copy(alpha = refractionStrength * 0.12f) else Color(0xFFD97706).copy(alpha = refractionStrength * 0.08f)
-                    )
-                    drawRect(brush = chromaticBrush)
-
-                    // 3. Specular Edge Highlight along Top Arc
-                    val specularColor = if (isDark) {
-                        Color.White.copy(alpha = specularStrength)
-                    } else {
-                        Color.White.copy(alpha = specularStrength * 0.85f)
-                    }
-
-                    val specularStroke = Path().apply {
-                        addRoundRect(
-                            RoundRect(
-                                left = 1f,
-                                top = 1f,
-                                right = w - 1f,
-                                bottom = h - 1f,
-                                cornerRadius = CornerRadius((radiusPx - 1f).coerceAtLeast(0f), (radiusPx - 1f).coerceAtLeast(0f))
-                            )
-                        )
-                    }
-
-                    val specularTopBrush = Brush.verticalGradient(
-                        0.0f to specularColor,
-                        0.35f to specularColor.copy(alpha = specularColor.alpha * 0.4f),
-                        0.80f to Color.Transparent,
-                        startY = 0f,
-                        endY = h * 0.6f
-                    )
-
-                    drawPath(
-                        path = specularStroke,
-                        brush = specularTopBrush,
-                        style = Stroke(width = 1.dp.toPx())
-                    )
-                }
-            }
-        }
+        )
 
         // Shared Content inside the single continuous Liquid Glass Surface (unclipped for gestures)
         Box(
@@ -207,3 +147,4 @@ fun LiquidGlassSurface(
         }
     }
 }
+

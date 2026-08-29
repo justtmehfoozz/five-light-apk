@@ -20,6 +20,8 @@ import com.example.data.util.PrayerCalc
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -643,8 +645,14 @@ class AppRepository(
         return sdf.format(Date())
     }
 
+    private val prayerLogMutex = Mutex()
+
     fun getPrayerLogForToday(): Flow<PrayerLogEntity?> {
         return db.prayerLogDao().getPrayerLogForDate(getTodayDateString())
+    }
+
+    fun getPrayerLogForDateFlow(dateString: String): Flow<PrayerLogEntity?> {
+        return db.prayerLogDao().getPrayerLogForDate(dateString)
     }
 
     suspend fun getPrayerLogForDateDirect(dateString: String): PrayerLogEntity? {
@@ -655,32 +663,42 @@ class AppRepository(
         prayerName: PrayerName,
         dateString: String = getTodayDateString(),
         note: String?
-    ): Boolean {
-        if (prayerName == PrayerName.SUNRISE) return false
+    ): Boolean = prayerLogMutex.withLock {
+        if (prayerName == PrayerName.SUNRISE) return@withLock false
         val existing = db.prayerLogDao().getPrayerLogForDateDirect(dateString) ?: PrayerLogEntity(date = dateString)
         val updated = existing.withNote(prayerName, note)
         db.prayerLogDao().insertOrUpdatePrayerLog(updated)
-        return true
+        return@withLock true
     }
 
     suspend fun setPrayerQadaAdded(
         prayerName: PrayerName,
         dateString: String = getTodayDateString(),
         added: Boolean
-    ): Boolean {
-        if (prayerName == PrayerName.SUNRISE) return false
+    ): Boolean = prayerLogMutex.withLock {
+        if (prayerName == PrayerName.SUNRISE) return@withLock false
         val existing = db.prayerLogDao().getPrayerLogForDateDirect(dateString) ?: PrayerLogEntity(date = dateString)
         val updated = existing.withQadaAdded(prayerName, added)
         db.prayerLogDao().insertOrUpdatePrayerLog(updated)
-        return true
+        return@withLock true
     }
 
     suspend fun setPrayerStatus(
         prayerName: PrayerName,
         dateString: String = getTodayDateString(),
         status: com.example.data.model.PrayerStatus
-    ): Boolean {
-        if (prayerName == PrayerName.SUNRISE) return false
+    ): Boolean = prayerLogMutex.withLock {
+        if (prayerName == PrayerName.SUNRISE) return@withLock false
+
+        val todayDate = getTodayDateString()
+        if (dateString == todayDate && status == com.example.data.model.PrayerStatus.PRAYED) {
+            val todayTimes = getTodayPrayerTimes()
+            val prayer = todayTimes.find { it.name == prayerName }
+            if (prayer != null && System.currentTimeMillis() < prayer.timeMillis) {
+                // Do not allow marking upcoming prayer as completed
+                return@withLock false
+            }
+        }
 
         val existing = db.prayerLogDao().getPrayerLogForDateDirect(dateString) ?: PrayerLogEntity(date = dateString)
         val wasQadaAdded = existing.isQadaAdded(prayerName)
@@ -723,14 +741,14 @@ class AppRepository(
                 setQadaCount(prayerName, currentCount - 1)
             }
         }
-        return true
+        return@withLock true
     }
 
-    suspend fun makeUpQadaPrayer(prayerName: PrayerName): Boolean {
-        if (prayerName == PrayerName.SUNRISE) return false
+    suspend fun makeUpQadaPrayer(prayerName: PrayerName): Boolean = prayerLogMutex.withLock {
+        if (prayerName == PrayerName.SUNRISE) return@withLock false
 
         val currentCount = getQadaCount(prayerName)
-        if (currentCount <= 0) return false
+        if (currentCount <= 0) return@withLock false
 
         // 1. Decrement Qada count
         val newCount = (currentCount - 1).coerceAtLeast(0)
@@ -763,7 +781,7 @@ class AppRepository(
             db.prayerLogDao().insertOrUpdatePrayerLog(updated)
         }
 
-        return true
+        return@withLock true
     }
 
     suspend fun setPrayerCompleted(
@@ -777,13 +795,14 @@ class AppRepository(
 
     suspend fun togglePrayerCompleted(
         prayerName: PrayerName,
-        currentLog: PrayerLogEntity?,
+        currentLog: PrayerLogEntity? = null,
         dateString: String = getTodayDateString()
-    ): Boolean {
-        if (prayerName == PrayerName.SUNRISE) return false
+    ): Boolean = prayerLogMutex.withLock {
+        if (prayerName == PrayerName.SUNRISE) return@withLock false
 
         val date = dateString
-        val existing = currentLog ?: db.prayerLogDao().getPrayerLogForDateDirect(date) ?: PrayerLogEntity(date = date)
+        // Always read direct from DB inside lock to ensure fresh state and prevent rapid-tap race conditions
+        val existing = db.prayerLogDao().getPrayerLogForDateDirect(date) ?: PrayerLogEntity(date = date)
         val isCurrentlyCompleted = existing.isCompleted(prayerName)
 
         val targetStatus = if (isCurrentlyCompleted) {
@@ -791,7 +810,58 @@ class AppRepository(
         } else {
             com.example.data.model.PrayerStatus.PRAYED
         }
-        return setPrayerStatus(prayerName, date, targetStatus)
+
+        val todayDate = getTodayDateString()
+        if (date == todayDate && targetStatus == com.example.data.model.PrayerStatus.PRAYED) {
+            val todayTimes = getTodayPrayerTimes()
+            val prayer = todayTimes.find { it.name == prayerName }
+            if (prayer != null && System.currentTimeMillis() < prayer.timeMillis) {
+                // Do not allow marking upcoming prayer as completed
+                return@withLock false
+            }
+        }
+
+        val wasQadaAdded = existing.isQadaAdded(prayerName)
+        val isCompleted = targetStatus == com.example.data.model.PrayerStatus.PRAYED
+        val isMissed = targetStatus == com.example.data.model.PrayerStatus.MISSED
+
+        val updated = when (prayerName) {
+            PrayerName.FAJR -> existing.copy(
+                fajrCompleted = isCompleted,
+                fajrMissed = isMissed,
+                fajrQadaAdded = if (isCompleted) false else existing.fajrQadaAdded
+            )
+            PrayerName.DHUHR -> existing.copy(
+                dhuhrCompleted = isCompleted,
+                dhuhrMissed = isMissed,
+                dhuhrQadaAdded = if (isCompleted) false else existing.dhuhrQadaAdded
+            )
+            PrayerName.ASR -> existing.copy(
+                asrCompleted = isCompleted,
+                asrMissed = isMissed,
+                asrQadaAdded = if (isCompleted) false else existing.asrQadaAdded
+            )
+            PrayerName.MAGHRIB -> existing.copy(
+                maghribCompleted = isCompleted,
+                maghribMissed = isMissed,
+                maghribQadaAdded = if (isCompleted) false else existing.maghribQadaAdded
+            )
+            PrayerName.ISHA -> existing.copy(
+                ishaCompleted = isCompleted,
+                ishaMissed = isMissed,
+                ishaQadaAdded = if (isCompleted) false else existing.ishaQadaAdded
+            )
+            PrayerName.SUNRISE -> existing
+        }
+        db.prayerLogDao().insertOrUpdatePrayerLog(updated)
+
+        if (isCompleted && wasQadaAdded) {
+            val currentCount = getQadaCount(prayerName)
+            if (currentCount > 0) {
+                setQadaCount(prayerName, currentCount - 1)
+            }
+        }
+        return@withLock true
     }
 
     // Dhikr History

@@ -233,6 +233,7 @@ class MainActivity : ComponentActivity() {
                                     homeFeaturesPreferences = homeFeaturesPreferences,
                                     showPrayerMode = showPrayerMode.value,
                                     isFriday = isFriday,
+                                    todayDateString = viewModel.currentDateString.collectAsStateWithLifecycle().value,
                                     onClosePrayerMode = { viewModel.closePrayerMode() },
                                     onNavigateToQuranSurahVerse = { surahNum, verseNum ->
                                         val surah = com.example.data.util.QuranData.SURAHS_DIRECTORY.find { it.number == surahNum }

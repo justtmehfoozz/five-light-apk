@@ -506,6 +506,7 @@ fun HomeScreen(
     homeFeaturesPreferences: com.example.data.model.HomeFeaturesPreferences = com.example.data.model.HomeFeaturesPreferences(),
     showPrayerMode: PrayerItem? = null,
     isFriday: Boolean = false,
+    todayDateString: String = "",
     onClosePrayerMode: () -> Unit = {},
     onNavigateToQuranSurahVerse: (Int, Int) -> Unit = { _, _ -> },
     onTogglePrayer: (PrayerName) -> Unit,
@@ -521,7 +522,7 @@ fun HomeScreen(
     val isDark = MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     val coroutineScope = rememberCoroutineScope()
-    val todayStr = todayLog?.date ?: remember(hijriDate) { java.time.LocalDate.now().toString() }
+    val todayStr = todayDateString.ifEmpty { todayLog?.date ?: remember(hijriDate) { java.time.LocalDate.now().toString() } }
 
     var showDuaModal by remember { mutableStateOf(false) }
     var showHadithModal by remember { mutableStateOf(false) }
@@ -1605,7 +1606,9 @@ fun PrayerGridCard(
             }
             .combinedClickable(
                 onClick = {
-                    onToggle()
+                    if (!isFuture) {
+                        onToggle()
+                    }
                 },
                 onLongClick = {
                     showMenu = true
@@ -1703,6 +1706,7 @@ fun PrayerGridCard(
                     Box(
                         modifier = Modifier
                             .size(28.dp)
+                            .graphicsLayer { alpha = if (isFuture) 0.35f else 1.0f }
                             .clip(CircleShape)
                             .background(animatedBgColor)
                             .border(
@@ -1713,7 +1717,7 @@ fun PrayerGridCard(
                                 },
                                 shape = CircleShape
                             )
-                            .clickable {
+                            .clickable(enabled = !isFuture) {
                                 onToggle()
                             },
                         contentAlignment = Alignment.Center
@@ -1756,6 +1760,7 @@ fun PrayerGridCard(
                     ) {
                         DropdownMenuItem(
                             text = { Text("✓ Prayed") },
+                            enabled = !isFuture,
                             onClick = {
                                 showMenu = false
                                 onSetStatus(com.example.data.model.PrayerStatus.PRAYED)
@@ -1763,6 +1768,7 @@ fun PrayerGridCard(
                         )
                         DropdownMenuItem(
                             text = { Text("! Missed") },
+                            enabled = !isFuture,
                             onClick = {
                                 showMenu = false
                                 onSetStatus(com.example.data.model.PrayerStatus.MISSED)
