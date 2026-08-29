@@ -7,6 +7,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -26,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -104,9 +106,9 @@ fun LiquidGlassSurface(
                 cornerRadius = cornerRadiusPx,
                 refraction = 0.85f + (refractionAnim * 0.15f),
                 curve = 0.5f,
-                dispersion = 0.4f,
-                saturation = 1.4f,
-                contrast = 1.2f,
+                dispersion = 0.06f,
+                saturation = 1.3f,
+                contrast = 1.1f,
                 tint = blendedBackgroundColor,
                 edge = if (isDark) 0.7f else 0.6f
             )
@@ -127,10 +129,21 @@ fun LiquidGlassSurface(
                     style = HazeStyle(
                         backgroundColor = Color.Transparent, // Let liquidGlass handle the tint
                         tint = HazeTint(Color.Transparent),
-                        blurRadius = 0.dp
+                        blurRadius = 4.dp
                     )
                 )
                 .then(glassModifier)
+                .background(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            if (isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.32f),
+                            if (isDark) Color.White.copy(alpha = 0.04f) else Color.White.copy(alpha = 0.08f),
+                            Color.Transparent
+                        ),
+                        startY = 0f,
+                        endY = if (sizePx.height > 0f) sizePx.height * 0.25f else 50f
+                    )
+                )
                 .border(
                     width = borderWidth,
                     color = borderColor,
