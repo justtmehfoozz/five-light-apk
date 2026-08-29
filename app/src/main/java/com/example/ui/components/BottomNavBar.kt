@@ -361,7 +361,7 @@ fun SereneBottomNavBar(
     }
     val dockBorderColor by animateColorAsState(targetValue = targetDockBorderColor, animationSpec = DOCK_SPRING_COLOR, label = "dockBorderColor")
 
-    val activeHighlightBg = if (isDark) Color(0xFF494556) else Color(0xFF8D6B1E)
+    val activeHighlightBg = Color.dockActiveIndicator
     val activeIconColor = Color.White
     val controlIconColor = if (isDark) activeIconColor else Color.semanticPrimaryText
     val inactiveIconColor = Color.semanticDockIconInactive
