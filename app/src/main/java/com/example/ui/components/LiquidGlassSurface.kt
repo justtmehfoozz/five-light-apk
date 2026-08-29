@@ -127,7 +127,7 @@ fun LiquidGlassSurface(
                     style = HazeStyle(
                         backgroundColor = Color.Transparent, // Let liquidGlass handle the tint
                         tint = HazeTint(Color.Transparent),
-                        blurRadius = 24.dp
+                        blurRadius = 0.dp
                     )
                 )
                 .then(glassModifier)
