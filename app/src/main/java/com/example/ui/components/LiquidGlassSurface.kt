@@ -86,6 +86,10 @@ fun LiquidGlassSurface(
         animationSpec = spring(stiffness = 350f, dampingRatio = 0.8f),
         label = "glassRefractionBoost"
     )
+    
+    val tintOpacity = if (isDark) 0.45f else 0.35f
+    val baseTint = if (isDark) Color(0xFF1E1C25) else Color(0xFFFFFFFF)
+    val blendedBackgroundColor = baseTint.copy(alpha = tintOpacity)
 
     var sizePx by remember { mutableStateOf(Size.Zero) }
     val cornerRadiusPx = with(LocalDensity.current) { cornerRadius.toPx() }
@@ -101,10 +105,10 @@ fun LiquidGlassSurface(
                 refraction = 0.85f + (refractionAnim * 0.15f),
                 curve = 0.5f,
                 dispersion = 0.4f,
-                saturation = 1.35f,
-                contrast = 1.15f,
-                tint = backgroundColor,
-                edge = if (isDark) 0.5f else 0.4f
+                saturation = 1.4f,
+                contrast = 1.2f,
+                tint = blendedBackgroundColor,
+                edge = if (isDark) 0.7f else 0.6f
             )
         } else Modifier
 
