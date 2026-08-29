@@ -466,8 +466,10 @@ object QuranData {
         )
     }
 
+    private val ARABIC_DIACRITICS_REGEX = Regex("[\u064B-\u065F\u0670\u0671]")
+
     fun normalizeArabic(text: String): String {
-        return text.replace(Regex("[\u064B-\u065F\u0670\u0671]"), "")
+        return text.replace(ARABIC_DIACRITICS_REGEX, "")
             .replace('أ', 'ا')
             .replace('إ', 'ا')
             .replace('آ', 'ا')

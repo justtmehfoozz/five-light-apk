@@ -143,10 +143,7 @@ class ExampleUnitTest {
   @Test
   fun cardinalCrossing_detection_worksAccurately() {
     fun shortestSignedAngle(angle: Float): Float {
-      var result = angle % 360f
-      if (result > 180f) result -= 360f
-      if (result < -180f) result += 360f
-      return result
+      return ((angle + 180f) % 360f + 360f) % 360f - 180f
     }
 
     val cardinalAngles = intArrayOf(0, 90, 180, 270)
@@ -154,14 +151,17 @@ class ExampleUnitTest {
       for (c in cardinalAngles) {
         val prevDiff = shortestSignedAngle(prev - c.toFloat())
         val currDiff = shortestSignedAngle(curr - c.toFloat())
-        val crossed = (prevDiff < 0f && currDiff >= 0f) || (prevDiff > 0f && currDiff <= 0f)
-        if (crossed && abs(prevDiff) < 16f && abs(currDiff) < 16f) {
+        val crossed = ((prevDiff < 0f && currDiff >= 0f) || (prevDiff > 0f && currDiff <= 0f)) &&
+            abs(prevDiff) < 25f && abs(currDiff) < 25f
+        val isInsideZone = abs(currDiff) <= 4.5f
+        if (crossed || isInsideZone) {
           return c
         }
       }
       return null
     }
 
+    // CLOCKWISE CROSSINGS
     // Crossing North (358° to 2°)
     assertEquals(0, detectCrossing(358f, 2f))
     // Crossing East (88° to 92°)
@@ -170,8 +170,26 @@ class ExampleUnitTest {
     assertEquals(180, detectCrossing(178f, 182f))
     // Crossing West (268° to 272°)
     assertEquals(270, detectCrossing(268f, 272f))
+
+    // COUNTER-CLOCKWISE CROSSINGS
+    // Crossing North (2° to 358°)
+    assertEquals(0, detectCrossing(2f, 358f))
+    // Crossing East (92° to 88°)
+    assertEquals(90, detectCrossing(92f, 88f))
+    // Crossing South (182° to 178°)
+    assertEquals(180, detectCrossing(182f, 178f))
+    // Crossing West (272° to 268°)
+    assertEquals(270, detectCrossing(272f, 268f))
+
+    // Zone Proximity Entries
+    assertEquals(0, detectCrossing(10f, 2f))
+    assertEquals(90, detectCrossing(100f, 91f))
+    assertEquals(180, detectCrossing(190f, 181f))
+    assertEquals(270, detectCrossing(280f, 271f))
+
     // No crossing
     assertNull(detectCrossing(45f, 50f))
+    assertNull(detectCrossing(120f, 130f))
   }
 
   @Test
@@ -246,6 +264,53 @@ class ExampleUnitTest {
     assertEquals(16, getGregorianDay(t6))
     val h6 = getHijri(t6, maghribAug16)
     assertTrue("Hijri day should advance at next Maghrib", h6.day != h5.day || h6.monthNumber != h5.monthNumber)
+  }
+
+  @Test
+  fun prayerLog_markingCompletedAndMissed_updatesStateAccurately() {
+    val date = "2026-08-28"
+    var log = com.example.data.db.PrayerLogEntity(date = date)
+
+    // Initially uncompleted
+    assertFalse(log.isCompleted(com.example.data.model.PrayerName.FAJR))
+    assertFalse(log.isMissed(com.example.data.model.PrayerName.FAJR))
+
+    // 1. Mark Fajr as Completed
+    log = log.copy(fajrCompleted = true, fajrMissed = false)
+    assertTrue(log.isCompleted(com.example.data.model.PrayerName.FAJR))
+    assertFalse(log.isMissed(com.example.data.model.PrayerName.FAJR))
+    assertEquals(
+      com.example.data.model.PrayerStatus.PRAYED,
+      com.example.data.db.PrayerLogEntity.resolvePrayerStatus(log, com.example.data.model.PrayerName.FAJR, null, date, date)
+    )
+
+    // 2. Mark Dhuhr as Missed on the same entity
+    log = log.copy(dhuhrCompleted = false, dhuhrMissed = true)
+    assertTrue(log.isCompleted(com.example.data.model.PrayerName.FAJR)) // Fajr is still completed
+    assertFalse(log.isCompleted(com.example.data.model.PrayerName.DHUHR))
+    assertTrue(log.isMissed(com.example.data.model.PrayerName.DHUHR))
+    assertEquals(
+      com.example.data.model.PrayerStatus.MISSED,
+      com.example.data.db.PrayerLogEntity.resolvePrayerStatus(log, com.example.data.model.PrayerName.DHUHR, null, date, date)
+    )
+
+    // 3. Switch Dhuhr from Missed to Prayed
+    log = log.copy(dhuhrCompleted = true, dhuhrMissed = false)
+    assertTrue(log.isCompleted(com.example.data.model.PrayerName.DHUHR))
+    assertFalse(log.isMissed(com.example.data.model.PrayerName.DHUHR))
+    assertEquals(
+      com.example.data.model.PrayerStatus.PRAYED,
+      com.example.data.db.PrayerLogEntity.resolvePrayerStatus(log, com.example.data.model.PrayerName.DHUHR, null, date, date)
+    )
+
+    // 4. Reset Dhuhr to Needs Input
+    log = log.copy(dhuhrCompleted = false, dhuhrMissed = false)
+    assertFalse(log.isCompleted(com.example.data.model.PrayerName.DHUHR))
+    assertFalse(log.isMissed(com.example.data.model.PrayerName.DHUHR))
+    assertEquals(
+      com.example.data.model.PrayerStatus.NEEDS_INPUT,
+      com.example.data.db.PrayerLogEntity.resolvePrayerStatus(log, com.example.data.model.PrayerName.DHUHR, null, date, date)
+    )
   }
 }
 

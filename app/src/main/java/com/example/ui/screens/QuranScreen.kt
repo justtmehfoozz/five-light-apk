@@ -117,6 +117,7 @@ import androidx.compose.material3.TabRowDefaults
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -233,6 +234,8 @@ fun QuranScreen(
         }
     }
 
+    val naturalFlingBehavior = rememberNaturalFlingBehavior()
+
     LaunchedEffect(feedbackMessage) {
         if (feedbackMessage != null) {
             delay(2000)
@@ -307,7 +310,17 @@ fun QuranScreen(
             label = "QuranScreenViewTransition"
         ) { isReaderView ->
             if (isReaderView && currentSurah != null) {
-            val listState = remember(currentSurah.number) { androidx.compose.foundation.lazy.LazyListState() }
+            val initialScrollIndex = remember(currentSurah.number) {
+                val saved = onGetScrollPosition(currentSurah.number)
+                if (saved in 0 until verses.size) saved else 0
+            }
+
+            val listState = rememberSaveable(
+                currentSurah.number,
+                saver = androidx.compose.foundation.lazy.LazyListState.Saver
+            ) {
+                androidx.compose.foundation.lazy.LazyListState(firstVisibleItemIndex = initialScrollIndex)
+            }
 
             val displayVerses = remember(selectedSurah.number, verses) {
                 if (selectedSurah.number == 1 && verses.size == 7) {
@@ -323,12 +336,14 @@ fun QuranScreen(
                 }
             }
 
-            // Restore scroll position ONLY AFTER loading verses (when displayVerses.isNotEmpty())
+            // Restore scroll position ONLY AFTER loading verses if list state is at 0 and target is non-zero
             LaunchedEffect(currentSurah.number, displayVerses.isNotEmpty()) {
                 if (displayVerses.isNotEmpty()) {
                     val savedIndex = onGetScrollPosition(currentSurah.number)
                     val targetIndex = if (savedIndex in 0 until displayVerses.size) savedIndex else 0
-                    listState.scrollToItem(targetIndex)
+                    if (listState.firstVisibleItemIndex != targetIndex && listState.firstVisibleItemIndex == 0 && targetIndex > 0) {
+                        listState.scrollToItem(targetIndex)
+                    }
                 }
             }
 
@@ -342,6 +357,15 @@ fun QuranScreen(
                             onSaveScrollPosition(currentSurah.number, index)
                         }
                     }
+            }
+
+            DisposableEffect(currentSurah.number) {
+                onDispose {
+                    val currentIndex = listState.firstVisibleItemIndex
+                    if (currentIndex >= 0) {
+                        onSaveScrollPosition(currentSurah.number, currentIndex)
+                    }
+                }
             }
 
             var userPausedAutoScroll by remember { mutableStateOf(false) }
@@ -573,6 +597,7 @@ fun QuranScreen(
                         Box(modifier = Modifier.fillMaxSize()) {
                             LazyColumn(
                                 state = listState,
+                                flingBehavior = naturalFlingBehavior,
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
@@ -594,6 +619,16 @@ fun QuranScreen(
                                         val isBismillahBookmarked = bookmarkedKeys.contains("${bismillahVerse.surahNumber}_${bismillahVerse.verseNumber}")
                                         
 
+                                        val onPlayBismillah = remember(bismillahVerse) { { onPlayVerseAudio(bismillahVerse) } }
+                                        val onBookmarkBismillah = remember(bismillahVerse, isBismillahBookmarked) { { onToggleBookmark(bismillahVerse, isBismillahBookmarked) } }
+                                        val onLensBismillah = remember(bismillahVerse) { { activeLensVerse = bismillahVerse } }
+                                        val onLongClickBismillah = remember(bismillahVerse) {
+                                            {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                contextMenuVerse = bismillahVerse
+                                            }
+                                        }
+
                                         BismillahHeader(
                                             verse = bismillahVerse,
                                             fontSizeSp = fontSizeSp,
@@ -603,13 +638,10 @@ fun QuranScreen(
                                             isBookmarked = isBismillahBookmarked,
                                             playingSurahNumberProvider = playingSurahNumberProvider,
                                             playingVerseNumberProvider = playingVerseNumberProvider,
-                                            onPlayAudio = { onPlayVerseAudio(bismillahVerse) },
-                                            onToggleBookmark = { onToggleBookmark(bismillahVerse, isBismillahBookmarked) },
-                                            onOpenLens = { activeLensVerse = bismillahVerse },
-                                            onLongClick = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                contextMenuVerse = bismillahVerse
-                                            }
+                                            onPlayAudio = onPlayBismillah,
+                                            onToggleBookmark = onBookmarkBismillah,
+                                            onOpenLens = onLensBismillah,
+                                            onLongClick = onLongClickBismillah
                                         )
                                     }
                                 }
@@ -620,7 +652,16 @@ fun QuranScreen(
                                     contentType = { "verse_card" }
                                 ) { verse ->
                                     val isBookmarked = bookmarkedKeys.contains("${verse.surahNumber}_${verse.verseNumber}")
-                                    
+
+                                    val onPlay = remember(verse) { { onPlayVerseAudio(verse) } }
+                                    val onBookmark = remember(verse, isBookmarked) { { onToggleBookmark(verse, isBookmarked) } }
+                                    val onLens = remember(verse) { { activeLensVerse = verse } }
+                                    val onLong = remember(verse) {
+                                        {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            contextMenuVerse = verse
+                                        }
+                                    }
 
                                     VerseCard(
                                         verse = verse,
@@ -632,13 +673,10 @@ fun QuranScreen(
                                         isPlayingAudioProvider = isPlayingAudioProvider,
                                         isLoadingAudioProvider = isLoadingAudioProvider,
                                         isBookmarked = isBookmarked,
-                                        onPlayAudio = { onPlayVerseAudio(verse) },
-                                        onToggleBookmark = { onToggleBookmark(verse, isBookmarked) },
-                                        onOpenLens = { activeLensVerse = verse },
-                                        onLongClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            contextMenuVerse = verse
-                                        }
+                                        onPlayAudio = onPlay,
+                                        onToggleBookmark = onBookmark,
+                                        onOpenLens = onLens,
+                                        onLongClick = onLong
                                     )
                                 }
 
@@ -719,6 +757,7 @@ fun QuranScreen(
 
                     LazyColumn(
                         state = surahListState,
+                        flingBehavior = naturalFlingBehavior,
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -848,19 +887,23 @@ fun QuranScreen(
                             val progress = if (audioProgressVal > 0f) audioProgressVal else readingProgressVal
                             val dlStatus = surahDownloadStates[surah.number]
 
+                            val onDownload = remember(surah.number) { { onDownloadSurah(surah.number) } }
+                            val onSurahClick = remember(surah) {
+                                {
+                                    onSelectSurah(surah)
+                                    isReadingViewActive = true
+                                }
+                            }
+                            val onSurahLongClick = remember(surah) { { quickActionSurah = surah } }
+
                             SurahListItem(
                                 surah = surah,
                                 isCurrent = isCurrent,
                                 playbackProgress = progress,
                                 downloadStatus = dlStatus,
-                                onDownloadClick = { onDownloadSurah(surah.number) },
-                                onClick = {
-                                    onSelectSurah(surah)
-                                    isReadingViewActive = true
-                                },
-                                onLongClick = {
-                                    quickActionSurah = surah
-                                }
+                                onDownloadClick = onDownload,
+                                onClick = onSurahClick,
+                                onLongClick = onSurahLongClick
                             )
                         }
 
@@ -889,6 +932,7 @@ fun QuranScreen(
                     } else {
                         LazyColumn(
                             state = bookmarksListState,
+                            flingBehavior = naturalFlingBehavior,
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -1611,7 +1655,7 @@ fun BismillahHeader(
     val isReducedMotion = rememberIsReducedMotion()
     val isVerseActive by remember(verse.surahNumber, verse.verseNumber) { androidx.compose.runtime.derivedStateOf { (playingSurahNumberProvider() == verse.surahNumber) && (playingVerseNumberProvider() == verse.verseNumber) } }
     val isPlaying by remember { androidx.compose.runtime.derivedStateOf { isVerseActive && isPlayingAudioProvider() } }
-    val isLoading by remember { androidx.compose.runtime.derivedStateOf { isVerseActive && isLoadingAudioProvider() } }
+    val isLoading by remember { androidx.compose.runtime.derivedStateOf { isVerseActive && isLoadingAudioProvider() && !isPlayingAudioProvider() } }
 
     // 8. Subtle first-appearance animation in the current reading session
     val hasBeenSeen = rememberSaveable(verse.verseKey) { mutableStateOf(false) }
@@ -1872,7 +1916,7 @@ fun VerseCard(
     val isReducedMotion = rememberIsReducedMotion()
     val isVerseActive by remember(verse.surahNumber, verse.verseNumber) { androidx.compose.runtime.derivedStateOf { (playingSurahNumberProvider() == verse.surahNumber) && (playingVerseNumberProvider() == verse.verseNumber) } }
     val isPlaying by remember { androidx.compose.runtime.derivedStateOf { isVerseActive && isPlayingAudioProvider() } }
-    val isLoading by remember { androidx.compose.runtime.derivedStateOf { isVerseActive && isLoadingAudioProvider() } }
+    val isLoading by remember { androidx.compose.runtime.derivedStateOf { isVerseActive && isLoadingAudioProvider() && !isPlayingAudioProvider() } }
 
     // 8. Subtle first-appearance animation in the current reading session
     val hasBeenSeen = rememberSaveable(verse.verseKey) { mutableStateOf(false) }

@@ -1,5 +1,6 @@
 package com.example.data.util
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.ui.graphics.Color
@@ -53,6 +54,7 @@ enum class PastelTheme(
 // NORMALIZED DUA ENTITY / DATA RECORD
 // =========================================================================
 
+@Immutable
 data class DuaItem(
     val id: String,
     val title: String,
@@ -70,6 +72,7 @@ data class DuaItem(
     val verseNumber: Int? = null
 )
 
+@Immutable
 data class DuaCategoryInfo(
     val id: String,
     val title: String,

@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.example.ui.theme.rememberNaturalFlingBehavior
 import android.content.Context
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
@@ -317,7 +318,7 @@ fun ExploreMainContent(
     }
 
     // Dynamic Category Order based on usage
-    var orderedCategoryIds by remember {
+    var orderedCategoryIds by rememberSaveable {
         mutableStateOf(ExploreUsageTracker.getOrderedCategories(context))
     }
 
@@ -355,8 +356,11 @@ fun ExploreMainContent(
             )
         }
 
+        val exploreFlingBehavior = rememberNaturalFlingBehavior()
+
         LazyColumn(
             state = exploreListState,
+            flingBehavior = exploreFlingBehavior,
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
             modifier = Modifier.fillMaxSize()

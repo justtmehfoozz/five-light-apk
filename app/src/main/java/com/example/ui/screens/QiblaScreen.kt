@@ -231,7 +231,7 @@ fun QiblaScreen(
 
     // Subtle breathing pulse at Kaaba when closely aligned (< 5°)
     val infiniteTransition = rememberInfiniteTransition(label = "kaaba_breathing_transition")
-    val rawBreathingValue by infiniteTransition.animateFloat(
+    val rawBreathingState = infiniteTransition.animateFloat(
         initialValue = 0.88f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
@@ -240,8 +240,6 @@ fun QiblaScreen(
         ),
         label = "raw_breathing"
     )
-
-    val breathingFactor = if (absDiff <= 5f) rawBreathingValue else 1.0f
 
     // Alignment status text with ±4° tolerance threshold
     val facingThreshold = 4f
@@ -318,21 +316,46 @@ fun QiblaScreen(
     }
 
     // Part 3: Haptic Tick at Cardinal Crossings (N:0°, E:90°, S:180°, W:270°)
-    // Tracks cardinal directions that have already triggered a haptic while remaining inside proximity (±5°)
+    // Tracks cardinal directions that have already triggered a haptic while remaining inside proximity/hysteresis zone
     val triggeredCardinals = remember { HashSet<Int>() }
+    var lastHeadingForHaptics by remember { mutableFloatStateOf(-1f) }
 
     LaunchedEffect(compassHeading, isActive) {
         if (!isActive) {
             triggeredCardinals.clear()
+            lastHeadingForHaptics = -1f
             return@LaunchedEffect
         }
+
+        val prevHeading = lastHeadingForHaptics
+        lastHeadingForHaptics = compassHeading
+
+        if (prevHeading < 0f) {
+            // First sample on screen activation: initialize heading reference without false crossing trigger
+            return@LaunchedEffect
+        }
+
+        val stepMagnitude = abs(shortestSignedAngle(compassHeading - prevHeading))
+        // Ignore massive jumps (e.g. initial sensor warm-up or sudden discontinuity > 60°)
+        if (stepMagnitude > 60f) {
+            return@LaunchedEffect
+        }
+
         val cardinalAngles = intArrayOf(0, 90, 180, 270)
         for (cardinal in cardinalAngles) {
-            val angularDiff = abs(shortestSignedAngle(compassHeading - cardinal.toFloat()))
+            val prevDiff = shortestSignedAngle(prevHeading - cardinal.toFloat())
+            val currDiff = shortestSignedAngle(compassHeading - cardinal.toFloat())
             val isTriggered = triggeredCardinals.contains(cardinal)
 
-            if (angularDiff <= 5f && !isTriggered) {
-                // Transition into cardinal proximity zone (±5°) -> trigger haptic ONCE
+            // Crossing detection: crossed 0° relative to cardinal (clockwise or counter-clockwise)
+            val didCross = ((prevDiff < 0f && currDiff >= 0f) || (prevDiff > 0f && currDiff <= 0f)) &&
+                    abs(prevDiff) < 25f && abs(currDiff) < 25f
+
+            // Proximity zone entry: inside ±4.5° of cardinal
+            val isInsideZone = abs(currDiff) <= 4.5f
+
+            if ((didCross || isInsideZone) && !isTriggered) {
+                // Trigger cardinal haptic ONCE
                 triggeredCardinals.add(cardinal)
                 if (isVibrationEnabled) {
                     try {
@@ -347,8 +370,8 @@ fun QiblaScreen(
                         FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled)
                     }
                 }
-            } else if (angularDiff > 7f && isTriggered) {
-                // Re-arm cardinal direction when device rotates past hysteresis boundary (> 7°)
+            } else if (abs(currDiff) > 8.5f && isTriggered) {
+                // Re-arm cardinal direction when device rotates past hysteresis boundary (> 8.5°)
                 triggeredCardinals.remove(cardinal)
             }
         }
@@ -462,7 +485,7 @@ fun QiblaScreen(
                     ringPulse = ringPulseAnim.value,
                     trailSweep = trailSweepAnim.value,
                     trailAlpha = trailAlphaAnim.value,
-                    breathingFactor = breathingFactor,
+                    breathingFactor = { if (absDiff <= 5f) rawBreathingState.value else 1.0f },
                     distanceKm = distanceToKaabaKm,
                     elevationMeters = 27.0,
                     isDark = isDark,
@@ -555,7 +578,7 @@ private fun SoftArcCompass(
     ringPulse: Float,
     trailSweep: Float,
     trailAlpha: Float,
-    breathingFactor: Float,
+    breathingFactor: () -> Float,
     distanceKm: Int,
     elevationMeters: Double,
     isDark: Boolean,
@@ -675,7 +698,7 @@ private fun SoftArcCompass(
                 center = center,
                 radius = radius,
                 glowIntensity = glowIntensity,
-                breathingFactor = breathingFactor,
+                breathingFactor = breathingFactor(),
                 isDark = isDark,
                 primaryAccent = orangeAccent,
                 badgeBgColor = badgeBgColor,

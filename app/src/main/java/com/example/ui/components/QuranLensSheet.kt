@@ -191,7 +191,7 @@ fun QuranLensSheet(
                             .heightIn(max = 320.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(lensInfo.occurrences) { occ ->
+                        items(lensInfo.occurrences, key = { "${it.surahNumber}_${it.verseNumber}" }) { occ ->
                             OccurrenceCard(
                                 occurrence = occ,
                                 onClick = {

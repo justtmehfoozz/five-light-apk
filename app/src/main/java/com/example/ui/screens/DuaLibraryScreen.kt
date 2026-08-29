@@ -190,7 +190,7 @@ fun DuaLibraryScreen(
     isActiveTab: Boolean = true
 ) {
     var activeCategory by rememberSaveable { mutableStateOf(initialCategory) }
-    var targetDuaId by remember { mutableStateOf(initialDuaId) }
+    var targetDuaId by rememberSaveable { mutableStateOf(initialDuaId) }
     var selectedCategoryTab by rememberSaveable { mutableIntStateOf(0) } // 0: All, 1: Bookmarks
     var arabicFontSizeSp by rememberSaveable { mutableFloatStateOf(26f) }
     var showFontControls by rememberSaveable { mutableStateOf(false) }
@@ -606,7 +606,7 @@ fun DuaLibraryMainContent(
                         )
                     }
 
-                    items(bookmarkedDuas) { dua ->
+                    items(bookmarkedDuas, key = { it.id }) { dua ->
                         DuaDetailCard(
                             dua = dua,
                             arabicFontSizeSp = arabicFontSizeSp,
@@ -1425,7 +1425,7 @@ fun DuaCategoryDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(categoryDuas) { dua ->
+                items(categoryDuas, key = { it.id }) { dua ->
                     val isBookmarked = bookmarkedIds.contains(dua.id)
                     DuaDetailCard(
                         dua = dua,

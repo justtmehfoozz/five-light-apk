@@ -11,6 +11,7 @@ enum class PrayerName(val id: String, val displayName: String, val arabicName: S
     ISHA("isha", "Isha", "العشاء")
 }
 
+@Immutable
 data class PrayerItem(
     val name: PrayerName,
     val timeFormatted: String, // e.g. "05:15 AM"
@@ -70,6 +71,7 @@ enum class TasbeehSound(val id: String, val displayName: String, val description
     }
 }
 
+@Immutable
 data class CityLocation(
     val cityName: String,
     val countryName: String,
@@ -81,6 +83,7 @@ data class CityLocation(
     val fullDisplayName: String get() = if (countryName.startsWith("Asia/")) "$cityName ($countryName)" else "$cityName, $countryName"
 }
 
+@Immutable
 data class Surah(
     val number: Int,
     val nameEnglish: String,
@@ -103,6 +106,7 @@ data class Verse(
     val isBismillahHeader: Boolean get() = verseNumber == 0
 }
 
+@Immutable
 data class DhikrPreset(
     val id: String,
     val nameEnglish: String,
@@ -112,6 +116,7 @@ data class DhikrPreset(
     val isCustom: Boolean = false
 )
 
+@Immutable
 data class IslamicEvent(
     val title: String,
     val arabicTitle: String,
@@ -131,6 +136,7 @@ enum class HijriDateMethod(
     CUSTOM_OFFSET("Custom Days Adjustment", "Manual day offset adjustment")
 }
 
+@Immutable
 data class HijriDate(
     val day: Int,
     val monthName: String,
@@ -144,6 +150,7 @@ data class HijriDate(
     val isSyncedWithInternet: Boolean = false
 )
 
+@Immutable
 data class IslamicDateState(
     val gregorianDate: java.time.LocalDate = java.time.LocalDate.now(),
     val gregorianDateFormatted: String = "",
@@ -164,6 +171,7 @@ data class IslamicDateState(
     val moonPhase: MoonPhase = MoonPhase()
 )
 
+@Immutable
 data class NaflPreferences(
     val tahajjudEnabled: Boolean = false,
     val ishraqEnabled: Boolean = false,
@@ -241,6 +249,7 @@ enum class NaflType(
     )
 }
 
+@Immutable
 data class NaflPrayerItem(
     val type: NaflType,
     val timeFormatted: String,
@@ -255,6 +264,7 @@ enum class RightNowActionType {
     OPEN_QURAN
 }
 
+@Immutable
 data class RightNowItem(
     val title: String,
     val subtitle: String,

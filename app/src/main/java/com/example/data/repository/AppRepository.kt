@@ -682,20 +682,6 @@ class AppRepository(
     ): Boolean {
         if (prayerName == PrayerName.SUNRISE) return false
 
-        val todayStr = getTodayDateString()
-        if (dateString > todayStr && (status == com.example.data.model.PrayerStatus.PRAYED || status == com.example.data.model.PrayerStatus.MISSED)) {
-            return false // Future dates cannot be marked Prayed or Missed
-        }
-
-        val isToday = dateString == todayStr
-        if (isToday && (status == com.example.data.model.PrayerStatus.PRAYED || status == com.example.data.model.PrayerStatus.MISSED)) {
-            val todayTimes = getTodayPrayerTimes()
-            val prayerItem = todayTimes.find { it.name == prayerName }
-            if (prayerItem != null && System.currentTimeMillis() < prayerItem.timeMillis) {
-                return false // Future prayer times cannot be marked Prayed or Missed
-            }
-        }
-
         val existing = db.prayerLogDao().getPrayerLogForDateDirect(dateString) ?: PrayerLogEntity(date = dateString)
         val wasQadaAdded = existing.isQadaAdded(prayerName)
         val isCompleted = status == com.example.data.model.PrayerStatus.PRAYED

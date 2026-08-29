@@ -210,7 +210,7 @@ fun PrayerJourneyNodeRow(
         Spacer(modifier = Modifier.width(12.dp))
 
         // Card Content
-        val isClickableFard = isFard && node.prayerName != null && !node.isFuture
+        val isClickableFard = isFard && node.prayerName != null
         Surface(
             onClick = {
                 val prayer = node.prayerName

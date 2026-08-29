@@ -14,6 +14,7 @@ import com.example.ui.theme.semanticMutedText
 import com.example.ui.theme.semanticBorder
 import com.example.ui.theme.semanticBackground
 import com.example.ui.theme.semanticWarning
+import com.example.ui.theme.rememberNaturalFlingBehavior
 
 
 import androidx.compose.animation.AnimatedContent
@@ -520,7 +521,7 @@ fun HomeScreen(
     val isDark = MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
     val coroutineScope = rememberCoroutineScope()
-    val todayStr = remember(hijriDate, todayLog?.date) { java.time.LocalDate.now().toString() }
+    val todayStr = todayLog?.date ?: remember(hijriDate) { java.time.LocalDate.now().toString() }
 
     var showDuaModal by remember { mutableStateOf(false) }
     var showHadithModal by remember { mutableStateOf(false) }
@@ -576,15 +577,18 @@ fun HomeScreen(
         }
     }
 
+    val homeFlingBehavior = rememberNaturalFlingBehavior()
+
     androidx.compose.foundation.lazy.LazyColumn(
         state = listState,
+        flingBehavior = homeFlingBehavior,
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // 1. HEADER
-        item {
+        item(key = "home_header") {
             PageHeader(
                 title = "FiveLight",
                 bottomPadding = 0.dp,
@@ -616,7 +620,7 @@ fun HomeScreen(
         }
 
         // 2. CONTEXTUAL CHIPS ROW
-        item {
+        item(key = "home_quick_chips") {
             val chipScrollState = rememberScrollState()
             Row(
                 modifier = Modifier
@@ -666,7 +670,7 @@ fun HomeScreen(
             val heroStatus = com.example.data.db.PrayerLogEntity.resolvePrayerStatus(todayLog, heroPrayer.name, heroPrayer.timeMillis, todayStr, todayStr)
             val currentIdx = cardIndex++
 
-            item {
+            item(key = "home_hero_card_${heroPrayer.name.name}") {
                 StaggeredCardEntrance(index = currentIdx) {
                     AnimatedContent(
                         targetState = heroPrayer.name,
@@ -691,7 +695,7 @@ fun HomeScreen(
 
         // 4. TODAY'S FIVE PRAYERS 2-COLUMN GRID
         val dailyPrayersIdx = cardIndex++
-        item {
+        item(key = "home_daily_prayers_grid") {
             StaggeredCardEntrance(index = dailyPrayersIdx) {
                 val dailyPrayers = prayerTimes.filter { it.name != PrayerName.SUNRISE }
                 
@@ -764,7 +768,7 @@ fun HomeScreen(
                 "PRAYER_PREP" -> {
                     if (contextState.prayerPrep != null && homeFeaturesPreferences.prayerPrepEnabled) {
                         val cIdx = cardIndex++
-                        item {
+                        item(key = "feature_prayer_prep") {
                             StaggeredCardEntrance(index = cIdx) {
                                 Box(modifier = Modifier.padding(horizontal = 20.dp)) {
                                     com.example.ui.components.PrayerPrepCard(
@@ -779,7 +783,7 @@ fun HomeScreen(
                 "RIGHT_NOW" -> {
                     if (rightNowItem != null && homeFeaturesPreferences.rightNowEnabled) {
                         val cIdx = cardIndex++
-                        item {
+                        item(key = "feature_right_now") {
                             StaggeredCardEntrance(index = cIdx) {
                                 Box(modifier = Modifier.padding(horizontal = 20.dp)) {
                                     RightNowCard(
@@ -802,7 +806,7 @@ fun HomeScreen(
                 "CONTINUE_READING" -> {
                     if (lastReadPosition != null && homeFeaturesPreferences.continueReadingEnabled) {
                         val cIdx = cardIndex++
-                        item {
+                        item(key = "feature_continue_reading") {
                             StaggeredCardEntrance(index = cIdx) {
                                 Box(modifier = Modifier.padding(horizontal = 20.dp)) {
                                     com.example.ui.components.ContinueReadingCard(
@@ -822,7 +826,7 @@ fun HomeScreen(
                 "NEXT_OPPORTUNITY" -> {
                     if (showNextOpportunity != null && homeFeaturesPreferences.nextOpportunityEnabled) {
                         val cIdx = cardIndex++
-                        item {
+                        item(key = "feature_next_opportunity") {
                             StaggeredCardEntrance(index = cIdx) {
                                 Box(modifier = Modifier.padding(horizontal = 20.dp)) {
                                     com.example.ui.components.NextOpportunityCard(
@@ -843,7 +847,7 @@ fun HomeScreen(
                 "RECENTLY_READ" -> {
                     if (recentlyReadList.isNotEmpty() && homeFeaturesPreferences.recentlyReadEnabled) {
                         val cIdx = cardIndex++
-                        item {
+                        item(key = "feature_recently_read") {
                             StaggeredCardEntrance(index = cIdx) {
                                 com.example.ui.components.RecentlyReadSection(
                                     recentlyReadList = recentlyReadList,
@@ -858,7 +862,7 @@ fun HomeScreen(
                 "TONIGHT" -> {
                     if (contextState.tonight != null && contextState.tonight.isNightActive && homeFeaturesPreferences.tonightEnabled) {
                         val cIdx = cardIndex++
-                        item {
+                        item(key = "feature_tonight") {
                             StaggeredCardEntrance(index = cIdx) {
                                 Box(modifier = Modifier.padding(horizontal = 20.dp)) {
                                     com.example.ui.components.TonightCard(
@@ -872,7 +876,7 @@ fun HomeScreen(
                 "MOMENTS" -> {
                     if (contextState.moment != null && homeFeaturesPreferences.momentsEnabled) {
                         val cIdx = cardIndex++
-                        item {
+                        item(key = "feature_moments") {
                             StaggeredCardEntrance(index = cIdx) {
                                 Box(modifier = Modifier.padding(horizontal = 20.dp)) {
                                     com.example.ui.components.FiveLightMomentCard(
@@ -893,7 +897,7 @@ fun HomeScreen(
                 "WEEKLY_OVERVIEW" -> {
                     if (contextState.weeklyOverview != null && homeFeaturesPreferences.weeklyOverviewEnabled) {
                         val cIdx = cardIndex++
-                        item {
+                        item(key = "feature_weekly_overview") {
                             StaggeredCardEntrance(index = cIdx) {
                                 Box(modifier = Modifier.padding(horizontal = 20.dp)) {
                                     com.example.ui.components.WeeklyWorshipOverviewCard(
@@ -919,7 +923,7 @@ fun HomeScreen(
                 "NAFL_PRAYERS" -> {
                     if (naflPreferences.isAnyEnabled && naflPrayerItems.isNotEmpty()) {
                         val cIdx = cardIndex++
-                        item {
+                        item(key = "feature_nafl_prayers") {
                             StaggeredCardEntrance(index = cIdx) {
                                 NaflPrayersSection(
                                     naflPrayerItems = naflPrayerItems,
@@ -935,7 +939,7 @@ fun HomeScreen(
         // ISLAMIC CALENDAR EVENT MOMENT CARD
         if (contextState.calendarMoment != null) {
             val cIdx = cardIndex++
-            item {
+            item(key = "feature_calendar_moment") {
                 StaggeredCardEntrance(index = cIdx) {
                     Box(modifier = Modifier.padding(horizontal = 20.dp)) {
                         com.example.ui.components.CalendarEventMomentCard(
@@ -948,7 +952,7 @@ fun HomeScreen(
 
         // REFLECTION OF THE DAY CARD
         val refIdx = cardIndex++
-        item {
+        item(key = "feature_reflection_of_day") {
             StaggeredCardEntrance(index = refIdx) {
                 Box(modifier = Modifier.padding(horizontal = 20.dp)) {
                     com.example.ui.components.ReflectionOfTheDayCard(
@@ -960,7 +964,7 @@ fun HomeScreen(
             }
         }
 
-        item { Spacer(modifier = Modifier.height(140.dp)) }
+        item(key = "home_bottom_spacer") { Spacer(modifier = Modifier.height(140.dp)) }
     }
 
     if (showPrayerJourneySheet) {
@@ -1322,14 +1326,13 @@ fun QuickActionChip(
 fun FeaturedPrayerHeroCard(
     prayer: PrayerItem,
     countdown: androidx.compose.runtime.State<String>,
-    status: com.example.data.model.PrayerStatus,
-    onToggle: () -> Unit,
+    status: com.example.data.model.PrayerStatus = com.example.data.model.PrayerStatus.FUTURE,
+    onToggle: () -> Unit = {},
     onSetStatus: (com.example.data.model.PrayerStatus) -> Unit = {},
     isFriday: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val isDark = androidx.compose.material3.MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
-    var showMenu by remember { mutableStateOf(false) }
 
     // Reduced motion accessibility check
     val context = LocalContext.current
@@ -1381,16 +1384,11 @@ fun FeaturedPrayerHeroCard(
     }
 
     // Feature 2: Last 15 Minutes Urgency State
-    val isUrgent by remember(prayer.timeMillis, countdown) {
+    val isUrgent by remember(prayer.timeMillis) {
         androidx.compose.runtime.derivedStateOf {
-        val now = System.currentTimeMillis()
-        val diff = prayer.timeMillis - now
-        val clean = countdown.value.removePrefix("-")
-        val parts = clean.split(":")
-        val h = parts.getOrNull(0)?.toIntOrNull() ?: 0
-        val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
-        val stringMatches = h == 0 && m <= 15
-        (diff in 1..(15 * 60 * 1000 + 999)) || (stringMatches && clean != "00:00:00" && clean != "00")
+            val now = System.currentTimeMillis()
+            val diff = prayer.timeMillis - now
+            diff in 1..(15 * 60 * 1000 + 999)
         }
     }
     // Subtle 6% size emphasis when <=15m (350ms smooth transition)
@@ -1545,121 +1543,13 @@ fun FeaturedPrayerHeroCard(
                     heartbeatPulseState = heartbeatPulseState
                 )
 
-                // Completion Toggle Button & Time
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box {
-                        val isPrayed = status == com.example.data.model.PrayerStatus.PRAYED
-                        val isMissed = status == com.example.data.model.PrayerStatus.MISSED
-                        val isFuture = status == com.example.data.model.PrayerStatus.FUTURE
-
-                        val targetBgColor = when {
-                            isPrayed -> Color.White
-                            isMissed -> Color.semanticError
-                            else -> Color.Transparent
-                        }
-                        val animatedBgColor by animateColorAsState(
-                            targetValue = targetBgColor,
-                            animationSpec = tween(durationMillis = 300),
-                            label = "hero_status_bg"
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(animatedBgColor)
-                                .border(
-                                    border = when {
-                                        isPrayed || isMissed -> BorderStroke(0.dp, Color.Transparent)
-                                        isFuture -> BorderStroke(1.5.dp, Color.White.copy(alpha = 0.25f))
-                                        else -> BorderStroke(1.5.dp, Color.White.copy(alpha = 0.7f))
-                                    },
-                                    shape = CircleShape
-                                )
-                                .combinedClickable(
-                                    onClick = {
-                                        if (!isFuture) {
-                                            onToggle()
-                                        }
-                                    },
-                                    onLongClick = {
-                                        if (!isFuture) {
-                                            showMenu = true
-                                        }
-                                    }
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            AnimatedContent(
-                                targetState = status,
-                                transitionSpec = {
-                                    fadeIn(tween(250)) togetherWith fadeOut(tween(250))
-                                },
-                                label = "hero_status_icon"
-                            ) { targetStatus ->
-                                when (targetStatus) {
-                                    com.example.data.model.PrayerStatus.PRAYED -> {
-                                        Icon(
-                                            imageVector = Icons.Filled.Check,
-                                            contentDescription = "Completed",
-                                            tint = Color.Black,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                    com.example.data.model.PrayerStatus.MISSED -> {
-                                        Text(
-                                            text = "!",
-                                            fontFamily = SpaceGrotesk,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 16.sp,
-                                            color = Color.White
-                                        )
-                                    }
-                                    else -> {
-                                        Spacer(modifier = Modifier.size(18.dp))
-                                    }
-                                }
-                            }
-                        }
-
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("✓ Prayed") },
-                                onClick = {
-                                    showMenu = false
-                                    onSetStatus(com.example.data.model.PrayerStatus.PRAYED)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("! Missed") },
-                                onClick = {
-                                    showMenu = false
-                                    onSetStatus(com.example.data.model.PrayerStatus.MISSED)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("○ Reset (Needs input)") },
-                                onClick = {
-                                    showMenu = false
-                                    onSetStatus(com.example.data.model.PrayerStatus.NEEDS_INPUT)
-                                }
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Text(
-                        text = prayer.timeFormatted,
-                        fontFamily = SpaceGrotesk,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = Color.White
-                    )
-                }
+                Text(
+                    text = prayer.timeFormatted,
+                    fontFamily = SpaceGrotesk,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = Color.White
+                )
             }
         }
     }
@@ -1715,14 +1605,10 @@ fun PrayerGridCard(
             }
             .combinedClickable(
                 onClick = {
-                    if (!isFuture) {
-                        onToggle()
-                    }
+                    onToggle()
                 },
                 onLongClick = {
-                    if (!isFuture) {
-                        showMenu = true
-                    }
+                    showMenu = true
                 }
             )
             .padding(16.dp)
@@ -1828,9 +1714,7 @@ fun PrayerGridCard(
                                 shape = CircleShape
                             )
                             .clickable {
-                                if (!isFuture) {
-                                    onToggle()
-                                }
+                                onToggle()
                             },
                         contentAlignment = Alignment.Center
                     ) {

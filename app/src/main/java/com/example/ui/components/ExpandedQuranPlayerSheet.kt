@@ -175,6 +175,8 @@ fun ExpandedQuranPlayerSheet(
     currentVerseNumberProvider: () -> Int? = { null },
     isPlayingProvider: () -> Boolean = { false },
     isLoadingProvider: () -> Boolean = { false },
+    isPlayingFlow: StateFlow<Boolean>? = null,
+    isLoadingFlow: StateFlow<Boolean>? = null,
     audioProgress: Float = 0f,
     audioPositionMs: Long = 0L,
     audioDurationMs: Long = 0L,
@@ -193,8 +195,11 @@ fun ExpandedQuranPlayerSheet(
 ) {
 
     val isDark = isAppInDarkTheme()
-    val isPlaying = isPlayingProvider()
-    val isLoading = isLoadingProvider()
+    val currentIsPlaying = isPlayingFlow?.collectAsStateWithLifecycle()?.value ?: isPlayingProvider()
+    val currentIsLoading = isLoadingFlow?.collectAsStateWithLifecycle()?.value ?: isLoadingProvider()
+    val isPlaying = currentIsPlaying
+    // Spinner ONLY shown if genuine waiting/buffering AND NOT actively playing
+    val isLoading = currentIsLoading && !currentIsPlaying
     val currentVerseNumber = currentVerseNumberProvider()
     val verse = verseProvider()
     val isBookmarked = isBookmarkedProvider()
@@ -465,7 +470,11 @@ fun ExpandedQuranPlayerSheet(
             // Scrubbable Progress Bar
             PlayerProgressBar(
                 audioProgressFlow = audioProgressFlow,
+                audioDurationMsFlow = audioDurationMsFlow,
                 audioProgress = audioProgress,
+                audioDurationMs = audioDurationMs,
+                isPlaying = isPlaying,
+                isLoading = isLoading,
                 isReducedMotion = isReducedMotion,
                 isDark = isDark,
                 accent = accent,
@@ -610,7 +619,11 @@ fun ExpandedQuranPlayerSheet(
 @Composable
 private fun PlayerProgressBar(
     audioProgressFlow: StateFlow<Float>?,
+    audioDurationMsFlow: StateFlow<Long>?,
     audioProgress: Float,
+    audioDurationMs: Long,
+    isPlaying: Boolean,
+    isLoading: Boolean,
     isReducedMotion: Boolean,
     isDark: Boolean,
     accent: Color,
@@ -619,8 +632,16 @@ private fun PlayerProgressBar(
 ) {
     var isDraggingProgress by remember { mutableStateOf(false) }
     var dragProgressFraction by remember { mutableFloatStateOf(0f) }
-    val currentAudioProgress = audioProgressFlow?.collectAsStateWithLifecycle()?.value ?: audioProgress
-    val currentDisplayProg = if (isDraggingProgress) dragProgressFraction else currentAudioProgress.coerceIn(0f, 1f)
+    val progressState = rememberSmoothAudioProgressState(
+        audioProgressFlow = audioProgressFlow,
+        audioDurationMsFlow = audioDurationMsFlow,
+        fallbackProgress = audioProgress,
+        fallbackDurationMs = audioDurationMs,
+        isPlaying = isPlaying,
+        isLoading = isLoading,
+        isDragging = isDraggingProgress,
+        dragProgressFraction = dragProgressFraction
+    )
 
     val trackHeight by animateDpAsState(
         targetValue = if (isDraggingProgress && !isReducedMotion) 6.dp else 4.dp,
@@ -633,6 +654,8 @@ private fun PlayerProgressBar(
         animationSpec = tween(180),
         label = "sheetThumbS"
     )
+
+    val inactiveTrackColor = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.12f)
 
     Column(modifier = Modifier.fillMaxWidth()) {
         Box(
@@ -659,7 +682,6 @@ private fun PlayerProgressBar(
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             isDraggingProgress = true
                             dragProgressFraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                            onSeekAudio(dragProgressFraction)
                         },
                         onDragEnd = {
                             isDraggingProgress = false
@@ -671,43 +693,52 @@ private fun PlayerProgressBar(
                         onHorizontalDrag = { change, _ ->
                             change.consume()
                             dragProgressFraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                            onSeekAudio(dragProgressFraction)
                         }
                     )
                 },
             contentAlignment = Alignment.CenterStart
         ) {
-            val inactiveTrackColor = if (isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.12f)
-            // Inactive Track
-            Box(
+            androidx.compose.foundation.Canvas(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(trackHeight)
-                    .clip(CircleShape)
-                    .background(inactiveTrackColor)
-            )
-            // Active Track
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(fraction = currentDisplayProg)
-                    .height(trackHeight)
-                    .clip(CircleShape)
-                    .background(accent)
-            )
-            // Thumb indicator
-            if (currentDisplayProg > 0f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(fraction = currentDisplayProg)
-                        .height(20.dp),
-                    contentAlignment = Alignment.CenterEnd
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(thumbSize)
-                            .clip(CircleShape)
-                            .background(androidx.compose.ui.graphics.Color.White)
-                            .border(2.dp, accent, CircleShape)
+                    .height(30.dp)
+            ) {
+                val prog = progressState.value.coerceIn(0f, 1f)
+                val h = trackHeight.toPx()
+                val w = size.width
+                val yOffset = (size.height - h) / 2f
+                val cr = androidx.compose.ui.geometry.CornerRadius(h / 2f, h / 2f)
+
+                // Inactive Track
+                drawRoundRect(
+                    color = inactiveTrackColor,
+                    topLeft = androidx.compose.ui.geometry.Offset(0f, yOffset),
+                    size = androidx.compose.ui.geometry.Size(w, h),
+                    cornerRadius = cr
+                )
+
+                // Active Track
+                if (prog > 0f) {
+                    val activeWidth = (w * prog).coerceIn(0f, w)
+                    drawRoundRect(
+                        color = accent,
+                        topLeft = androidx.compose.ui.geometry.Offset(0f, yOffset),
+                        size = androidx.compose.ui.geometry.Size(activeWidth, h),
+                        cornerRadius = cr
+                    )
+
+                    // Thumb indicator
+                    val thumbRadiusPx = thumbSize.toPx() / 2f
+                    drawCircle(
+                        color = androidx.compose.ui.graphics.Color.White,
+                        radius = thumbRadiusPx,
+                        center = androidx.compose.ui.geometry.Offset(activeWidth, size.height / 2f)
+                    )
+                    drawCircle(
+                        color = accent,
+                        radius = thumbRadiusPx,
+                        center = androidx.compose.ui.geometry.Offset(activeWidth, size.height / 2f),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
                     )
                 }
             }

@@ -1569,15 +1569,9 @@ private fun WeeklyPrayerRow(
                 modifier = Modifier
                     .weight(1f)
                     .clip(RoundedCornerShape(6.dp))
-                    .then(
-                        if (!isFuture) {
-                            Modifier.clickable {
-                                onPrayerCellClick(prayerName, day.dateString, status)
-                            }
-                        } else {
-                            Modifier
-                        }
-                    )
+                    .clickable {
+                        onPrayerCellClick(prayerName, day.dateString, status)
+                    }
                     .padding(vertical = 4.dp)
                     .testTag("week_cell_${day.dateString}_${displayName.lowercase()}"),
                 contentAlignment = Alignment.Center
@@ -1979,12 +1973,13 @@ fun PersonalLogWeekView(
             )
 
             val dhuhrTitle = com.example.data.util.PrayerDisplayUtils.getPrayerDisplayName(com.example.data.model.PrayerName.DHUHR, isFridayDay)
+            val todayStrVal = todayDateString ?: java.time.LocalDate.now().toString()
             val prayerItems = listOf(
-                Triple(com.example.data.model.PrayerName.FAJR, "Fajr", selectedDay.fajrStatus),
-                Triple(com.example.data.model.PrayerName.DHUHR, dhuhrTitle, selectedDay.dhuhrStatus),
-                Triple(com.example.data.model.PrayerName.ASR, "Asr", selectedDay.asrStatus),
-                Triple(com.example.data.model.PrayerName.MAGHRIB, "Maghrib", selectedDay.maghribStatus),
-                Triple(com.example.data.model.PrayerName.ISHA, "Isha", selectedDay.ishaStatus)
+                Triple(com.example.data.model.PrayerName.FAJR, "Fajr", com.example.data.db.PrayerLogEntity.resolvePrayerStatus(activeDayLog, com.example.data.model.PrayerName.FAJR, null, selectedDay.dateString, todayStrVal)),
+                Triple(com.example.data.model.PrayerName.DHUHR, dhuhrTitle, com.example.data.db.PrayerLogEntity.resolvePrayerStatus(activeDayLog, com.example.data.model.PrayerName.DHUHR, null, selectedDay.dateString, todayStrVal)),
+                Triple(com.example.data.model.PrayerName.ASR, "Asr", com.example.data.db.PrayerLogEntity.resolvePrayerStatus(activeDayLog, com.example.data.model.PrayerName.ASR, null, selectedDay.dateString, todayStrVal)),
+                Triple(com.example.data.model.PrayerName.MAGHRIB, "Maghrib", com.example.data.db.PrayerLogEntity.resolvePrayerStatus(activeDayLog, com.example.data.model.PrayerName.MAGHRIB, null, selectedDay.dateString, todayStrVal)),
+                Triple(com.example.data.model.PrayerName.ISHA, "Isha", com.example.data.db.PrayerLogEntity.resolvePrayerStatus(activeDayLog, com.example.data.model.PrayerName.ISHA, null, selectedDay.dateString, todayStrVal))
             )
 
             Column(
@@ -2702,44 +2697,50 @@ fun PersonalLogInsightsContent(allPrayerLogs: List<com.example.data.db.PrayerLog
         return
     }
 
-    var currentStreak = 0
-    var previousDate = java.time.LocalDate.now()
-    
-    val sortedLogs = allPrayerLogs.sortedByDescending { it.date }
-    for (log in sortedLogs) {
-        val logDate = java.time.LocalDate.parse(log.date)
-        if (logDate.isAfter(previousDate)) continue
-        if (java.time.temporal.ChronoUnit.DAYS.between(logDate, previousDate) > 1 && currentStreak > 0) {
-            break
+    val analyticsData = remember(allPrayerLogs) {
+        var streak = 0
+        var prevDate = java.time.LocalDate.now()
+        val sorted = allPrayerLogs.sortedByDescending { it.date }
+        for (log in sorted) {
+            val logDate = java.time.LocalDate.parse(log.date)
+            if (logDate.isAfter(prevDate)) continue
+            if (java.time.temporal.ChronoUnit.DAYS.between(logDate, prevDate) > 1 && streak > 0) {
+                break
+            }
+            val allCompleted = log.fajrCompleted && log.dhuhrCompleted && log.asrCompleted && log.maghribCompleted && log.ishaCompleted
+            if (allCompleted) {
+                streak++
+                prevDate = logDate
+            } else {
+                if (streak > 0 || logDate.isBefore(java.time.LocalDate.now())) break
+            }
         }
-        val allCompleted = log.fajrCompleted && log.dhuhrCompleted && log.asrCompleted && log.maghribCompleted && log.ishaCompleted
-        if (allCompleted) {
-            currentStreak++
-            previousDate = logDate
-        } else {
-            if (currentStreak > 0 || logDate.isBefore(java.time.LocalDate.now())) break
+
+        val weekAgo = java.time.LocalDate.now().minusDays(7)
+        val weekLogs = allPrayerLogs.filter { java.time.LocalDate.parse(it.date).isAfter(weekAgo) }
+        var totalPrayersWeek = 0
+        var completedPrayersWeek = 0
+        var fajrComp = 0; var dhuhrComp = 0; var asrComp = 0; var maghribComp = 0; var ishaComp = 0
+
+        weekLogs.forEach { log ->
+            val logDate = java.time.LocalDate.parse(log.date)
+            if (logDate.isBefore(java.time.LocalDate.now()) || logDate.isEqual(java.time.LocalDate.now())) {
+                totalPrayersWeek += 5
+                if (log.fajrCompleted) { completedPrayersWeek++; fajrComp++ }
+                if (log.dhuhrCompleted) { completedPrayersWeek++; dhuhrComp++ }
+                if (log.asrCompleted) { completedPrayersWeek++; asrComp++ }
+                if (log.maghribCompleted) { completedPrayersWeek++; maghribComp++ }
+                if (log.ishaCompleted) { completedPrayersWeek++; ishaComp++ }
+            }
         }
+        val pct = if (totalPrayersWeek > 0) ((completedPrayersWeek.toFloat() / totalPrayersWeek.toFloat()) * 100).toInt() else 0
+        
+        Triple(streak, pct, listOf(fajrComp, dhuhrComp, asrComp, maghribComp, ishaComp))
     }
 
-    val weekAgo = java.time.LocalDate.now().minusDays(7)
-    val weekLogs = allPrayerLogs.filter { java.time.LocalDate.parse(it.date).isAfter(weekAgo) }
-    var totalPrayersWeek = 0
-    var completedPrayersWeek = 0
-    var fajrComp = 0; var dhuhrComp = 0; var asrComp = 0; var maghribComp = 0; var ishaComp = 0
-
-    weekLogs.forEach { log ->
-        val logDate = java.time.LocalDate.parse(log.date)
-        if (logDate.isBefore(java.time.LocalDate.now()) || logDate.isEqual(java.time.LocalDate.now())) {
-            totalPrayersWeek += 5
-            if (log.fajrCompleted) { completedPrayersWeek++; fajrComp++ }
-            if (log.dhuhrCompleted) { completedPrayersWeek++; dhuhrComp++ }
-            if (log.asrCompleted) { completedPrayersWeek++; asrComp++ }
-            if (log.maghribCompleted) { completedPrayersWeek++; maghribComp++ }
-            if (log.ishaCompleted) { completedPrayersWeek++; ishaComp++ }
-        }
-    }
-    
-    val weekPercent = if (totalPrayersWeek > 0) (completedPrayersWeek * 100) / totalPrayersWeek else 0
+    val currentStreak = analyticsData.first
+    val weekPercent = analyticsData.second
+    val (fajrComp, dhuhrComp, asrComp, maghribComp, ishaComp) = analyticsData.third
 
     var af=0; var ad=0; var aa=0; var am=0; var ai=0
     allPrayerLogs.forEach { log ->

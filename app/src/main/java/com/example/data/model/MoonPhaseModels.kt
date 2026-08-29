@@ -1,5 +1,7 @@
 package com.example.data.model
 
+import androidx.compose.runtime.Immutable
+
 /**
  * Standard 8 astronomical lunar phases.
  */
@@ -32,6 +34,7 @@ enum class MoonPhaseType(
  * @param emoji Representative Unicode moon phase emoji.
  * @param accessibleDescription TalkBack / accessibility description string.
  */
+@Immutable
 data class MoonPhase(
     val phaseType: MoonPhaseType = MoonPhaseType.NEW_MOON,
     val phaseName: String = "New Moon",

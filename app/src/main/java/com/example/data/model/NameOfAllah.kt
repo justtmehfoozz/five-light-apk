@@ -1,5 +1,8 @@
 package com.example.data.model
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 data class NameOfAllah(
     val number: Int,
     val nameArabic: String,

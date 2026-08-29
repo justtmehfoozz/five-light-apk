@@ -8,6 +8,14 @@ import com.example.ui.screens.AdhkarItem
 
 object GlobalSearchEngine {
 
+    private val LATIN_PUNCTUATION_REGEX = Regex("[’'‘`\\-_\u2019\u2018\\.,;:!\\?\"\\(\\)\\[\\]\\{\\}]")
+    private val MULTI_SPACE_REGEX = Regex("\\s+")
+    private val LATIN_COMPACT_REGEX = Regex("[’'‘`\\-_\u2019\u2018\\.,;:!\\?\"\\(\\)\\[\\]\\{\\}\\s]")
+    private val ARABIC_DIACRITICS_REGEX = Regex("[\u064B-\u065F\u0670\u06D6-\u06ED]")
+    private val ARABIC_ALEF_REGEX = Regex("[أإآٱ]")
+    private val ARABIC_PUNCTUATION_REGEX = Regex("[\\s\\.,;:!\\?\\-]")
+    private val SURAH_NUM_QUERY_REGEX = Regex("^(?:surah|sura|chapter|s)[\\s\\-_]*(\\d{1,3})$", RegexOption.IGNORE_CASE)
+
     private class SurahSearchMeta(
         val surah: Surah,
         val normName: String,               // e.g. "alaraf"
@@ -45,8 +53,8 @@ object GlobalSearchEngine {
      */
     fun normalizeLatin(input: String): String {
         return input.lowercase()
-            .replace(Regex("[’'‘`\\-_\u2019\u2018\\.,;:!\\?\"\\(\\)\\[\\]\\{\\}]"), " ")
-            .replace(Regex("\\s+"), " ")
+            .replace(LATIN_PUNCTUATION_REGEX, " ")
+            .replace(MULTI_SPACE_REGEX, " ")
             .trim()
     }
 
@@ -56,7 +64,7 @@ object GlobalSearchEngine {
      */
     fun toCompactLatin(input: String): String {
         return input.lowercase()
-            .replace(Regex("[’'‘`\\-_\u2019\u2018\\.,;:!\\?\"\\(\\)\\[\\]\\{\\}\\s]"), "")
+            .replace(LATIN_COMPACT_REGEX, "")
     }
 
     /**
@@ -86,11 +94,11 @@ object GlobalSearchEngine {
      */
     fun normalizeArabic(input: String): String {
         return input
-            .replace(Regex("[\u064B-\u065F\u0670\u06D6-\u06ED]"), "")
-            .replace(Regex("[أإآٱ]"), "ا")
+            .replace(ARABIC_DIACRITICS_REGEX, "")
+            .replace(ARABIC_ALEF_REGEX, "ا")
             .replace('ى', 'ي')
             .replace('ة', 'ه')
-            .replace(Regex("[\\s\\.,;:!\\?\\-]"), "")
+            .replace(ARABIC_PUNCTUATION_REGEX, "")
             .trim()
     }
 
@@ -127,8 +135,7 @@ object GlobalSearchEngine {
         trimmed.toIntOrNull()?.let {
             if (it in 1..114) return it
         }
-        val regex = Regex("^(?:surah|sura|chapter|s)[\\s\\-_]*(\\d{1,3})$", RegexOption.IGNORE_CASE)
-        val match = regex.find(trimmed)
+        val match = SURAH_NUM_QUERY_REGEX.find(trimmed)
         if (match != null) {
             val num = match.groupValues[1].toIntOrNull()
             if (num != null && num in 1..114) return num

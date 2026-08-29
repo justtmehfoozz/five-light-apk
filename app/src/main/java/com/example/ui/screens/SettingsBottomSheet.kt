@@ -388,7 +388,7 @@ fun SettingsBottomSheet(
                             onBack = { activeSubScreen = PreferencesSubScreen.MAIN }
                         ) {
                             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                items(CalcMethod.entries) { method ->
+                                items(CalcMethod.entries, key = { it.name }) { method ->
                                     val isSelected = method == selectedCalcMethod
                                     Row(
                                         modifier = Modifier
@@ -433,7 +433,7 @@ fun SettingsBottomSheet(
                             onBack = { activeSubScreen = PreferencesSubScreen.MAIN }
                         ) {
                             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                items(Madhab.entries) { m ->
+                                items(Madhab.entries, key = { it.name }) { m ->
                                     val isSelected = m == selectedMadhab
                                     Row(
                                         modifier = Modifier
@@ -486,7 +486,7 @@ fun SettingsBottomSheet(
                                         modifier = Modifier.padding(bottom = 8.dp)
                                     )
                                 }
-                                items(com.example.data.model.HijriDateMethod.entries) { method ->
+                                items(com.example.data.model.HijriDateMethod.entries, key = { it.name }) { method ->
                                     val isSelected = method == selectedHijriMethod
                                     Card(
                                         modifier = Modifier
@@ -531,7 +531,7 @@ fun SettingsBottomSheet(
                             onBack = { activeSubScreen = PreferencesSubScreen.MAIN }
                         ) {
                             LazyColumn(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                items(TasbeehSound.entries) { sound ->
+                                items(TasbeehSound.entries, key = { it.name }) { sound ->
                                     val isSelected = sound == selectedTasbeehSound
                                     Row(
                                         modifier = Modifier

@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.theme.*
 
 import android.os.Build
@@ -289,8 +290,13 @@ fun SereneBottomNavBar(
     playingVerseNumberProvider: (() -> Int?) = { null },
     isPlayingProvider: (() -> Boolean) = { false },
     isLoadingProvider: (() -> Boolean) = { false },
+    isPlayingFlow: kotlinx.coroutines.flow.StateFlow<Boolean>? = null,
+    isLoadingFlow: kotlinx.coroutines.flow.StateFlow<Boolean>? = null,
     audioProgress: Float = 0f,
     audioProgressProvider: (() -> Float)? = null,
+    audioProgressFlow: kotlinx.coroutines.flow.StateFlow<Float>? = null,
+    audioDurationMsFlow: kotlinx.coroutines.flow.StateFlow<Long>? = null,
+    audioDurationMs: Long = 0L,
     onPlayPause: () -> Unit = {},
     onSkipPrevious: () -> Unit = {},
     onSkipNext: () -> Unit = {},
@@ -317,8 +323,11 @@ fun SereneBottomNavBar(
     val isPlaybackMode = isPlaybackModeProvider()
     val playingSurahNumber = playingSurahNumberProvider()
     val playingVerseNumber = playingVerseNumberProvider()
-    val isPlaying = isPlayingProvider()
-    val isLoading = isLoadingProvider()
+    val currentIsPlaying = isPlayingFlow?.collectAsStateWithLifecycle()?.value ?: isPlayingProvider()
+    val currentIsLoading = isLoadingFlow?.collectAsStateWithLifecycle()?.value ?: isLoadingProvider()
+    val isPlaying = currentIsPlaying
+    // Spinner ONLY shown if genuine waiting/buffering AND NOT actively playing
+    val isLoading = currentIsLoading && !currentIsPlaying
     val currentRouteState by rememberUpdatedState(currentRoute)
     val currentOnOpenSearch by rememberUpdatedState(onOpenSearch)
     val currentOnFifthSlotMoreTap by rememberUpdatedState(onFifthSlotMoreTap)
@@ -379,7 +388,7 @@ fun SereneBottomNavBar(
 
     // Idle breathing pulse for selector ball outer glow
     val idleTransition = rememberInfiniteTransition(label = "selectorIdlePulse")
-    val idlePulseFraction by if (isReducedMotion) {
+    val idlePulseState: androidx.compose.runtime.State<Float> = if (isReducedMotion) {
         remember { mutableFloatStateOf(0.5f) }
     } else {
         idleTransition.animateFloat(
@@ -395,7 +404,7 @@ fun SereneBottomNavBar(
 
     // Active music player breathing pulse for internal audio indicator
     val musicIndicatorTransition = rememberInfiniteTransition(label = "musicIndicatorPulse")
-    val musicIndicatorScale by if (isReducedMotion || !isPlaying) {
+    val musicIndicatorScaleState: androidx.compose.runtime.State<Float> = if (isReducedMotion || !isPlaying) {
         remember(isPlaying) { mutableFloatStateOf(1f) }
     } else {
         musicIndicatorTransition.animateFloat(
@@ -408,7 +417,7 @@ fun SereneBottomNavBar(
             label = "musicIndicatorScale"
         )
     }
-    val musicIndicatorAlpha by if (isReducedMotion || !isPlaying) {
+    val musicIndicatorAlphaState: androidx.compose.runtime.State<Float> = if (isReducedMotion || !isPlaying) {
         remember(isPlaying) { mutableFloatStateOf(0.16f) }
     } else {
         musicIndicatorTransition.animateFloat(
@@ -532,15 +541,17 @@ fun SereneBottomNavBar(
     val defaultController = rememberDockSelectorController(initialIndex = selectedIndex)
     val controller = selectorController ?: defaultController
 
-    val targetPosition = when {
-        pagerFractionProvider != null -> pagerFractionProvider.invoke()
-        pagerFraction != null -> pagerFraction
-        else -> selectedIndex.toFloat()
-    }
-
-    LaunchedEffect(targetPosition, controller.isDragging.value) {
-        if (!controller.isDragging.value) {
-            controller.syncWithPager(targetPosition)
+    LaunchedEffect(controller, pagerFractionProvider, pagerFraction, selectedIndex) {
+        androidx.compose.runtime.snapshotFlow {
+            when {
+                pagerFractionProvider != null -> pagerFractionProvider.invoke()
+                pagerFraction != null -> pagerFraction
+                else -> selectedIndex.toFloat()
+            }
+        }.collect { targetPos ->
+            if (!controller.isDragging.value) {
+                controller.syncWithPager(targetPos)
+            }
         }
     }
 
@@ -548,14 +559,17 @@ fun SereneBottomNavBar(
 
     // Trailing position for soft drag light trail behind selector ball
     val trailPositionAnimatable = remember { Animatable(displayIndicatorFraction) }
-    LaunchedEffect(displayIndicatorFraction) {
-        trailPositionAnimatable.animateTo(
-            targetValue = displayIndicatorFraction,
-            animationSpec = spring(
-                dampingRatio = 0.82f,
-                stiffness = 200f
-            )
-        )
+    LaunchedEffect(controller) {
+        androidx.compose.runtime.snapshotFlow { controller.ballPositionAnimatable.value }
+            .collect { pos ->
+                trailPositionAnimatable.animateTo(
+                    targetValue = pos,
+                    animationSpec = spring(
+                        dampingRatio = 0.82f,
+                        stiffness = 200f
+                    )
+                )
+            }
     }
 
     // Base Dimensions for the shared surface
@@ -879,7 +893,7 @@ fun SereneBottomNavBar(
                                                         } while (event.changes.any { it.pressed })
                                                     } finally {
                                                         if (isCanceled) {
-                                                            controller.cancelGesture(targetPosition)
+                                                            controller.cancelGesture()
                                                         }
                                                     }
 
@@ -973,7 +987,7 @@ fun SereneBottomNavBar(
                                             val pressProgress = ((scaleVal - 1f) / 0.10f).coerceIn(0f, 1f)
 
                                             // Gentle breathing pulse when idle, smoothly blending into press-and-hold
-                                            val effectiveIdlePulse = idlePulseFraction * (1f - pressProgress)
+                                            val effectiveIdlePulse = idlePulseState.value * (1f - pressProgress)
                                             val restingAlpha = if (isDark) {
                                                 androidx.compose.ui.util.lerp(0.15f, 0.32f, effectiveIdlePulse)
                                             } else {
@@ -1111,7 +1125,7 @@ fun SereneBottomNavBar(
                             val haptic = LocalHapticFeedback.current
 
                             val ambientInfiniteTransition = rememberInfiniteTransition(label = "ambientPulse")
-                            val ambientPulseAlpha by if (isReducedMotion || !isPlaying) {
+                            val ambientPulseAlphaState: androidx.compose.runtime.State<Float> = if (isReducedMotion || !isPlaying) {
                                 remember { mutableFloatStateOf(0.12f) }
                             } else {
                                 ambientInfiniteTransition.animateFloat(
@@ -1139,16 +1153,20 @@ fun SereneBottomNavBar(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 // Left artwork/track identity badge (tap to expand full player, subtle ambient pulse when playing)
+                                val primaryAccent = Color.semanticPrimaryAccent
                                 Box(
                                     modifier = Modifier
                                         .size(38.dp)
                                         .graphicsLayer {
                                             alpha = flankAlpha.value
-                                            scaleX = flankScale.value * musicIndicatorScale
-                                            scaleY = flankScale.value * musicIndicatorScale
+                                            scaleX = flankScale.value * musicIndicatorScaleState.value
+                                            scaleY = flankScale.value * musicIndicatorScaleState.value
                                         }
                                         .clip(CircleShape)
-                                        .background(Color.semanticPrimaryAccent.copy(alpha = if (isPlaying && !isReducedMotion) ambientPulseAlpha else musicIndicatorAlpha))
+                                        .drawBehind {
+                                            val a = if (isPlaying && !isReducedMotion) ambientPulseAlphaState.value else musicIndicatorAlphaState.value
+                                            drawCircle(color = primaryAccent.copy(alpha = a))
+                                        }
                                         .clickable { onExpandPlayer() },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -1328,8 +1346,16 @@ fun SereneBottomNavBar(
                                     val inactiveTrackColor = if (isDark) Color.White.copy(alpha = 0.20f) else Color.Black.copy(alpha = 0.14f)
                                     var isDraggingProgress by remember { mutableStateOf(false) }
                                     var dragProgressFraction by remember { mutableFloatStateOf(0f) }
-                                    val effectiveProg = audioProgressProvider?.invoke() ?: audioProgress
-                                    val currentDisplayProg = if (isDraggingProgress) dragProgressFraction else effectiveProg.coerceIn(0f, 1f)
+                                    val progressState = rememberSmoothAudioProgressState(
+                                        audioProgressFlow = audioProgressFlow,
+                                        audioDurationMsFlow = audioDurationMsFlow,
+                                        fallbackProgress = audioProgressProvider?.invoke() ?: audioProgress,
+                                        fallbackDurationMs = audioDurationMs,
+                                        isPlaying = isPlaying,
+                                        isLoading = isLoading,
+                                        isDragging = isDraggingProgress,
+                                        dragProgressFraction = dragProgressFraction
+                                    )
                                     val trackHeight by animateDpAsState(if (isDraggingProgress) 4.dp else 2.dp, animationSpec = tween(180), label = "trackH")
                                     val thumbWidth by animateDpAsState(if (isDraggingProgress) 12.dp else 8.dp, animationSpec = tween(180), label = "thumbW")
                                     val thumbHeight by animateDpAsState(if (isDraggingProgress) 6.dp else 4.dp, animationSpec = tween(180), label = "thumbH")
@@ -1357,7 +1383,6 @@ fun SereneBottomNavBar(
                                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                                         isDraggingProgress = true
                                                         dragProgressFraction = (offset.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                                        onSeekAudio(dragProgressFraction)
                                                     },
                                                     onDragEnd = {
                                                         isDraggingProgress = false
@@ -1369,43 +1394,49 @@ fun SereneBottomNavBar(
                                                     onHorizontalDrag = { change, _ ->
                                                         change.consume()
                                                         dragProgressFraction = (change.position.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                                        onSeekAudio(dragProgressFraction)
                                                     }
                                                 )
                                             },
                                         contentAlignment = Alignment.CenterStart
                                     ) {
-                                        // Inactive Track
-                                        Box(
+                                        androidx.compose.foundation.Canvas(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(trackHeight)
-                                                .clip(CircleShape)
-                                                .background(inactiveTrackColor)
-                                        )
+                                                .height(12.dp)
+                                        ) {
+                                            val prog = progressState.value.coerceIn(0f, 1f)
+                                            val h = trackHeight.toPx()
+                                            val w = size.width
+                                            val yOffset = (size.height - h) / 2f
+                                            val cr = androidx.compose.ui.geometry.CornerRadius(h / 2f, h / 2f)
 
-                                        // Active Track
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth(fraction = currentDisplayProg)
-                                                .height(trackHeight)
-                                                .clip(CircleShape)
-                                                .background(progressAccent)
-                                        )
+                                            // Inactive Track
+                                            drawRoundRect(
+                                                color = inactiveTrackColor,
+                                                topLeft = androidx.compose.ui.geometry.Offset(0f, yOffset),
+                                                size = androidx.compose.ui.geometry.Size(w, h),
+                                                cornerRadius = cr
+                                            )
 
-                                        // Progress Thumb
-                                        if (currentDisplayProg > 0f) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth(fraction = currentDisplayProg)
-                                                    .height(thumbHeight + 2.dp),
-                                                contentAlignment = Alignment.CenterEnd
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(width = thumbWidth, height = thumbHeight)
-                                                        .clip(CircleShape)
-                                                        .background(progressAccent)
+                                            // Active Track
+                                            if (prog > 0f) {
+                                                val activeWidth = (w * prog).coerceIn(0f, w)
+                                                drawRoundRect(
+                                                    color = progressAccent,
+                                                    topLeft = androidx.compose.ui.geometry.Offset(0f, yOffset),
+                                                    size = androidx.compose.ui.geometry.Size(activeWidth, h),
+                                                    cornerRadius = cr
+                                                )
+
+                                                // Progress Thumb
+                                                val tw = thumbWidth.toPx()
+                                                val th = thumbHeight.toPx()
+                                                val thumbRadius = androidx.compose.ui.geometry.CornerRadius(th / 2f, th / 2f)
+                                                drawRoundRect(
+                                                    color = progressAccent,
+                                                    topLeft = androidx.compose.ui.geometry.Offset((activeWidth - tw / 2f).coerceIn(0f, w - tw), (size.height - th) / 2f),
+                                                    size = androidx.compose.ui.geometry.Size(tw, th),
+                                                    cornerRadius = thumbRadius
                                                 )
                                             }
                                         }

@@ -359,8 +359,8 @@ fun AdhkarScreen(
         if (hour < 12) 0 else 1 // Morning before 12 PM, Evening 12 PM+
     }
 
-    var selectedTab by remember {
-        mutableStateOf(AdhkarSessionState.manualSelectedTab ?: defaultTimeTab)
+    var selectedTab by rememberSaveable {
+        mutableIntStateOf(AdhkarSessionState.manualSelectedTab ?: defaultTimeTab)
     }
 
     val handleTabSelect = { index: Int ->

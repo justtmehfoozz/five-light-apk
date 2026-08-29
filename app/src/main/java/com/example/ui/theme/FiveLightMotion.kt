@@ -12,6 +12,15 @@ import com.example.ui.theme.semanticBackground
 import com.example.ui.theme.semanticWarning
 
 
+import androidx.compose.animation.core.AnimationState
+import androidx.compose.animation.core.DecayAnimationSpec
+import androidx.compose.animation.core.animateDecay
+import androidx.compose.animation.splineBasedDecay
+import androidx.compose.foundation.gestures.FlingBehavior
+import androidx.compose.foundation.gestures.ScrollScope
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.abs
+
 import android.content.Context
 import android.os.Build
 import android.view.HapticFeedbackConstants
@@ -316,4 +325,64 @@ fun QuietEmptyState(
         content()
     }
 }
+
+/**
+ * Natural, fluid [FlingBehavior] tuned specifically for high-refresh-rate displays (90Hz, 120Hz, 144Hz).
+ * Smooths initial touch velocity spikes, fine-tunes decay friction, and prevents micro-stutter at low velocities.
+ */
+class HighRefreshRateFlingBehavior(
+    private val decaySpec: DecayAnimationSpec<Float>,
+    private val velocityDampening: Float = 0.88f,
+    private val minVelocityThreshold: Float = 30f
+) : FlingBehavior {
+
+    override suspend fun ScrollScope.performFling(initialVelocity: Float): Float {
+        // High refresh rate touch sampling can produce higher initial velocity readings.
+        // Dampening ensures a natural, responsive feel without over-shooting or abrupt deceleration.
+        var velocity = initialVelocity * velocityDampening
+
+        if (abs(velocity) < minVelocityThreshold) {
+            return initialVelocity
+        }
+
+        var lastValue = 0f
+        val animationState = AnimationState(
+            initialValue = 0f,
+            initialVelocity = velocity
+        )
+
+        animationState.animateDecay(decaySpec) {
+            val delta = value - lastValue
+            val consumed = scrollBy(delta)
+            lastValue = value
+
+            // Stop gracefully if list boundary is reached or velocity drops below threshold
+            if (abs(delta - consumed) > 0.5f || abs(this.velocity) < minVelocityThreshold) {
+                cancelAnimation()
+            }
+        }
+
+        return animationState.velocity
+    }
+}
+
+/**
+ * Remembers an optimized [FlingBehavior] with natural scroll friction for high-refresh-rate screens.
+ */
+@Composable
+fun rememberNaturalFlingBehavior(
+    frictionMultiplier: Float = 0.88f,
+    minVelocityThreshold: Float = 30f
+): FlingBehavior {
+    val density = LocalDensity.current
+    val decaySpec: DecayAnimationSpec<Float> = remember(density) { splineBasedDecay(density) }
+    return remember(decaySpec, frictionMultiplier, minVelocityThreshold) {
+        HighRefreshRateFlingBehavior(
+            decaySpec = decaySpec,
+            velocityDampening = frictionMultiplier,
+            minVelocityThreshold = minVelocityThreshold
+        )
+    }
+}
+
 

@@ -1,0 +1,59 @@
+# Baseline Profile for Startup and Critical User Journeys
+# App Entry & Navigation
+Lcom/example/MainActivity;
+Lcom/example/MainActivityKt;
+Lcom/example/ui/components/BottomNavBarKt;
+Lcom/example/ui/components/DockSelectorStateController;
+Lcom/example/ui/components/NavItem;
+
+# ViewModel & Core State
+Lcom/example/ui/viewmodel/AppViewModel;
+Lcom/example/data/repository/AppRepository;
+Lcom/example/data/repository/IslamicDateRepository;
+Lcom/example/data/db/AppDatabase;
+Lcom/example/data/db/AppDatabase_Impl;
+
+# Core Models
+Lcom/example/data/model/PrayerItem;
+Lcom/example/data/model/PrayerName;
+Lcom/example/data/model/Surah;
+Lcom/example/data/model/Verse;
+Lcom/example/data/model/HijriDate;
+Lcom/example/data/model/IslamicDateState;
+Lcom/example/data/model/FiveLightContextState;
+Lcom/example/data/model/QuranLastRead;
+Lcom/example/data/model/MoonPhase;
+Lcom/example/data/model/NameOfAllah;
+Lcom/example/data/util/DuaItem;
+Lcom/example/data/util/DuaCategoryInfo;
+
+# Calculation Engines & Utilities
+Lcom/example/data/util/PrayerCalc;
+Lcom/example/data/util/HijriCalc;
+Lcom/example/data/util/QuranData;
+Lcom/example/data/util/DuaData;
+Lcom/example/data/util/AudioReciterData;
+Lcom/example/data/util/DailyContentProvider;
+Lcom/example/data/util/GlobalSearchEngine;
+
+# Primary UI Screens & Composables
+HSLcom/example/ui/screens/HomeScreenKt;->*
+HSLcom/example/ui/screens/QuranScreenKt;->*
+HSLcom/example/ui/screens/QiblaScreenKt;->*
+HSLcom/example/ui/screens/TasbeehScreenKt;->*
+HSLcom/example/ui/screens/ExploreScreenKt;->*
+HSLcom/example/ui/screens/DuaLibraryScreenKt;->*
+HSLcom/example/ui/components/BottomNavBarKt;->*
+HSLcom/example/ui/components/ExpandedQuranPlayerSheetKt;->*
+HSLcom/example/data/util/QuranData;->*
+HSLcom/example/data/util/PrayerCalc;->*
+HSLcom/example/ui/viewmodel/AppViewModel;->*
+Lcom/example/MainActivity;
+Lcom/example/MainActivityKt;
+Lcom/example/ui/components/DockSelectorStateController;
+Lcom/example/ui/components/NavItem;
+
+# Design System & Theming
+Lcom/example/ui/theme/ThemeKt;
+Lcom/example/ui/theme/ColorKt;
+Lcom/example/ui/theme/TypeKt;

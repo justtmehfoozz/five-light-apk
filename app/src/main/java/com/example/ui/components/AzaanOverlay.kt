@@ -26,6 +26,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -141,7 +142,7 @@ fun AzaanOverlay(
     val isDark = MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
 
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-    val pulseScale by infiniteTransition.animateFloat(
+    val pulseScaleState = infiniteTransition.animateFloat(
         initialValue = 1.0f,
         targetValue = 1.12f,
         animationSpec = infiniteRepeatable(
@@ -197,7 +198,10 @@ fun AzaanOverlay(
                 Box(
                     modifier = Modifier
                         .size(110.dp)
-                        .scale(pulseScale)
+                        .graphicsLayer {
+                            scaleX = pulseScaleState.value
+                            scaleY = pulseScaleState.value
+                        }
                         .clip(CircleShape)
                         .background((Color.semanticPrimaryAccent).copy(alpha = 0.13f))
                         .border(1.5.dp, Color.semanticPrimaryAccent, CircleShape),

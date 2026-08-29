@@ -82,20 +82,25 @@ class MainActivity : ComponentActivity() {
                 val pagerState = rememberPagerState(initialPage = 0, pageCount = { NavItem.entries.size })
                 val selectorController = rememberDockSelectorController(initialIndex = pagerState.currentPage)
                 val currentRoute = selectorController.activeNavItem.value.route
-                var openQuranReadingDirectly by remember { mutableStateOf(false) }
-                var isQuranReadingModeActive by remember { mutableStateOf(false) }
+                var openQuranReadingDirectly by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+                var isQuranReadingModeActive by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
                 var showSettingsSheet by remember { mutableStateOf(false) }
                 var showSearchOverlay by remember { mutableStateOf(false) }
-                var dockFifthSlotMode by remember { mutableStateOf("more") }
-                var exploreSubRoute by remember { mutableStateOf("main") }
+                var dockFifthSlotMode by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("more") }
+                var exploreSubRoute by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("main") }
 
-                var targetDuaCategory by remember { mutableStateOf<String?>(null) }
-                var targetDuaId by remember { mutableStateOf<String?>(null) }
-                var targetAdhkarTitle by remember { mutableStateOf<String?>(null) }
-                var targetNameNumber by remember { mutableStateOf<Int?>(null) }
+                var targetDuaCategory by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+                var targetDuaId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+                var targetAdhkarTitle by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+                var targetNameNumber by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Int?>(null) }
 
                 // Top-level tab navigation stack history
-                val tabStack = remember { androidx.compose.runtime.mutableStateListOf(0) }
+                val tabStack = androidx.compose.runtime.saveable.rememberSaveable(
+                    saver = androidx.compose.runtime.saveable.listSaver(
+                        save = { it.toList() },
+                        restore = { androidx.compose.runtime.mutableStateListOf<Int>().apply { addAll(it) } }
+                    )
+                ) { androidx.compose.runtime.mutableStateListOf(0) }
 
                 androidx.compose.runtime.LaunchedEffect(pagerState) {
                     androidx.compose.runtime.snapshotFlow { pagerState.currentPage to pagerState.currentPageOffsetFraction }
@@ -487,7 +492,11 @@ class MainActivity : ComponentActivity() {
                         playingVerseNumberProvider = { viewModel.playingVerseNumber.value },
                         isPlayingProvider = { viewModel.isPlayingAudio.value },
                         isLoadingProvider = { viewModel.isLoadingAudio.value },
+                        isPlayingFlow = viewModel.isPlayingAudio,
+                        isLoadingFlow = viewModel.isLoadingAudio,
                         audioProgressProvider = { viewModel.audioProgress.value },
+                        audioProgressFlow = viewModel.audioProgress,
+                        audioDurationMsFlow = viewModel.audioDurationMs,
                         onPlayPause = { viewModel.togglePlayPauseAudio() },
                         onSkipPrevious = { viewModel.playPreviousVerseAudio() },
                         onSkipNext = { viewModel.playNextVerseAudio() },
@@ -593,6 +602,8 @@ class MainActivity : ComponentActivity() {
                             currentVerseNumberProvider = { viewModel.playingVerseNumber.value },
                             isPlayingProvider = { viewModel.isPlayingAudio.value },
                             isLoadingProvider = { viewModel.isLoadingAudio.value },
+                            isPlayingFlow = viewModel.isPlayingAudio,
+                            isLoadingFlow = viewModel.isLoadingAudio,
                             audioProgressFlow = viewModel.audioProgress,
                             audioPositionMsFlow = viewModel.audioPositionMs,
                             audioDurationMsFlow = viewModel.audioDurationMs,

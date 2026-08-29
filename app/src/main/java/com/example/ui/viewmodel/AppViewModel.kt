@@ -1199,7 +1199,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
                                     _isLoadingAudio.value = false
                                     _isPlayingAudio.value = true
                                     _audioDurationMs.value = preparedMp.duration.toLong()
-                                    _audioPositionMs.value = 0L
+                                    _audioPositionMs.value = preparedMp.currentPosition.toLong()
                                     startProgressTracker()
                                 } catch (e: Exception) {
                                     _isLoadingAudio.value = false
@@ -1213,6 +1213,34 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
                         } else {
                             try { preparedMp.reset() } catch (_: Exception) {}
                             try { preparedMp.release() } catch (_: Exception) {}
+                        }
+                    }
+
+                    mp.setOnInfoListener { _, what, _ ->
+                        if (activePlaybackSessionId == currentSessionId) {
+                            when (what) {
+                                MediaPlayer.MEDIA_INFO_BUFFERING_START -> {
+                                    _isLoadingAudio.value = true
+                                }
+                                MediaPlayer.MEDIA_INFO_BUFFERING_END -> {
+                                    _isLoadingAudio.value = false
+                                }
+                            }
+                        }
+                        false
+                    }
+
+                    mp.setOnSeekCompleteListener { seekedMp ->
+                        if (activePlaybackSessionId == currentSessionId && mediaPlayer == seekedMp) {
+                            try {
+                                val curPos = seekedMp.currentPosition.toLong()
+                                val durMs = seekedMp.duration.toLong()
+                                _audioPositionMs.value = curPos
+                                if (durMs > 0) {
+                                    _audioDurationMs.value = durMs
+                                    _audioProgress.value = (curPos.toFloat() / durMs.toFloat()).coerceIn(0f, 1f)
+                                }
+                            } catch (_: Exception) {}
                         }
                     }
 
@@ -1445,6 +1473,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         _audioDurationMs.value = 0L
     }
 
+    private var lastMonotonicPositionMs = 0L
+    private var lastMonotonicSessionId = 0L
+
     fun seekAudioTo(progressFraction: Float) {
         val coerced = progressFraction.coerceIn(0f, 1f)
         _audioProgress.value = coerced
@@ -1452,6 +1483,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
             val mp = mediaPlayer
             if (mp != null && mp.duration > 0) {
                 val targetMs = (coerced * mp.duration).toInt()
+                lastMonotonicPositionMs = targetMs.toLong()
                 mp.seekTo(targetMs)
                 _audioPositionMs.value = targetMs.toLong()
                 _audioDurationMs.value = mp.duration.toLong()
@@ -1469,31 +1501,56 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
 
     private fun startProgressTracker() {
         progressJob?.cancel()
+        val currentSessionId = activePlaybackSessionId
         progressJob = viewModelScope.launch {
-            while (isActive && _isPlayingAudio.value) {
+            while (isActive) {
                 try {
                     val mp = mediaPlayer
-                    if (mp != null && mp.isPlaying && mp.duration > 0) {
-                        val curPos = mp.currentPosition.toLong()
-                        val durMs = mp.duration.toLong()
-                        _audioPositionMs.value = curPos
-                        _audioDurationMs.value = durMs
-                        val intraProg = (curPos.toFloat() / durMs.toFloat()).coerceIn(0f, 1f)
-                        _audioProgress.value = intraProg
-                        
-                        val now = System.currentTimeMillis()
-                        if (now - lastSurahProgressUpdateTime > 1000) {
-                            lastSurahProgressUpdateTime = now
-                            val sNum = _playingSurahNumber.value
-                            val vNum = _playingVerseNumber.value ?: 1
-                            if (sNum != null) {
-                                val surahProg = computeCurrentSurahProgress(sNum, vNum, intraProg)
-                                updateSurahProgress(sNum, surahProg)
+                    if (mp != null && _isPlayingAudio.value && activePlaybackSessionId == currentSessionId) {
+                        val isPlaying = try { mp.isPlaying } catch (e: Exception) { false }
+                        val curPos = try { mp.currentPosition.toLong() } catch (e: Exception) { 0L }
+                        val durMs = try { mp.duration.toLong() } catch (e: Exception) { 0L }
+
+                        if (durMs > 0) {
+                            val targetPos = if (lastMonotonicSessionId != currentSessionId) {
+                                lastMonotonicSessionId = currentSessionId
+                                curPos
+                            } else if (curPos >= lastMonotonicPositionMs) {
+                                curPos
+                            } else if (lastMonotonicPositionMs - curPos < 1500L) {
+                                // Monotonic forward constraint during normal playback:
+                                // prevent codec timing jitter from snapping backward
+                                lastMonotonicPositionMs
+                            } else {
+                                // Legitimate seek or loop
+                                curPos
+                            }
+                            lastMonotonicPositionMs = targetPos
+                            _audioPositionMs.value = targetPos
+                            _audioDurationMs.value = durMs
+                            val intraProg = (targetPos.toFloat() / durMs.toFloat()).coerceIn(0f, 1f)
+                            _audioProgress.value = intraProg
+
+                            if (isPlaying && _isLoadingAudio.value) {
+                                _isLoadingAudio.value = false
+                            }
+
+                            val now = System.currentTimeMillis()
+                            if (now - lastSurahProgressUpdateTime > 1000) {
+                                lastSurahProgressUpdateTime = now
+                                val sNum = _playingSurahNumber.value
+                                val vNum = _playingVerseNumber.value ?: 1
+                                if (sNum != null) {
+                                    val surahProg = computeCurrentSurahProgress(sNum, vNum, intraProg)
+                                    updateSurahProgress(sNum, surahProg)
+                                }
                             }
                         }
+                    } else if (mediaPlayer == null || !_isPlayingAudio.value || activePlaybackSessionId != currentSessionId) {
+                        break
                     }
-                } catch (e: Exception) { }
-                delay(100)
+                } catch (_: Exception) { }
+                delay(50)
             }
         }
     }

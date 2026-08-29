@@ -1,5 +1,8 @@
 package com.example.data.model
 
+import androidx.compose.runtime.Immutable
+
+@Immutable
 data class QuranLastRead(
     val surahNumber: Int,
     val surahNameEnglish: String,
@@ -9,6 +12,7 @@ data class QuranLastRead(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+@Immutable
 data class HomeFeaturesPreferences(
     val continueReadingEnabled: Boolean = true,
     val rightNowEnabled: Boolean = true,
@@ -39,6 +43,7 @@ data class HomeFeaturesPreferences(
     }
 }
 
+@Immutable
 data class PrayerPrepItem(
     val prayerName: PrayerName,
     val minutesRemaining: Int,
@@ -46,6 +51,7 @@ data class PrayerPrepItem(
     val steps: List<String>
 )
 
+@Immutable
 data class TonightSummary(
     val ishaTimeFormatted: String,
     val fajrTimeFormatted: String,
@@ -74,6 +80,7 @@ enum class PrayerStatus {
     MISSED      // ! (explicitly marked missed)
 }
 
+@Immutable
 data class PrayerJourneyNode(
     val id: String,
     val title: String,
@@ -92,6 +99,7 @@ data class PrayerJourneyNode(
     val isFuture: Boolean get() = isUpcoming && !isCompleted && !isMissed
 }
 
+@Immutable
 data class VerseOccurrence(
     val surahNumber: Int,
     val surahNameEnglish: String,
@@ -101,6 +109,7 @@ data class VerseOccurrence(
     val textEnglish: String
 )
 
+@Immutable
 data class QuranLensInfo(
     val arabicWordOrPhrase: String,
     val transliteration: String,
@@ -109,6 +118,7 @@ data class QuranLensInfo(
     val occurrences: List<VerseOccurrence>
 )
 
+@Immutable
 data class NextOpportunityItem(
     val title: String,
     val subtitle: String,
@@ -117,6 +127,7 @@ data class NextOpportunityItem(
     val actionType: RightNowActionType
 )
 
+@Immutable
 data class FiveLightMoment(
     val title: String,
     val message: String,
@@ -125,6 +136,7 @@ data class FiveLightMoment(
     val actionType: RightNowActionType? = null
 )
 
+@Immutable
 data class CalendarEventMoment(
     val eventTitle: String,
     val arabicTitle: String,
@@ -132,6 +144,7 @@ data class CalendarEventMoment(
     val isToday: Boolean
 )
 
+@Immutable
 data class DayWorshipState(
     val dayOfWeekName: String, // e.g. "Mon", "Tue"
     val dateString: String,    // YYYY-MM-DD
@@ -160,10 +173,12 @@ data class DayWorshipState(
     }
 }
 
+@Immutable
 data class WeeklyWorshipOverview(
     val days: List<DayWorshipState>
 )
 
+@Immutable
 data class FiveLightContextState(
     val prayerPrep: PrayerPrepItem? = null,
     val tonight: TonightSummary? = null,

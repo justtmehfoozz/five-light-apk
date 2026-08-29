@@ -76,7 +76,7 @@ fun AmbientGlowHeroCard(
 ) {
     // Infinite pulse transition for ambient light
     val infiniteTransition = rememberInfiniteTransition(label = "ambientPulse")
-    val alphaGlow by infiniteTransition.animateFloat(
+    val alphaGlowState = infiniteTransition.animateFloat(
         initialValue = 0.25f,
         targetValue = 0.65f,
         animationSpec = infiniteRepeatable(
@@ -86,7 +86,7 @@ fun AmbientGlowHeroCard(
         label = "alphaGlow"
     )
 
-    val scaleGlow by infiniteTransition.animateFloat(
+    val scaleGlowState = infiniteTransition.animateFloat(
         initialValue = 0.96f,
         targetValue = 1.05f,
         animationSpec = infiniteRepeatable(
@@ -117,17 +117,18 @@ fun AmbientGlowHeroCard(
                 modifier = Modifier
                     .matchParentSize()
                     .graphicsLayer {
-                        scaleX = scaleGlow
-                        scaleY = scaleGlow
+                        scaleX = scaleGlowState.value
+                        scaleY = scaleGlowState.value
                     }
             ) {
                 val centerOffset = Offset(size.width * 0.5f, size.height * 0.45f)
                 val radius = size.width * 0.55f
+                val alphaVal = alphaGlowState.value
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            primaryAmber.copy(alpha = alphaGlow * 0.45f),
-                            primaryAmber.copy(alpha = alphaGlow * 0.15f),
+                            primaryAmber.copy(alpha = alphaVal * 0.45f),
+                            primaryAmber.copy(alpha = alphaVal * 0.15f),
                             Color.Transparent
                         ),
                         center = centerOffset,
