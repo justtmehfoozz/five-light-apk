@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -164,6 +165,8 @@ class MainActivity : ComponentActivity() {
                 val isPagerSwipeEnabled = !showSearchOverlay && !showSettingsSheet && !showExpandedPlayerSheet &&
                     (showPrayerMode.value == null) && !isQuranReadingModeActive && (exploreSubRoute == "main")
 
+                var navBarBoundsInRoot by remember { mutableStateOf<Rect?>(null) }
+
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -264,7 +267,8 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     onOpenSettings = { showSettingsSheet = true },
-                                    isActiveTab = (pagerState.currentPage == 0)
+                                    isActiveTab = (pagerState.currentPage == 0),
+                                    navBarBoundsInRoot = navBarBoundsInRoot
                                 )
                             }
 
@@ -585,6 +589,9 @@ class MainActivity : ComponentActivity() {
                         isScrolledAwayFromActiveVerse = isScrolledAwayFromActiveVerse && (playingSurahNumber.value != null) && (viewModel.playingVerseNumber.value != null) && !showExpandedPlayerSheet && (currentRoute == "quran" || pagerState.currentPage == 2),
                         onJumpToActiveVerse = {
                             jumpToActiveVerseTrigger = System.currentTimeMillis()
+                        },
+                        onPositioned = { bounds ->
+                            navBarBoundsInRoot = bounds
                         },
                         modifier = Modifier.fillMaxSize()
                     )

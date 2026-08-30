@@ -2,6 +2,9 @@ package com.example.ui.components
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.theme.*
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.geometry.Rect
 
 import android.os.Build
 import android.view.HapticFeedbackConstants
@@ -318,6 +321,7 @@ fun SereneBottomNavBar(
     onExpandPlayer: () -> Unit = {},
     isScrolledAwayFromActiveVerse: Boolean = false,
     onJumpToActiveVerse: () -> Unit = {},
+    onPositioned: ((Rect) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isPlaybackMode = isPlaybackModeProvider()
@@ -807,7 +811,10 @@ fun SereneBottomNavBar(
                 .navigationBarsPadding()
                 .offset(y = currentTranslateY)
                 .width(currentWidthDp)
-                .height(dockHeight),
+                .height(dockHeight)
+                .onGloballyPositioned { coords ->
+                    onPositioned?.invoke(coords.boundsInRoot())
+                },
             backgroundColor = dockBg,
             borderColor = dockBorderColor,
             cornerRadius = animatedCornerRadius,
