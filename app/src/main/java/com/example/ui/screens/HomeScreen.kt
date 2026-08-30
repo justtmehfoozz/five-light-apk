@@ -183,6 +183,12 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.snap
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.toSize
+import com.skydoves.cloudy.liquidGlass
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Explore
@@ -580,14 +586,51 @@ fun HomeScreen(
 
     val homeFlingBehavior = rememberNaturalFlingBehavior()
 
-    androidx.compose.foundation.lazy.LazyColumn(
-        state = listState,
-        flingBehavior = homeFlingBehavior,
+    var containerSize by remember { mutableStateOf(Size.Zero) }
+    val density = LocalDensity.current
+    val navBarsInsetPx = WindowInsets.navigationBars.getBottom(density)
+
+    val lensWidthPx = with(density) { 276.dp.toPx() }
+    val lensHeightPx = with(density) { 60.dp.toPx() }
+    val lensCornerRadiusPx = with(density) { 30.dp.toPx() }
+    val bottomPaddingPx = with(density) { 24.dp.toPx() }
+
+    val lensCenter = remember(containerSize, navBarsInsetPx) {
+        Offset(
+            x = containerSize.width / 2f,
+            y = containerSize.height - navBarsInsetPx - bottomPaddingPx - (lensHeightPx / 2f)
+        )
+    }
+
+    val homeGlassModifier = if (containerSize.width > 0f && containerSize.height > 0f) {
+        Modifier.liquidGlass(
+            lensCenter = lensCenter,
+            lensSize = Size(lensWidthPx, lensHeightPx),
+            cornerRadius = lensCornerRadiusPx,
+            refraction = 0.5f,
+            curve = 0.4f,
+            dispersion = 0.06f,
+            saturation = 1.3f,
+            contrast = 1.1f
+        )
+    } else {
+        Modifier
+    }
+
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .onSizeChanged { containerSize = it.toSize() }
+            .then(homeGlassModifier)
     ) {
+        androidx.compose.foundation.lazy.LazyColumn(
+            state = listState,
+            flingBehavior = homeFlingBehavior,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         // 1. HEADER
         item(key = "home_header") {
             PageHeader(
@@ -1211,6 +1254,7 @@ fun HomeScreen(
             }
         }
     }
+}
 }
 
 @Composable

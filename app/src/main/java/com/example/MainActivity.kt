@@ -34,6 +34,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import com.example.ui.screens.SplashScreen
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -134,6 +136,7 @@ class MainActivity : ComponentActivity() {
                 val playingSurahNumber  = viewModel.playingSurahNumber.collectAsStateWithLifecycle()
                 val showPrayerMode  = viewModel.showPrayerMode.collectAsStateWithLifecycle()
                 var showExpandedPlayerSheet by remember { mutableStateOf(false) }
+                var showIsolationTest by remember { mutableStateOf(false) }
                 var isScrolledAwayFromActiveVerse by remember { mutableStateOf(false) }
                 var jumpToActiveVerseTrigger by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
 
@@ -676,6 +679,29 @@ class MainActivity : ComponentActivity() {
                             onResetNaflOrder = { viewModel.resetNaflOrder() },
                             onDismiss = { showSettingsSheet = false },
                             onSettingsChanged = { viewModel.refreshPrayerTimes() }
+                        )
+                    }
+
+                    // Floating quick-access button to open the Shader Isolation Test screen
+                    androidx.compose.material3.FloatingActionButton(
+                        onClick = { showIsolationTest = true },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 48.dp, end = 16.dp),
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    ) {
+                        Text(
+                            text = "🧪 Test Shader",
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    if (showIsolationTest) {
+                        com.example.ui.screens.LiquidGlassIsolationTestScreen(
+                            onBack = { showIsolationTest = false }
                         )
                     }
                     } // end inner Box

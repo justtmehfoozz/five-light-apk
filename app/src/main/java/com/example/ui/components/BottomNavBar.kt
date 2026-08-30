@@ -808,7 +808,6 @@ fun SereneBottomNavBar(
                 .offset(y = currentTranslateY)
                 .width(currentWidthDp)
                 .height(dockHeight),
-            hazeState = hazeState,
             backgroundColor = dockBg,
             borderColor = dockBorderColor,
             cornerRadius = animatedCornerRadius,
