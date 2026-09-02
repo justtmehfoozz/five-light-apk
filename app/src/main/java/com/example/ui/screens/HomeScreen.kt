@@ -108,7 +108,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -184,12 +183,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.snap
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.toSize
-import com.skydoves.cloudy.liquidGlass
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Explore
@@ -524,7 +517,6 @@ fun HomeScreen(
     onQuickAccessNavigate: (NavItem) -> Unit,
     onOpenSettings: () -> Unit,
     isActiveTab: Boolean = true,
-    navBarBoundsInRoot: Rect? = null,
     modifier: Modifier = Modifier
 ) {
     val isDark = MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
@@ -588,74 +580,14 @@ fun HomeScreen(
 
     val homeFlingBehavior = rememberNaturalFlingBehavior()
 
-    var containerSize by remember { mutableStateOf(Size.Zero) }
-    val density = LocalDensity.current
-    val navBarsInsetPx = WindowInsets.navigationBars.getBottom(density)
-
-    val fallbackWidthPx = with(density) { 276.dp.toPx() }
-    val fallbackHeightPx = with(density) { 60.dp.toPx() }
-    val fallbackRadiusPx = with(density) { 30.dp.toPx() }
-    val bottomPaddingPx = with(density) { 24.dp.toPx() }
-
-    val lensCenter = remember(navBarBoundsInRoot, containerSize, navBarsInsetPx) {
-        if (navBarBoundsInRoot != null && navBarBoundsInRoot.width > 0f && navBarBoundsInRoot.height > 0f) {
-            Offset(
-                x = navBarBoundsInRoot.left + (navBarBoundsInRoot.width / 2f),
-                y = navBarBoundsInRoot.top + (navBarBoundsInRoot.height / 2f)
-            )
-        } else {
-            Offset(
-                x = containerSize.width / 2f,
-                y = containerSize.height - navBarsInsetPx - bottomPaddingPx - (fallbackHeightPx / 2f)
-            )
-        }
-    }
-
-    val lensSize = remember(navBarBoundsInRoot) {
-        if (navBarBoundsInRoot != null && navBarBoundsInRoot.width > 0f && navBarBoundsInRoot.height > 0f) {
-            Size(navBarBoundsInRoot.width, navBarBoundsInRoot.height)
-        } else {
-            Size(fallbackWidthPx, fallbackHeightPx)
-        }
-    }
-
-    val lensCornerRadius = remember(navBarBoundsInRoot) {
-        if (navBarBoundsInRoot != null && navBarBoundsInRoot.height > 0f) {
-            navBarBoundsInRoot.height / 2f
-        } else {
-            fallbackRadiusPx
-        }
-    }
-
-    val homeGlassModifier = if (containerSize.width > 0f && containerSize.height > 0f) {
-        Modifier.liquidGlass(
-            lensCenter = lensCenter,
-            lensSize = lensSize,
-            cornerRadius = lensCornerRadius,
-            refraction = 0.65f,
-            curve = 0.45f,
-            dispersion = 0.06f,
-            saturation = 1.3f,
-            contrast = 1.1f
-        )
-    } else {
-        Modifier
-    }
-
-    Box(
+    androidx.compose.foundation.lazy.LazyColumn(
+        state = listState,
+        flingBehavior = homeFlingBehavior,
         modifier = modifier
             .fillMaxSize()
-            .onSizeChanged { containerSize = it.toSize() }
-            .then(homeGlassModifier)
+            .background(MaterialTheme.colorScheme.background),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        androidx.compose.foundation.lazy.LazyColumn(
-            state = listState,
-            flingBehavior = homeFlingBehavior,
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
         // 1. HEADER
         item(key = "home_header") {
             PageHeader(
@@ -1279,7 +1211,6 @@ fun HomeScreen(
             }
         }
     }
-}
 }
 
 @Composable

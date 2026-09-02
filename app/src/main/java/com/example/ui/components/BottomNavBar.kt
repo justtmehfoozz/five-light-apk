@@ -2,9 +2,6 @@ package com.example.ui.components
 
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.theme.*
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.geometry.Rect
 
 import android.os.Build
 import android.view.HapticFeedbackConstants
@@ -321,7 +318,6 @@ fun SereneBottomNavBar(
     onExpandPlayer: () -> Unit = {},
     isScrolledAwayFromActiveVerse: Boolean = false,
     onJumpToActiveVerse: () -> Unit = {},
-    onPositioned: ((Rect) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isPlaybackMode = isPlaybackModeProvider()
@@ -365,7 +361,7 @@ fun SereneBottomNavBar(
     }
     val dockBorderColor by animateColorAsState(targetValue = targetDockBorderColor, animationSpec = DOCK_SPRING_COLOR, label = "dockBorderColor")
 
-    val activeHighlightBg = if (isDark) Color(0xFF494556) else Color(0xFF8D6B1E)
+    val activeHighlightBg = Color.dockActiveIndicator
     val activeIconColor = Color.White
     val controlIconColor = if (isDark) activeIconColor else Color.semanticPrimaryText
     val inactiveIconColor = Color.semanticDockIconInactive
@@ -811,10 +807,8 @@ fun SereneBottomNavBar(
                 .navigationBarsPadding()
                 .offset(y = currentTranslateY)
                 .width(currentWidthDp)
-                .height(dockHeight)
-                .onGloballyPositioned { coords ->
-                    onPositioned?.invoke(coords.boundsInRoot())
-                },
+                .height(dockHeight),
+            hazeState = hazeState,
             backgroundColor = dockBg,
             borderColor = dockBorderColor,
             cornerRadius = animatedCornerRadius,
