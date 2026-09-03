@@ -25,15 +25,31 @@ android {
 
   signingConfigs {
     create("release") {
-      val keystorePath = System.getenv("KEYSTORE_PATH")
-      val keystoreFile = if (!keystorePath.isNullOrBlank()) file(keystorePath) else file("${rootDir}/my-upload-key.jks")
-      if (keystoreFile.exists() && !System.getenv("STORE_PASSWORD").isNullOrBlank()) {
+      val isCI = System.getenv("CI") == "true" || System.getenv("GITHUB_ACTIONS") == "true"
+      val keystorePath = System.getenv("KEYSTORE_PATH") ?: System.getenv("KEYSTORE_FILE")
+      val keystoreFile = when {
+        !keystorePath.isNullOrBlank() -> file(keystorePath)
+        file("${rootDir}/release.keystore").exists() -> file("${rootDir}/release.keystore")
+        file("${rootDir}/keystore.jks").exists() -> file("${rootDir}/keystore.jks")
+        file("${rootDir}/my-upload-key.jks").exists() -> file("${rootDir}/my-upload-key.jks")
+        else -> null
+      }
+      val storePass = System.getenv("KEYSTORE_PASSWORD") ?: System.getenv("STORE_PASSWORD")
+      val alias = System.getenv("KEY_ALIAS") ?: "upload"
+      val keyPass = System.getenv("KEY_PASSWORD") ?: storePass
+
+      if (keystoreFile != null && keystoreFile.exists() && !storePass.isNullOrBlank()) {
         storeFile = keystoreFile
-        storePassword = System.getenv("STORE_PASSWORD")
-        keyAlias = System.getenv("KEY_ALIAS") ?: "upload"
-        keyPassword = System.getenv("KEY_PASSWORD")
+        storePassword = storePass
+        keyAlias = alias
+        keyPassword = keyPass
+      } else if (isCI) {
+        throw org.gradle.api.GradleException(
+          "Release signing credentials missing or invalid in CI environment. " +
+          "Ensure KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, and KEY_PASSWORD secrets are configured."
+        )
       } else {
-        // Fallback to debug keystore when custom release keystore is not provided in environment
+        // Fallback to debug keystore ONLY for local non-CI dev environments without custom keys
         storeFile = file("${rootDir}/debug.keystore")
         storePassword = "android"
         keyAlias = "androiddebugkey"
