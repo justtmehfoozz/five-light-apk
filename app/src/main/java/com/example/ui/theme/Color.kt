@@ -83,53 +83,6 @@ val DarkSemanticColors = SemanticColors(
 val LocalSemanticColors = compositionLocalOf { LightSemanticColors }
 
 @Composable
-fun SemanticColors.animated(spec: AnimationSpec<Color>): SemanticColors {
-    val bg by animateColorAsState(background, spec, label = "semBg")
-    val surf by animateColorAsState(surface, spec, label = "semSurf")
-    val surfElev by animateColorAsState(surfaceElevated, spec, label = "semSurfElev")
-    val ctrl by animateColorAsState(control, spec, label = "semCtrl")
-    val pText by animateColorAsState(primaryText, spec, label = "semPText")
-    val sText by animateColorAsState(secondaryText, spec, label = "semSText")
-    val mText by animateColorAsState(mutedText, spec, label = "semMText")
-    val bdr by animateColorAsState(border, spec, label = "semBdr")
-    val stBdr by animateColorAsState(strongBorder, spec, label = "semStBdr")
-    val pAcc by animateColorAsState(primaryAccent, spec, label = "semPAcc")
-    val accFg by animateColorAsState(accentForeground, spec, label = "semAccFg")
-    val succ by animateColorAsState(success, spec, label = "semSucc")
-    val err by animateColorAsState(error, spec, label = "semErr")
-    val warn by animateColorAsState(warning, spec, label = "semWarn")
-    val dockBg by animateColorAsState(dockBackground, spec, label = "semDockBg")
-    val dockBdr by animateColorAsState(dockBorder, spec, label = "semDockBdr")
-    val dockInact by animateColorAsState(dockIconInactive, spec, label = "semDockInact")
-    val dockActBg by animateColorAsState(dockIconActiveBg, spec, label = "semDockActBg")
-    val dockAct by animateColorAsState(dockIconActive, spec, label = "semDockAct")
-    val dockInd by animateColorAsState(dockActiveIndicator, spec, label = "semDockInd")
-
-    return SemanticColors(
-        background = bg,
-        surface = surf,
-        surfaceElevated = surfElev,
-        control = ctrl,
-        primaryText = pText,
-        secondaryText = sText,
-        mutedText = mText,
-        border = bdr,
-        strongBorder = stBdr,
-        primaryAccent = pAcc,
-        accentForeground = accFg,
-        success = succ,
-        error = err,
-        warning = warn,
-        dockBackground = dockBg,
-        dockBorder = dockBdr,
-        dockIconInactive = dockInact,
-        dockIconActiveBg = dockActBg,
-        dockIconActive = dockAct,
-        dockActiveIndicator = dockInd
-    )
-}
-
-@Composable
 fun isAppInDarkTheme(): Boolean {
     return androidx.compose.material3.MaterialTheme.colorScheme.background.run { (red * 0.299f + green * 0.587f + blue * 0.114f) < 0.5f }
 }

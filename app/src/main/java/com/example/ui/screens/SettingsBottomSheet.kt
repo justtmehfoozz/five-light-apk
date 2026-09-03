@@ -1295,7 +1295,6 @@ fun <T> SpringPillSelector(
 
     val selectedIndex = items.indexOfFirst { it.value == selectedItem }.coerceAtLeast(0)
 
-    val isDark = isAppInDarkTheme()
     val containerBg = Color.semanticControl
     val activePillBg = Color.semanticPrimaryAccent
     val activeContentColor = Color.semanticAccentForeground
