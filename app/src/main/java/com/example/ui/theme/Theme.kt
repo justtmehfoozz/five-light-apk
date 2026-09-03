@@ -94,17 +94,20 @@ fun FiveLightTheme(
     val semanticColors = if (darkTheme) DarkSemanticColors else LightSemanticColors
 
     // 2. Draw-only overlay crossfade:
-    // Tracks theme transitions and animates ONLY the overlay's graphicsLayer alpha from 1f to 0f
+    // Tracks theme transitions synchronously in composition so there is ZERO 1-frame gap before overlayAlpha is set
     var lastDarkTheme by remember { mutableStateOf(darkTheme) }
     var previousOverlayColor by remember { mutableStateOf<Color?>(null) }
     val overlayAlpha = remember { Animatable(0f) }
 
-    LaunchedEffect(darkTheme) {
-        if (lastDarkTheme != darkTheme) {
-            val oldBg = if (lastDarkTheme) DarkColorScheme.background else LightColorScheme.background
-            previousOverlayColor = oldBg
-            lastDarkTheme = darkTheme
+    if (lastDarkTheme != darkTheme) {
+        val oldBg = if (lastDarkTheme) DarkColorScheme.background else LightColorScheme.background
+        previousOverlayColor = oldBg
+        lastDarkTheme = darkTheme
+    }
 
+    LaunchedEffect(darkTheme) {
+        val overlayColor = previousOverlayColor
+        if (overlayColor != null) {
             if (isReducedMotion) {
                 overlayAlpha.snapTo(0f)
                 previousOverlayColor = null
@@ -130,14 +133,22 @@ fun FiveLightTheme(
                 // Real app content rendered instantly with the new theme
                 content()
 
-                // Draw-only overlay fading out the previous theme canvas color
+                // Draw-only overlay fading out the previous theme canvas color.
+                // When previousOverlayColor is set in composition, if overlayAlpha hasn't started yet,
+                // we treat alpha as 1f for that initial synchronous frame.
                 val currentOverlayColor = previousOverlayColor
-                if (currentOverlayColor != null && overlayAlpha.value > 0f) {
+                val currentAlpha = if (currentOverlayColor != null && overlayAlpha.value == 0f && !overlayAlpha.isRunning) {
+                    1f
+                } else {
+                    overlayAlpha.value
+                }
+
+                if (currentOverlayColor != null && currentAlpha > 0f) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                alpha = overlayAlpha.value
+                                alpha = currentAlpha
                             }
                             .background(currentOverlayColor)
                     )

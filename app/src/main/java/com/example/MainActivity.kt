@@ -35,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import com.example.ui.screens.SplashScreen
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToDown
@@ -191,6 +192,7 @@ class MainActivity : ComponentActivity() {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .zIndex(if (pageIndex == pagerState.currentPage) 1f else 0f)
                                 .graphicsLayer {
                                     val pageOffset = (
                                         (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
