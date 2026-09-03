@@ -15,7 +15,7 @@ android {
 
   defaultConfig {
     applicationId = "com.aistudio.fivelight.pzxqva"
-    minSdk = 24
+    minSdk = 26
     targetSdk = 36
     versionCode = 4
     versionName = "1.6"
@@ -57,6 +57,10 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
+      isDebuggable = false
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       // Uses the default Android Gradle debug signing config (~/.android/debug.keystore generated automatically by AGP)
       signingConfig = signingConfigs.getByName("debug")
     }
@@ -64,7 +68,7 @@ android {
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
     targetCompatibility = JavaVersion.VERSION_11
-    isCoreLibraryDesugaringEnabled = true
+    isCoreLibraryDesugaringEnabled = false
   }
   buildFeatures {
     compose = true
@@ -99,7 +103,7 @@ ksp {
 // Some unused dependencies are commented out below instead of being removed.
 // This makes it easy to add them back in the future if needed.
 dependencies {
-  coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+  // coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
   implementation(platform(libs.androidx.compose.bom))
   implementation(platform(libs.firebase.bom))
   // implementation(libs.accompanist.permissions)
@@ -118,7 +122,7 @@ dependencies {
   implementation(libs.haze.materials)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.core.splashscreen)
-  implementation(libs.androidx.profileinstaller)
+  // implementation(libs.androidx.profileinstaller)
   // implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)

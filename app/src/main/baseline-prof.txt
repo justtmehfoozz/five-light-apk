@@ -37,17 +37,17 @@ Lcom/example/data/util/DailyContentProvider;
 Lcom/example/data/util/GlobalSearchEngine;
 
 # Primary UI Screens & Composables
-HSLcom/example/ui/screens/HomeScreenKt;->*
-HSLcom/example/ui/screens/QuranScreenKt;->*
-HSLcom/example/ui/screens/QiblaScreenKt;->*
-HSLcom/example/ui/screens/TasbeehScreenKt;->*
-HSLcom/example/ui/screens/ExploreScreenKt;->*
-HSLcom/example/ui/screens/DuaLibraryScreenKt;->*
-HSLcom/example/ui/components/BottomNavBarKt;->*
-HSLcom/example/ui/components/ExpandedQuranPlayerSheetKt;->*
-HSLcom/example/data/util/QuranData;->*
-HSLcom/example/data/util/PrayerCalc;->*
-HSLcom/example/ui/viewmodel/AppViewModel;->*
+Lcom/example/ui/screens/HomeScreenKt;
+Lcom/example/ui/screens/QuranScreenKt;
+Lcom/example/ui/screens/QiblaScreenKt;
+Lcom/example/ui/screens/TasbeehScreenKt;
+Lcom/example/ui/screens/ExploreScreenKt;
+Lcom/example/ui/screens/DuaLibraryScreenKt;
+Lcom/example/ui/components/BottomNavBarKt;
+Lcom/example/ui/components/ExpandedQuranPlayerSheetKt;
+Lcom/example/data/util/QuranData;
+Lcom/example/data/util/PrayerCalc;
+Lcom/example/ui/viewmodel/AppViewModel;
 Lcom/example/MainActivity;
 Lcom/example/MainActivityKt;
 Lcom/example/ui/components/DockSelectorStateController;
