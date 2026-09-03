@@ -667,7 +667,28 @@ class MainActivity : ComponentActivity() {
                             selectedTimeFormat = timeFormat,
                             onSelectTimeFormat = { tf -> viewModel.setTimeFormat(tf) },
                             selectedAppearanceMode = appearanceMode,
-                            onSelectAppearanceMode = { mode -> viewModel.setAppearanceMode(mode) },
+                            onSelectAppearanceMode = { mode ->
+                                val currentIsDark = when (appearanceMode) {
+                                    AppearanceMode.SYSTEM -> isSystemDark
+                                    AppearanceMode.DARK -> true
+                                    AppearanceMode.LIGHT -> false
+                                }
+                                val targetIsDark = when (mode) {
+                                    AppearanceMode.SYSTEM -> isSystemDark
+                                    AppearanceMode.DARK -> true
+                                    AppearanceMode.LIGHT -> false
+                                }
+                                themeTransitionController.startTransition(
+                                    targetMode = mode,
+                                    currentMode = appearanceMode,
+                                    tapOrigin = androidx.compose.ui.geometry.Offset.Zero,
+                                    isReducedMotion = isReducedMotion,
+                                    isEffectiveThemeChanging = (currentIsDark != targetIsDark),
+                                    onThemeApplied = { newMode ->
+                                        viewModel.setAppearanceMode(newMode)
+                                    }
+                                )
+                            },
                             onSelectAppearanceModeWithOrigin = { mode, origin ->
                                 val currentIsDark = when (appearanceMode) {
                                     AppearanceMode.SYSTEM -> isSystemDark
@@ -681,11 +702,14 @@ class MainActivity : ComponentActivity() {
                                 }
                                 themeTransitionController.startTransition(
                                     targetMode = mode,
+                                    currentMode = appearanceMode,
                                     tapOrigin = origin,
                                     isReducedMotion = isReducedMotion,
-                                    isEffectiveThemeChanging = (currentIsDark != targetIsDark)
+                                    isEffectiveThemeChanging = (currentIsDark != targetIsDark),
+                                    onThemeApplied = { newMode ->
+                                        viewModel.setAppearanceMode(newMode)
+                                    }
                                 )
-                                viewModel.setAppearanceMode(mode)
                             },
                             selectedTasbeehSound = tasbeehSound,
                             onSelectTasbeehSound = { s -> viewModel.setTasbeehSound(s) },

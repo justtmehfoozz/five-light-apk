@@ -15,11 +15,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.ClipOp
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -29,8 +30,8 @@ import androidx.compose.ui.unit.IntSize
 import com.example.data.model.AppearanceMode
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 
@@ -63,6 +64,9 @@ class ThemeTransitionController {
     var isTransitioning by mutableStateOf(false)
         private set
 
+    var isCapturing by mutableStateOf(false)
+        private set
+
     var progress by mutableFloatStateOf(1f)
         private set
 
@@ -72,13 +76,9 @@ class ThemeTransitionController {
     var effectiveAppearanceMode by mutableStateOf<AppearanceMode?>(null)
         private set
 
-    var needsCapture by mutableStateOf(false)
-        private set
-
     var transitionGeneration by mutableIntStateOf(0)
         private set
 
-    private var pendingTargetMode: AppearanceMode? = null
     private var animationJob: Job? = null
     private var coroutineScope: CoroutineScope? = null
 
@@ -88,12 +88,15 @@ class ThemeTransitionController {
 
     fun startTransition(
         targetMode: AppearanceMode,
+        currentMode: AppearanceMode,
         tapOrigin: Offset,
         isReducedMotion: Boolean = false,
-        isEffectiveThemeChanging: Boolean = true
+        isEffectiveThemeChanging: Boolean = true,
+        onThemeApplied: ((AppearanceMode) -> Unit)? = null
     ) {
         if (!isEffectiveThemeChanging) {
             effectiveAppearanceMode = targetMode
+            onThemeApplied?.invoke(targetMode)
             return
         }
 
@@ -102,40 +105,46 @@ class ThemeTransitionController {
         animationJob?.cancel()
 
         origin = tapOrigin
-        pendingTargetMode = targetMode
 
         if (isReducedMotion) {
-            needsCapture = false
+            isCapturing = false
             isTransitioning = false
             progress = 1f
             effectiveAppearanceMode = targetMode
+            onThemeApplied?.invoke(targetMode)
             return
         }
 
-        needsCapture = true
+        // Pin current theme mode during capture frame
+        effectiveAppearanceMode = currentMode
+        isCapturing = true
         isTransitioning = false
         progress = 0f
 
-        // Safety fallback: if capture frame doesn't arrive within 120ms, apply target directly
-        coroutineScope?.launch {
-            delay(120)
-            if (needsCapture && transitionGeneration == gen) {
-                onCaptureFailed(gen)
-            }
+        val scope = coroutineScope
+        if (scope == null) {
+            isCapturing = false
+            effectiveAppearanceMode = targetMode
+            onThemeApplied?.invoke(targetMode)
+            return
         }
-    }
 
-    fun onCaptured(generation: Int) {
-        if (generation != transitionGeneration) return
-        needsCapture = false
-        isTransitioning = true
-        progress = 0f
-
-        val target = pendingTargetMode ?: return
-        effectiveAppearanceMode = target
-
-        val scope = coroutineScope ?: return
         animationJob = scope.launch {
+            try {
+                // Wait for the capture frame to be rendered by Compose
+                withTimeoutOrNull(150) {
+                    withFrameNanos { }
+                }
+            } catch (_: Throwable) {}
+
+            if (transitionGeneration != gen) return@launch
+
+            // Capture complete! Now switch theme to target and launch smooth reveal
+            isCapturing = false
+            effectiveAppearanceMode = targetMode
+            onThemeApplied?.invoke(targetMode)
+            isTransitioning = true
+
             val animatable = Animatable(0f)
             try {
                 animatable.animateTo(
@@ -148,20 +157,13 @@ class ThemeTransitionController {
                     progress = this.value
                 }
             } finally {
-                if (transitionGeneration == generation) {
+                if (transitionGeneration == gen) {
                     isTransitioning = false
                     progress = 1f
+                    effectiveAppearanceMode = null
                 }
             }
         }
-    }
-
-    fun onCaptureFailed(generation: Int) {
-        if (generation != transitionGeneration) return
-        needsCapture = false
-        isTransitioning = false
-        progress = 1f
-        pendingTargetMode?.let { effectiveAppearanceMode = it }
     }
 }
 
@@ -175,7 +177,8 @@ fun rememberThemeTransitionController(): ThemeTransitionController {
 
 @Composable
 fun Modifier.themeRadialReveal(
-    controller: ThemeTransitionController
+    controller: ThemeTransitionController,
+    originProvider: (() -> Offset)? = null
 ): Modifier {
     val graphicsContext = LocalGraphicsContext.current
     val layer = remember(graphicsContext) {
@@ -200,22 +203,21 @@ fun Modifier.themeRadialReveal(
 
     return this.then(
         Modifier.drawWithContent {
-            val gen = controller.transitionGeneration
             val layerObj = layer
 
-            if (controller.needsCapture && layerObj != null) {
+            if (controller.isCapturing && layerObj != null) {
                 try {
                     layerObj.record(
                         density = this,
                         layoutDirection = layoutDirection,
-                        size = IntSize(size.width.roundToInt(), size.height.roundToInt())
+                        size = IntSize(
+                            size.width.roundToInt().coerceAtLeast(1),
+                            size.height.roundToInt().coerceAtLeast(1)
+                        )
                     ) {
                         this@drawWithContent.drawContent()
                     }
-                    controller.onCaptured(gen)
-                } catch (e: Throwable) {
-                    controller.onCaptureFailed(gen)
-                }
+                } catch (_: Throwable) {}
                 drawContent()
                 return@drawWithContent
             }
@@ -223,15 +225,26 @@ fun Modifier.themeRadialReveal(
             if (!controller.isTransitioning || layerObj == null) {
                 drawContent()
             } else {
-                // 1. Draw new theme content underneath
-                drawContent()
+                // 1. Draw the captured previous theme across the canvas
+                try {
+                    drawLayer(layerObj)
+                } catch (_: Throwable) {
+                    drawContent()
+                    return@drawWithContent
+                }
 
                 // 2. Compute reveal circle from origin
-                val origin = controller.origin
+                val resolvedOrigin = originProvider?.invoke() ?: controller.origin
+                val origin = if (resolvedOrigin != Offset.Zero && resolvedOrigin.isSpecified) {
+                    resolvedOrigin
+                } else {
+                    Offset(size.width / 2f, size.height / 2f)
+                }
+
                 val maxRadius = hypot(
                     maxOf(origin.x, size.width - origin.x),
                     maxOf(origin.y, size.height - origin.y)
-                )
+                ).coerceAtLeast(1f)
                 val currentRadius = maxRadius * controller.progress
 
                 circlePath.reset()
@@ -242,13 +255,13 @@ fun Modifier.themeRadialReveal(
                     )
                 )
 
-                // 3. Draw previous theme layer everywhere OUTSIDE the circle
+                // 3. Draw new theme content clipped inside the expanding circle
                 try {
-                    clipPath(path = circlePath, clipOp = ClipOp.Difference) {
-                        drawLayer(layerObj)
+                    clipPath(path = circlePath) {
+                        this@drawWithContent.drawContent()
                     }
-                } catch (e: Throwable) {
-                    // Safe fallback if hardware clipping fails
+                } catch (_: Throwable) {
+                    drawContent()
                 }
             }
         }

@@ -20,7 +20,10 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.draw.clip
+import androidx.compose.material3.Surface
 
 
 import androidx.compose.animation.AnimatedContent
@@ -209,7 +212,8 @@ fun SettingsBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = if (isDark) Color(0xFF1C1C1E) else MaterialTheme.colorScheme.surface
+        containerColor = Color.Transparent,
+        dragHandle = null
     ) {
         val settingsPredictiveState = rememberPredictiveBackState()
         RegisterPredictiveBackHandler(
@@ -218,12 +222,56 @@ fun SettingsBottomSheet(
             onBack = { activeSubScreen = PreferencesSubScreen.MAIN }
         )
 
-        Column(
+        val sheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        var sheetWindowOffset by remember { mutableStateOf(Offset.Zero) }
+
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .themeRadialReveal(themeTransitionController)
-                .padding(horizontal = 24.dp, vertical = 16.dp)
+                .onGloballyPositioned { coords ->
+                    sheetWindowOffset = coords.positionInWindow()
+                }
+                .themeRadialReveal(
+                    controller = themeTransitionController,
+                    originProvider = {
+                        val winOrigin = themeTransitionController.origin
+                        if (winOrigin != Offset.Zero && sheetWindowOffset != Offset.Zero) {
+                            winOrigin - sheetWindowOffset
+                        } else if (winOrigin != Offset.Zero) {
+                            winOrigin
+                        } else {
+                            Offset.Zero
+                        }
+                    }
+                )
+                .clip(sheetShape),
+            shape = sheetShape,
+            color = if (isDark) Color(0xFF1C1C1E) else MaterialTheme.colorScheme.surface,
+            tonalElevation = 1.dp
         ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp, bottom = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(32.dp)
+                            .height(4.dp)
+                            .background(
+                                color = if (isDark) Color(0x66FFFFFF) else Color(0x33000000),
+                                shape = CircleShape
+                            )
+                    )
+                }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 8.dp)
+                ) {
             AnimatedContent(
                 targetState = activeSubScreen,
                 transitionSpec = {
@@ -877,6 +925,8 @@ fun SettingsBottomSheet(
             }
         }
     }
+}
+}
 }
 
 @Composable
