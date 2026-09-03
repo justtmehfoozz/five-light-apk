@@ -14,16 +14,6 @@ import com.example.ui.theme.semanticMutedText
 import com.example.ui.theme.semanticBorder
 import com.example.ui.theme.semanticBackground
 import com.example.ui.theme.semanticWarning
-import com.example.ui.theme.themeRadialReveal
-import com.example.ui.theme.LocalThemeTransitionController
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.positionInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.draw.clip
-import androidx.compose.material3.Surface
 
 
 import androidx.compose.animation.AnimatedContent
@@ -53,6 +43,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -138,7 +129,6 @@ fun SettingsBottomSheet(
     onSelectTimeFormat: (TimeFormat) -> Unit,
     selectedAppearanceMode: AppearanceMode,
     onSelectAppearanceMode: (AppearanceMode) -> Unit,
-    onSelectAppearanceModeWithOrigin: ((AppearanceMode, Offset) -> Unit)? = null,
     selectedTasbeehSound: TasbeehSound,
     onSelectTasbeehSound: (TasbeehSound) -> Unit,
     selectedHijriMethod: com.example.data.model.HijriDateMethod = com.example.data.model.HijriDateMethod.REGIONAL_INDIA,
@@ -207,13 +197,12 @@ fun SettingsBottomSheet(
     }
 
     val isDark = isAppInDarkTheme()
-    val themeTransitionController = LocalThemeTransitionController.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        modifier = Modifier.statusBarsPadding(),
         sheetState = sheetState,
-        containerColor = Color.Transparent,
-        dragHandle = null
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
         val settingsPredictiveState = rememberPredictiveBackState()
         RegisterPredictiveBackHandler(
@@ -222,56 +211,11 @@ fun SettingsBottomSheet(
             onBack = { activeSubScreen = PreferencesSubScreen.MAIN }
         )
 
-        val sheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-        var sheetWindowOffset by remember { mutableStateOf(Offset.Zero) }
-
-        Surface(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .onGloballyPositioned { coords ->
-                    sheetWindowOffset = coords.positionInWindow()
-                }
-                .themeRadialReveal(
-                    controller = themeTransitionController,
-                    originProvider = {
-                        val winOrigin = themeTransitionController.origin
-                        if (winOrigin != Offset.Zero && sheetWindowOffset != Offset.Zero) {
-                            winOrigin - sheetWindowOffset
-                        } else if (winOrigin != Offset.Zero) {
-                            winOrigin
-                        } else {
-                            Offset.Zero
-                        }
-                    }
-                )
-                .clip(sheetShape),
-            shape = sheetShape,
-            color = if (isDark) Color(0xFF1C1C1E) else MaterialTheme.colorScheme.surface,
-            tonalElevation = 1.dp
+                .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp, bottom = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(32.dp)
-                            .height(4.dp)
-                            .background(
-                                color = if (isDark) Color(0x66FFFFFF) else Color(0x33000000),
-                                shape = CircleShape
-                            )
-                    )
-                }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 8.dp)
-                ) {
             AnimatedContent(
                 targetState = activeSubScreen,
                 transitionSpec = {
@@ -290,7 +234,6 @@ fun SettingsBottomSheet(
                         MainPreferencesView(
                             selectedAppearanceMode = selectedAppearanceMode,
                             onSelectAppearanceMode = onSelectAppearanceMode,
-                            onSelectAppearanceModeWithOrigin = onSelectAppearanceModeWithOrigin,
                             selectedCity = selectedCity,
                             selectedCalcMethod = selectedCalcMethod,
                             selectedMadhab = selectedMadhab,
@@ -341,14 +284,14 @@ fun SettingsBottomSheet(
                                         Text(
                                             text = "Search city or country...",
                                             style = MaterialTheme.typography.bodyMedium,
-                                            color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                                         )
                                     },
                                     leadingIcon = {
                                         Icon(
                                             imageVector = Icons.Outlined.Search,
                                             contentDescription = "Search",
-                                            tint = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     },
                                     trailingIcon = {
@@ -357,7 +300,7 @@ fun SettingsBottomSheet(
                                                 Icon(
                                                     imageVector = Icons.Outlined.Close,
                                                     contentDescription = "Clear search",
-                                                    tint = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
                                         }
@@ -365,12 +308,12 @@ fun SettingsBottomSheet(
                                     singleLine = true,
                                     shape = RoundedCornerShape(14.dp),
                                     colors = TextFieldDefaults.colors(
-                                        focusedContainerColor = if (isDark) Color(0xFF242426) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                                        unfocusedContainerColor = if (isDark) Color(0xFF242426) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
-                                        focusedTextColor = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface,
-                                        unfocusedTextColor = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface,
-                                        focusedIndicatorColor = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary,
-                                        unfocusedIndicatorColor = if (isDark) Color.White.copy(alpha = 0.15f) else MaterialTheme.colorScheme.outline
+                                        focusedContainerColor = Color.semanticSurfaceElevated,
+                                        unfocusedContainerColor = Color.semanticSurfaceElevated,
+                                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                        focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                                        unfocusedIndicatorColor = MaterialTheme.colorScheme.outline
                                     )
                                 )
 
@@ -384,7 +327,7 @@ fun SettingsBottomSheet(
                                         Text(
                                             text = "No cities found",
                                             style = MaterialTheme.typography.bodyMedium,
-                                            color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 } else {
@@ -412,19 +355,19 @@ fun SettingsBottomSheet(
                                                         text = city.cityName,
                                                         style = MaterialTheme.typography.bodyLarge,
                                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                        color = if (isSelected) (if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary) else (if (isDark) Color(0xFFF2F2EE) else LightPrimaryText)
+                                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                                     )
                                                     Text(
                                                         text = city.countryName,
                                                         style = MaterialTheme.typography.bodySmall,
-                                                        color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
                                                 }
                                                 RadioButton(
                                                     selected = isSelected,
                                                     colors = androidx.compose.material3.RadioButtonDefaults.colors(
-                                                        selectedColor = if (isDark) Color(0xFFFFFFFF) else Color.semanticPrimaryAccent,
-                                                        unselectedColor = if (isDark) Color(0xFFA8A8A2) else Color.semanticStrongBorder
+                                                        selectedColor = MaterialTheme.colorScheme.primary,
+                                                        unselectedColor = Color.semanticStrongBorder
                                                     ),
                                                     onClick = {
                                                         onSelectCity(city)
@@ -465,14 +408,14 @@ fun SettingsBottomSheet(
                                             text = method.displayName,
                                             style = MaterialTheme.typography.bodyLarge,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) (if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary) else (if (isDark) Color(0xFFF2F2EE) else LightPrimaryText),
+                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                             modifier = Modifier.weight(1f)
                                         )
                                         RadioButton(
                                             selected = isSelected,
                                             colors = androidx.compose.material3.RadioButtonDefaults.colors(
-                                                        selectedColor = if (isDark) Color(0xFFFFFFFF) else Color.semanticPrimaryAccent,
-                                                        unselectedColor = if (isDark) Color(0xFFA8A8A2) else Color.semanticStrongBorder
+                                                selectedColor = MaterialTheme.colorScheme.primary,
+                                                unselectedColor = Color.semanticStrongBorder
                                             ),
                                             onClick = {
                                                 onSelectCalcMethod(method)
@@ -510,14 +453,14 @@ fun SettingsBottomSheet(
                                             text = m.displayName,
                                             style = MaterialTheme.typography.bodyLarge,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) (if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary) else (if (isDark) Color(0xFFF2F2EE) else LightPrimaryText),
+                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                                             modifier = Modifier.weight(1f)
                                         )
                                         RadioButton(
                                             selected = isSelected,
                                             colors = androidx.compose.material3.RadioButtonDefaults.colors(
-                                                        selectedColor = if (isDark) Color(0xFFFFFFFF) else Color.semanticPrimaryAccent,
-                                                        unselectedColor = if (isDark) Color(0xFFA8A8A2) else Color.semanticStrongBorder
+                                                selectedColor = MaterialTheme.colorScheme.primary,
+                                                unselectedColor = Color.semanticStrongBorder
                                             ),
                                             onClick = {
                                                 onSelectMadhab(m)
@@ -541,7 +484,7 @@ fun SettingsBottomSheet(
                                     Text(
                                         text = "Select local or regional moon-sighting convention:",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(bottom = 8.dp)
                                     )
                                 }
@@ -557,11 +500,11 @@ fun SettingsBottomSheet(
                                             .testTag("hijri_method_${method.name.lowercase()}"),
                                         shape = RoundedCornerShape(14.dp),
                                         colors = CardDefaults.cardColors(
-                                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else if (isDark) Color(0xFF1E222A) else Color(0xFFF5F5F0)
+                                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.semanticSurfaceElevated
                                         ),
                                         border = BorderStroke(
                                             1.dp,
-                                            if (isSelected) MaterialTheme.colorScheme.primary else if (isDark) Color(0xFF2E3440) else Color(0xFFE0E0DA)
+                                            if (isSelected) MaterialTheme.colorScheme.primary else Color.semanticBorder
                                         )
                                     ) {
                                         Column(modifier = Modifier.padding(16.dp)) {
@@ -569,13 +512,13 @@ fun SettingsBottomSheet(
                                                 text = method.displayName,
                                                 style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onSurface
+                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                                             )
                                             Spacer(modifier = Modifier.height(4.dp))
                                             Text(
                                                 text = method.description,
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                     }
@@ -606,8 +549,8 @@ fun SettingsBottomSheet(
                                         RadioButton(
                                             selected = isSelected,
                                             colors = androidx.compose.material3.RadioButtonDefaults.colors(
-                                                        selectedColor = if (isDark) Color(0xFFFFFFFF) else Color.semanticPrimaryAccent,
-                                                        unselectedColor = if (isDark) Color(0xFFA8A8A2) else Color.semanticStrongBorder
+                                                selectedColor = MaterialTheme.colorScheme.primary,
+                                                unselectedColor = Color.semanticStrongBorder
                                             ),
                                             onClick = {
                                                 onSelectTasbeehSound(sound)
@@ -620,12 +563,12 @@ fun SettingsBottomSheet(
                                                 text = sound.displayName,
                                                 style = MaterialTheme.typography.bodyLarge,
                                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                color = if (isSelected) (if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary) else (if (isDark) Color(0xFFF2F2EE) else LightPrimaryText)
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                             )
                                             Text(
                                                 text = sound.description,
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                         if (sound.resId != null) {
@@ -642,7 +585,7 @@ fun SettingsBottomSheet(
                                                 Icon(
                                                     imageVector = Icons.Outlined.PlayCircle,
                                                     contentDescription = "Preview ${sound.displayName}",
-                                                    tint = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary
+                                                    tint = MaterialTheme.colorScheme.primary
                                                 )
                                             }
                                         }
@@ -926,14 +869,11 @@ fun SettingsBottomSheet(
         }
     }
 }
-}
-}
 
 @Composable
 fun MainPreferencesView(
     selectedAppearanceMode: AppearanceMode,
     onSelectAppearanceMode: (AppearanceMode) -> Unit,
-    onSelectAppearanceModeWithOrigin: ((AppearanceMode, Offset) -> Unit)? = null,
     selectedCity: CityLocation,
     selectedCalcMethod: CalcMethod,
     selectedMadhab: Madhab,
@@ -947,7 +887,6 @@ fun MainPreferencesView(
     onNavigateTo: (PreferencesSubScreen) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val isDark = isAppInDarkTheme()
     Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -957,7 +896,7 @@ fun MainPreferencesView(
             Text(
                 text = "Preferences",
                 style = MaterialTheme.typography.headlineLarge.copy(fontFamily = SerifHeaderFont),
-                color = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface
             )
 
             TextButton(
@@ -966,7 +905,7 @@ fun MainPreferencesView(
             ) {
                 Text(
                     "Done",
-                    color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
@@ -981,7 +920,6 @@ fun MainPreferencesView(
                         AppearanceSegmentedControl(
                             selectedMode = selectedAppearanceMode,
                             onModeSelected = onSelectAppearanceMode,
-                            onModeSelectedWithOrigin = onSelectAppearanceModeWithOrigin,
                             showTitle = false
                         )
                     }
@@ -1152,7 +1090,6 @@ fun MainPreferencesView(
 fun CreditsSubScreen(
     onBack: () -> Unit
 ) {
-    val isDark = isAppInDarkTheme()
     SubScreenLayout(
         title = "Credits",
         onBack = onBack
@@ -1178,12 +1115,12 @@ fun CreditsSubScreen(
                             fontFamily = SerifHeaderFont,
                             fontWeight = FontWeight.Bold
                         ),
-                        color = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "Built with care for the Ummah.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
@@ -1199,13 +1136,13 @@ fun CreditsSubScreen(
                             letterSpacing = 1.4.sp,
                             fontWeight = FontWeight.Bold
                         ),
-                        color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                     )
                     Text(
                         text = "Mehfooz",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
@@ -1214,7 +1151,7 @@ fun CreditsSubScreen(
                 Text(
                     text = "Version ${com.example.BuildConfig.VERSION_NAME}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                 )
             }
         }
@@ -1226,7 +1163,6 @@ fun MenuGroupCard(
     title: String,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val isDark = isAppInDarkTheme()
     Column {
         Text(
             text = title,
@@ -1234,14 +1170,14 @@ fun MenuGroupCard(
                 letterSpacing = 1.2.sp,
                 fontWeight = FontWeight.Bold
             ),
-            color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
         )
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = if (isDark) Color(0xFF242426) else MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outline)
+            colors = CardDefaults.cardColors(containerColor = Color.semanticSurfaceElevated),
+            border = BorderStroke(1.dp, Color.semanticBorder)
         ) {
             Column(content = content)
         }
@@ -1255,7 +1191,6 @@ fun GroupedMenuRow(
     onClick: () -> Unit,
     testTag: String = ""
 ) {
-    val isDark = isAppInDarkTheme()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1270,12 +1205,12 @@ fun GroupedMenuRow(
                 text = label,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
-                color = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodySmall,
-                color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1
             )
         }
@@ -1283,7 +1218,7 @@ fun GroupedMenuRow(
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
-            tint = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp)
         )
     }
@@ -1295,7 +1230,6 @@ fun SubScreenLayout(
     onBack: () -> Unit,
     content: @Composable () -> Unit
 ) {
-    val isDark = isAppInDarkTheme()
     Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1305,14 +1239,14 @@ fun SubScreenLayout(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "Back",
-                    tint = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface
+                    tint = MaterialTheme.colorScheme.onSurface
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.headlineMedium.copy(fontFamily = SerifHeaderFont),
-                color = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
 
@@ -1343,8 +1277,7 @@ fun <T> SpringPillSelector(
     items: List<PillItem<T>>,
     selectedItem: T,
     onItemSelected: (T) -> Unit,
-    modifier: Modifier = Modifier,
-    onItemSelectedWithOrigin: ((T, Offset) -> Unit)? = null
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val isReducedMotion = remember(context) {
@@ -1420,30 +1353,13 @@ fun <T> SpringPillSelector(
             items.forEach { item ->
                 val isSelected = item.value == selectedItem
                 val contentColor = if (isSelected) activeContentColor else inactiveContentColor
-                var itemBoundsInWindow by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
 
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .height(36.dp)
                         .clip(CircleShape)
-                        .onGloballyPositioned { coords ->
-                            itemBoundsInWindow = coords.boundsInWindow()
-                        }
-                        .pointerInput(item.value) {
-                            detectTapGestures { tapOffset ->
-                                val origin = if (itemBoundsInWindow != androidx.compose.ui.geometry.Rect.Zero) {
-                                    itemBoundsInWindow.topLeft + tapOffset
-                                } else {
-                                    Offset.Zero
-                                }
-                                if (onItemSelectedWithOrigin != null) {
-                                    onItemSelectedWithOrigin(item.value, origin)
-                                } else {
-                                    onItemSelected(item.value)
-                                }
-                            }
-                        },
+                        .clickable { onItemSelected(item.value) },
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
@@ -1480,8 +1396,7 @@ fun AppearanceSegmentedControl(
     selectedMode: AppearanceMode,
     onModeSelected: (AppearanceMode) -> Unit,
     showTitle: Boolean = true,
-    modifier: Modifier = Modifier,
-    onModeSelectedWithOrigin: ((AppearanceMode, Offset) -> Unit)? = null
+    modifier: Modifier = Modifier
 ) {
     val modes = remember {
         listOf(
@@ -1508,8 +1423,7 @@ fun AppearanceSegmentedControl(
         SpringPillSelector(
             items = modes,
             selectedItem = selectedMode,
-            onItemSelected = onModeSelected,
-            onItemSelectedWithOrigin = onModeSelectedWithOrigin
+            onItemSelected = onModeSelected
         )
 
         Spacer(modifier = Modifier.height(6.dp))
