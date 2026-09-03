@@ -6,13 +6,18 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -21,6 +26,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -34,6 +40,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import com.example.ui.screens.SplashScreen
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.input.pointer.pointerInput
@@ -112,8 +120,19 @@ class MainActivity : ComponentActivity() {
                         }
                 }
 
+                val hapticFeedback = LocalHapticFeedback.current
+                var previousPageForHaptic by remember { mutableIntStateOf(pagerState.currentPage) }
+
                 androidx.compose.runtime.LaunchedEffect(pagerState.currentPage) {
                     val current = pagerState.currentPage
+                    if (current != previousPageForHaptic) {
+                        previousPageForHaptic = current
+                        if (vibrationEnabled) {
+                            try {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            } catch (_: Exception) {}
+                        }
+                    }
                     if (current != 4) {
                         showSearchOverlay = false
                     }
@@ -141,6 +160,29 @@ class MainActivity : ComponentActivity() {
                 val mainPredictiveState = rememberPredictiveBackState()
                 val canPopAppLevel = tabStack.size > 1 && !isQuranReadingModeActive && exploreSubRoute == "main" && showPrayerMode.value == null
 
+                var jumpFromPage by remember { mutableStateOf<Int?>(null) }
+                var jumpToPage by remember { mutableStateOf<Int?>(null) }
+                val jumpProgress = remember { Animatable(1f) }
+
+                val navigateToPage: (Int) -> Unit = { targetPage ->
+                    val from = pagerState.currentPage
+                    if (targetPage != from) {
+                        coroutineScope.launch {
+                            jumpFromPage = from
+                            jumpToPage = targetPage
+                            jumpProgress.snapTo(0f)
+                            pagerState.scrollToPage(targetPage)
+                            selectorController.animateToSlot(targetPage)
+                            jumpProgress.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+                            )
+                            jumpFromPage = null
+                            jumpToPage = null
+                        }
+                    }
+                }
+
                 RegisterPredictiveBackHandler(
                     enabled = canPopAppLevel,
                     backState = mainPredictiveState,
@@ -148,9 +190,7 @@ class MainActivity : ComponentActivity() {
                         if (tabStack.size > 1) {
                             tabStack.removeAt(tabStack.lastIndex)
                             val prevPage = tabStack.last()
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(prevPage)
-                            }
+                            navigateToPage(prevPage)
                         }
                     }
                 )
@@ -180,35 +220,79 @@ class MainActivity : ComponentActivity() {
                             }
                     ) {
 
+                    val pagerFlingBehavior = PagerDefaults.flingBehavior(
+                        state = pagerState,
+                        snapAnimationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    )
+
                     HorizontalPager(
                         state = pagerState,
                         userScrollEnabled = isPagerSwipeEnabled,
+                        flingBehavior = pagerFlingBehavior,
                         modifier = Modifier
                             .fillMaxSize()
                             .clipToBounds()
                             .haze(state = hazeState),
                         beyondViewportPageCount = 1
                     ) { pageIndex ->
+                        val isManualJumpActive = jumpFromPage != null && jumpToPage != null
                         val pageOffset = (
                             (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
                         )
                         val absOffset = kotlin.math.abs(pageOffset.coerceIn(-1f, 1f))
 
+                        val dynamicZIndex = if (isManualJumpActive) {
+                            val from = jumpFromPage
+                            val to = jumpToPage
+                            val p = jumpProgress.value
+                            when (pageIndex) {
+                                to -> 1f + p
+                                from -> 1f
+                                else -> 0f
+                            }
+                        } else {
+                            1f - absOffset
+                        }
+
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .zIndex(1f - absOffset)
+                                .zIndex(dynamicZIndex)
                                 .graphicsLayer {
-                                    // Fade: 1f at 0 offset -> 0f at 1.0 offset
-                                    alpha = (1f - absOffset).coerceIn(0f, 1f)
-
-                                    // Scale: 1f at 0 offset -> 0.96f at 1.0 offset
-                                    val pageScale = 1f - (absOffset * 0.04f)
-                                    scaleX = pageScale
-                                    scaleY = pageScale
-
-                                    // Counteract default horizontal layout translation so pages crossfade & scale in-place
-                                    translationX = pageOffset * size.width
+                                    if (isManualJumpActive) {
+                                        val from = jumpFromPage
+                                        val to = jumpToPage
+                                        val p = jumpProgress.value
+                                        when (pageIndex) {
+                                            to -> {
+                                                alpha = p.coerceIn(0f, 1f)
+                                                val s = 0.96f + (0.04f * p)
+                                                scaleX = s
+                                                scaleY = s
+                                                translationX = pageOffset * size.width
+                                            }
+                                            from -> {
+                                                alpha = (1f - p).coerceIn(0f, 1f)
+                                                val s = 1f - (0.04f * p)
+                                                scaleX = s
+                                                scaleY = s
+                                                translationX = pageOffset * size.width
+                                            }
+                                            else -> {
+                                                alpha = 0f
+                                                translationX = 0f
+                                            }
+                                        }
+                                    } else {
+                                        alpha = (1f - absOffset).coerceIn(0f, 1f)
+                                        val pageScale = 1f - (absOffset * 0.04f)
+                                        scaleX = pageScale
+                                        scaleY = pageScale
+                                        translationX = pageOffset * size.width
+                                    }
                                 }
                         ) {
                             when (pageIndex) {
@@ -264,7 +348,7 @@ class MainActivity : ComponentActivity() {
                                             viewModel.selectSurah(surah)
                                             openQuranReadingDirectly = true
                                         }
-                                        coroutineScope.launch { pagerState.scrollToPage(NavItem.QURAN.ordinal) }
+                                        navigateToPage(NavItem.QURAN.ordinal)
                                     },
                                     onTogglePrayer = { pName -> viewModel.togglePrayerCompleted(pName) },
                                     onSetPrayerStatus = { pName, status -> viewModel.setPrayerStatus(prayerName = pName, status = status) },
@@ -272,16 +356,7 @@ class MainActivity : ComponentActivity() {
                                     onSavePrayerNote = { pName, dStr, note -> viewModel.savePrayerNote(prayerName = pName, dateString = dStr, note = note) },
                                     onAddPrayerToQada = { pName, dStr -> viewModel.addPrayerToQada(prayerName = pName, dateString = dStr) },
                                     onQuickAccessNavigate = { navItem ->
-                                        coroutineScope.launch { 
-                                            val targetPage = navItem.ordinal
-                                            val currentPage = pagerState.currentPage
-                                            if (targetPage != currentPage) {
-                                                if (kotlin.math.abs(targetPage - currentPage) > 1) {
-                                                    pagerState.scrollToPage(if (targetPage > currentPage) targetPage - 1 else targetPage + 1)
-                                                }
-                                                pagerState.animateScrollToPage(targetPage)
-                                            }
-                                        }
+                                        navigateToPage(navItem.ordinal)
                                     },
                                     onOpenSettings = { showSettingsSheet = true },
                                     isActiveTab = (pagerState.currentPage == 0)
@@ -312,9 +387,9 @@ class MainActivity : ComponentActivity() {
                                         if (tabStack.size > 1) {
                                             tabStack.removeAt(tabStack.lastIndex)
                                             val prevPage = tabStack.last()
-                                            coroutineScope.launch { pagerState.animateScrollToPage(prevPage) }
+                                            navigateToPage(prevPage)
                                         } else {
-                                            coroutineScope.launch { pagerState.animateScrollToPage(0) }
+                                            navigateToPage(0)
                                         }
                                     }
                                 )
@@ -491,23 +566,15 @@ class MainActivity : ComponentActivity() {
                     SereneBottomNavBar(
                         currentRoute = currentRoute,
                         onNavigate = { navItem ->
-                            coroutineScope.launch {
-                                val targetPage = when (navItem.route) {
-                                    "home" -> 0
-                                    "qibla" -> 1
-                                    "quran" -> 2
-                                    "tasbeeh" -> 3
-                                    "calendar", "search", "explore" -> 4
-                                    else -> navItem.ordinal.coerceAtMost(4)
-                                }
-                                val currentPage = pagerState.currentPage
-                                if (targetPage != currentPage) {
-                                    if (kotlin.math.abs(targetPage - currentPage) > 1) {
-                                        pagerState.scrollToPage(if (targetPage > currentPage) targetPage - 1 else targetPage + 1)
-                                    }
-                                    pagerState.animateScrollToPage(targetPage)
-                                }
+                            val targetPage = when (navItem.route) {
+                                "home" -> 0
+                                "qibla" -> 1
+                                "quran" -> 2
+                                "tasbeeh" -> 3
+                                "calendar", "search", "explore" -> 4
+                                else -> navItem.ordinal.coerceAtMost(4)
                             }
+                            navigateToPage(targetPage)
                         },
                         hazeState = hazeState,
                         pagerFractionProvider = { pagerState.currentPage + pagerState.currentPageOffsetFraction },
@@ -537,9 +604,7 @@ class MainActivity : ComponentActivity() {
                             showSearchOverlay = false
                             openQuranReadingDirectly = true
                             viewModel.selectSurah(surah)
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(2)
-                            }
+                            navigateToPage(2)
                         },
                         onSelectDua = { dua ->
                             showSearchOverlay = false
@@ -557,48 +622,36 @@ class MainActivity : ComponentActivity() {
                                 targetDuaId = null
                             }
                             exploreSubRoute = "dua"
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(4)
-                            }
+                            navigateToPage(4)
                         },
                         onSelectDuaItem = { duaItem ->
                             showSearchOverlay = false
                             targetDuaCategory = duaItem.category
                             targetDuaId = duaItem.id
                             exploreSubRoute = "dua"
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(4)
-                            }
+                            navigateToPage(4)
                         },
                         onSelectDhikr = { dhikr ->
                             showSearchOverlay = false
                             viewModel.selectDhikrPreset(dhikr)
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(3)
-                            }
+                            navigateToPage(3)
                         },
                         onSelectAdhkarItem = { adhkarItem ->
                             showSearchOverlay = false
                             targetAdhkarTitle = adhkarItem.title
                             exploreSubRoute = "adhkar"
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(4)
-                            }
+                            navigateToPage(4)
                         },
                         onSelectNameOfAllah = { name ->
                             showSearchOverlay = false
                             targetNameNumber = name.number
                             exploreSubRoute = "names"
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(4)
-                            }
+                            navigateToPage(4)
                         },
                         allDhikrs = allDhikrs,
                         dockFifthSlotMode = dockFifthSlotMode,
                         onFifthSlotMoreTap = {
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(4)
-                            }
+                            navigateToPage(4)
                         },
                         onExpandPlayer = {
                             showExpandedPlayerSheet = true
