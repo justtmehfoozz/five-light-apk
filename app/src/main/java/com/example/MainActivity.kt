@@ -188,8 +188,29 @@ class MainActivity : ComponentActivity() {
                             .haze(state = hazeState),
                         beyondViewportPageCount = 1
                     ) { pageIndex ->
-                        when (pageIndex) {
-                            0 -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    val pageOffset = (
+                                        (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
+                                    )
+                                    val absOffset = kotlin.math.abs(pageOffset.coerceIn(-1f, 1f))
+
+                                    // Fade: 1f at 0 offset -> 0f at 1.0 offset
+                                    alpha = (1f - absOffset).coerceIn(0f, 1f)
+
+                                    // Scale: 1f at 0 offset -> 0.96f at 1.0 offset
+                                    val pageScale = 1f - (absOffset * 0.04f)
+                                    scaleX = pageScale
+                                    scaleY = pageScale
+
+                                    // Counteract default horizontal layout translation so pages crossfade & scale in-place
+                                    translationX = pageOffset * size.width
+                                }
+                        ) {
+                            when (pageIndex) {
+                                0 -> {
                                 val nextPrayer by viewModel.nextPrayer.collectAsStateWithLifecycle()
                                 val prayerTimes by viewModel.prayerTimes.collectAsStateWithLifecycle()
                                 val countdownFormatted = viewModel.countdownFormatted.collectAsStateWithLifecycle()
@@ -426,6 +447,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                }
 
                     // Part 3: App-Wide "Last Light" Maghrib Ambient Overlay (Passive top atmospheric glow)
                     val maghribOverlayAlpha by viewModel.maghribOverlayAlpha.collectAsStateWithLifecycle()
