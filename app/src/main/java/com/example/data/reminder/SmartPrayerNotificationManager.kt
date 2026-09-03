@@ -6,11 +6,13 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import com.example.data.model.NaflPrayerItem
 import com.example.data.model.NaflType
 import com.example.data.model.PrayerItem
 import com.example.data.model.PrayerName
+import com.example.data.util.PrayerCalc
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -152,23 +154,32 @@ class SmartPrayerNotificationManager(private val context: Context) {
 
     fun scheduleSmartNotifications(
         prayerTimes: List<PrayerItem>,
-        naflWindows: List<NaflPrayerItem> = emptyList()
+        naflWindows: List<NaflPrayerItem> = emptyList(),
+        dateString: String? = null
     ) {
         createNotificationChannels(context)
-        cancelAllSchedules()
+
+        val targetDate = parseDateOrToday(dateString)
+        val targetDateStr = targetDate.toString()
 
         if (!isSmartNotificationsEnabled || prayerTimes.isEmpty()) {
+            if (!isSmartNotificationsEnabled) {
+                cancelSchedulesForDate(targetDate)
+            }
             return
         }
 
         val nowMillis = System.currentTimeMillis()
-        val todayDate = java.time.LocalDate.now().toString()
 
         // 1. Fard Prayer Time Notifications & Pre-Prayer Reminders
         prayerTimes.forEachIndexed { index, prayer ->
             if (prayer.name == PrayerName.SUNRISE) return@forEachIndexed // Sunrise is handled under contextual/nafl
 
-            if (!isPrayerEnabled(prayer.name.id)) return@forEachIndexed
+            if (!isPrayerEnabled(prayer.name.id)) {
+                cancelAlarmsForPrayer(prayer.name, targetDateStr)
+                cancelPrayerNotification(prayer.name, targetDateStr)
+                return@forEachIndexed
+            }
 
             val prayerTriggerMillis = prayer.timeMillis
             val nextPrayer = prayerTimes.getOrNull(index + 1)
@@ -179,14 +190,16 @@ class SmartPrayerNotificationManager(private val context: Context) {
             if (isPrayerTimeNotificationsEnabled) {
                 if (prayerTriggerMillis > nowMillis) {
                     val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
+                        action = ACTION_SMART_PRAYER_NOTIF
+                        data = Uri.parse("fivelight://prayer/$targetDateStr/${prayer.name.name}/entry")
                         putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_FARD)
                         putExtra(EXTRA_PRAYER_NAME, prayer.name.name)
                         putExtra(EXTRA_PRAYER_TIME, formattedTime)
-                        putExtra(EXTRA_PRAYER_DATE, todayDate)
+                        putExtra(EXTRA_PRAYER_DATE, targetDateStr)
                         putExtra(EXTRA_TRIGGER_MILLIS, prayerTriggerMillis)
                         putExtra(EXTRA_WINDOW_END_MILLIS, windowEndMillis)
                     }
-                    val requestCode = REQ_CODE_FARD_BASE + prayer.name.ordinal
+                    val requestCode = getAlarmRequestCode(prayer.name, targetDate, ALARM_SLOT_ENTRY)
                     scheduleAlarm(prayerTriggerMillis, intent, requestCode)
                 }
 
@@ -194,16 +207,21 @@ class SmartPrayerNotificationManager(private val context: Context) {
                 val followUpMillis = prayerTriggerMillis + 25 * 60 * 1000L
                 if (followUpMillis > nowMillis && followUpMillis < windowEndMillis) {
                     val followUpIntent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
+                        action = ACTION_SMART_PRAYER_NOTIF
+                        data = Uri.parse("fivelight://prayer/$targetDateStr/${prayer.name.name}/followup")
                         putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_FARD_FOLLOWUP)
                         putExtra(EXTRA_PRAYER_NAME, prayer.name.name)
                         putExtra(EXTRA_PRAYER_TIME, formattedTime)
-                        putExtra(EXTRA_PRAYER_DATE, todayDate)
+                        putExtra(EXTRA_PRAYER_DATE, targetDateStr)
                         putExtra(EXTRA_TRIGGER_MILLIS, followUpMillis)
                         putExtra(EXTRA_WINDOW_END_MILLIS, windowEndMillis)
                     }
-                    val followUpReqCode = REQ_CODE_FARD_FOLLOWUP_BASE + prayer.name.ordinal
+                    val followUpReqCode = getAlarmRequestCode(prayer.name, targetDate, ALARM_SLOT_FOLLOWUP)
                     scheduleAlarm(followUpMillis, followUpIntent, followUpReqCode)
                 }
+            } else {
+                cancelAlarmByRequestCode(getAlarmRequestCode(prayer.name, targetDate, ALARM_SLOT_ENTRY))
+                cancelAlarmByRequestCode(getAlarmRequestCode(prayer.name, targetDate, ALARM_SLOT_FOLLOWUP))
             }
 
             // Pre-Prayer Reminder
@@ -211,103 +229,218 @@ class SmartPrayerNotificationManager(private val context: Context) {
                 val preMillis = prayerTriggerMillis - (preReminderOffset.minutes * 60 * 1000L)
                 if (preMillis > nowMillis) {
                     val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
+                        action = ACTION_SMART_PRAYER_NOTIF
+                        data = Uri.parse("fivelight://prayer/$targetDateStr/${prayer.name.name}/pre")
                         putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_PRE_PRAYER)
                         putExtra(EXTRA_PRAYER_NAME, prayer.name.name)
                         putExtra(EXTRA_PRAYER_TIME, formattedTime)
-                        putExtra(EXTRA_PRAYER_DATE, todayDate)
+                        putExtra(EXTRA_PRAYER_DATE, targetDateStr)
                         putExtra(EXTRA_OFFSET_MINS, preReminderOffset.minutes)
                         putExtra(EXTRA_TRIGGER_MILLIS, preMillis)
                         putExtra(EXTRA_WINDOW_END_MILLIS, prayerTriggerMillis)
                     }
-                    val requestCode = REQ_CODE_PRE_BASE + prayer.name.ordinal
+                    val requestCode = getAlarmRequestCode(prayer.name, targetDate, ALARM_SLOT_PRE_REMINDER)
                     scheduleAlarm(preMillis, intent, requestCode)
                 }
+            } else {
+                val preReqCode = getAlarmRequestCode(prayer.name, targetDate, ALARM_SLOT_PRE_REMINDER)
+                cancelAlarmByRequestCode(preReqCode)
             }
         }
 
-        // 2. Contextual Reminders (Sunrise, Maghrib transition, Tahajjud)
+        // 2. Contextual Reminders (Sunrise/Morning, Maghrib/Evening, Tahajjud/Night)
         if (isContextualRemindersEnabled) {
             // Sunrise / Morning
             prayerTimes.find { it.name == PrayerName.SUNRISE }?.let { sunrise ->
                 val sunriseMillis = sunrise.timeMillis
                 if (sunriseMillis > nowMillis) {
                     val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
+                        action = ACTION_SMART_PRAYER_NOTIF
+                        data = Uri.parse("fivelight://contextual/$targetDateStr/morning")
                         putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_CONTEXTUAL_MORNING)
-                        putExtra(EXTRA_PRAYER_TIME, sunrise.timeFormatted)
-                        putExtra(EXTRA_PRAYER_DATE, todayDate)
+                        putExtra(EXTRA_PRAYER_DATE, targetDateStr)
                         putExtra(EXTRA_TRIGGER_MILLIS, sunriseMillis)
                         putExtra(EXTRA_WINDOW_END_MILLIS, sunriseMillis + 45 * 60 * 1000L)
                     }
-                    scheduleAlarm(sunriseMillis, intent, REQ_CODE_CONTEXTUAL_MORNING)
+                    val reqCode = getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_CONTEXTUAL_MORNING)
+                    scheduleAlarm(sunriseMillis, intent, reqCode)
                 }
             }
 
-            // Evening (Maghrib)
+            // Evening (Maghrib transition)
             prayerTimes.find { it.name == PrayerName.MAGHRIB }?.let { maghrib ->
                 val maghribMillis = maghrib.timeMillis
-                if (maghribMillis > nowMillis) {
+                // Avoid collision: If Fard Maghrib prayer notification will be sent at maghribMillis,
+                // do NOT send the redundant "Evening Has Begun" contextual reminder at the exact same moment.
+                val maghribFardWillNotify = isPrayerTimeNotificationsEnabled && isPrayerEnabled(PrayerName.MAGHRIB.id)
+                if (!maghribFardWillNotify && maghribMillis > nowMillis) {
                     val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
+                        action = ACTION_SMART_PRAYER_NOTIF
+                        data = Uri.parse("fivelight://contextual/$targetDateStr/evening")
                         putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_CONTEXTUAL_EVENING)
-                        putExtra(EXTRA_PRAYER_TIME, maghrib.timeFormatted)
-                        putExtra(EXTRA_PRAYER_DATE, todayDate)
+                        putExtra(EXTRA_PRAYER_DATE, targetDateStr)
                         putExtra(EXTRA_TRIGGER_MILLIS, maghribMillis)
                         putExtra(EXTRA_WINDOW_END_MILLIS, maghribMillis + 45 * 60 * 1000L)
                     }
-                    scheduleAlarm(maghribMillis, intent, REQ_CODE_CONTEXTUAL_EVENING)
+                    val reqCode = getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_CONTEXTUAL_EVENING)
+                    scheduleAlarm(maghribMillis, intent, reqCode)
+                } else if (maghribFardWillNotify) {
+                    cancelAlarmByRequestCode(getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_CONTEXTUAL_EVENING))
+                    cancelSpecialNotification(targetDateStr, SPECIAL_SLOT_CONTEXTUAL_EVENING)
                 }
             }
 
-            // Night (Tahajjud window)
-            naflWindows.find { it.type == NaflType.TAHAJJUD }?.let { tahajjud ->
-                val tahajjudMillis = tahajjud.startMillis
+            // Night (Quiet portion of night transition)
+            // Avoid collision: If Nafl Tahajjud notification is active/scheduled, Tahajjud Window will notify the user.
+            // Do not send a colliding "Night Has Begun" at the exact same moment.
+            val tahajjudItem = naflWindows.find { it.type == NaflType.TAHAJJUD }
+            val tahajjudWindowPair: Pair<Long, Long>? = tahajjudItem?.let { Pair(it.startMillis, it.endMillis) }
+                ?: PrayerCalc.calculateTahajjudWindow(prayerTimes)?.let { Pair(it.startMillis, it.endMillis) }
+            val tahajjudNaflWillNotify = isNaflOpportunitiesEnabled && tahajjudItem != null
+
+            if (!tahajjudNaflWillNotify && tahajjudWindowPair != null) {
+                val tahajjudMillis = tahajjudWindowPair.first
+                val tahajjudEndMillis = tahajjudWindowPair.second
                 if (tahajjudMillis > nowMillis) {
                     val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
+                        action = ACTION_SMART_PRAYER_NOTIF
+                        data = Uri.parse("fivelight://contextual/$targetDateStr/night")
                         putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_CONTEXTUAL_NIGHT)
-                        putExtra(EXTRA_WINDOW_TEXT, tahajjud.timeFormatted)
-                        putExtra(EXTRA_PRAYER_DATE, todayDate)
+                        putExtra(EXTRA_PRAYER_DATE, targetDateStr)
                         putExtra(EXTRA_TRIGGER_MILLIS, tahajjudMillis)
-                        putExtra(EXTRA_WINDOW_END_MILLIS, tahajjud.endMillis)
+                        putExtra(EXTRA_WINDOW_END_MILLIS, tahajjudEndMillis)
                     }
-                    scheduleAlarm(tahajjudMillis, intent, REQ_CODE_CONTEXTUAL_NIGHT)
+                    val reqCode = getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_CONTEXTUAL_NIGHT)
+                    scheduleAlarm(tahajjudMillis, intent, reqCode)
                 }
+            } else if (tahajjudNaflWillNotify) {
+                cancelAlarmByRequestCode(getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_CONTEXTUAL_NIGHT))
+                cancelSpecialNotification(targetDateStr, SPECIAL_SLOT_CONTEXTUAL_NIGHT)
             }
+        } else {
+            cancelAlarmByRequestCode(getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_CONTEXTUAL_MORNING))
+            cancelAlarmByRequestCode(getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_CONTEXTUAL_EVENING))
+            cancelAlarmByRequestCode(getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_CONTEXTUAL_NIGHT))
+            cancelSpecialNotification(targetDateStr, SPECIAL_SLOT_CONTEXTUAL_MORNING)
+            cancelSpecialNotification(targetDateStr, SPECIAL_SLOT_CONTEXTUAL_EVENING)
+            cancelSpecialNotification(targetDateStr, SPECIAL_SLOT_CONTEXTUAL_NIGHT)
         }
 
         // 3. Nafl Opportunities
         if (isNaflOpportunitiesEnabled) {
-            // Duha
-            naflWindows.find { it.type == NaflType.DUHA }?.let { duha ->
-                val duhaMillis = duha.startMillis
-                if (duhaMillis > nowMillis) {
+            val ishraqItem = naflWindows.find { it.type == NaflType.ISHRAQ }
+            val duhaItem = naflWindows.find { it.type == NaflType.DUHA }
+            val tahajjudItem = naflWindows.find { it.type == NaflType.TAHAJJUD }
+            val awwabinItem = naflWindows.find { it.type == NaflType.AWWABIN }
+
+            // Ishraq
+            if (ishraqItem != null) {
+                val ishraqMillis = ishraqItem.startMillis
+                if (ishraqMillis > nowMillis) {
                     val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
-                        putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_NAFL_DUHA)
-                        putExtra(EXTRA_WINDOW_TEXT, duha.timeFormatted)
-                        putExtra(EXTRA_PRAYER_DATE, todayDate)
-                        putExtra(EXTRA_TRIGGER_MILLIS, duhaMillis)
-                        putExtra(EXTRA_WINDOW_END_MILLIS, duha.endMillis)
+                        action = ACTION_SMART_PRAYER_NOTIF
+                        data = Uri.parse("fivelight://nafl/$targetDateStr/ishraq")
+                        putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_NAFL_ISHRAQ)
+                        putExtra(EXTRA_PRAYER_DATE, targetDateStr)
+                        putExtra(EXTRA_TRIGGER_MILLIS, ishraqMillis)
+                        putExtra(EXTRA_WINDOW_END_MILLIS, ishraqItem.endMillis)
                     }
-                    scheduleAlarm(duhaMillis, intent, REQ_CODE_NAFL_DUHA)
+                    val reqCode = getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_NAFL_ISHRAQ)
+                    scheduleAlarm(ishraqMillis, intent, reqCode)
                 }
+            } else {
+                cancelAlarmByRequestCode(getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_NAFL_ISHRAQ))
+                cancelSpecialNotification(targetDateStr, SPECIAL_SLOT_NAFL_ISHRAQ)
+            }
+
+            // Duha
+            if (duhaItem != null) {
+                val duhaTriggerMillis = duhaItem.startMillis
+
+                if (duhaTriggerMillis > nowMillis && duhaTriggerMillis < duhaItem.endMillis) {
+                    val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
+                        action = ACTION_SMART_PRAYER_NOTIF
+                        data = Uri.parse("fivelight://nafl/$targetDateStr/duha")
+                        putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_NAFL_DUHA)
+                        putExtra(EXTRA_PRAYER_DATE, targetDateStr)
+                        putExtra(EXTRA_TRIGGER_MILLIS, duhaTriggerMillis)
+                        putExtra(EXTRA_WINDOW_END_MILLIS, duhaItem.endMillis)
+                    }
+                    val reqCode = getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_NAFL_DUHA)
+                    scheduleAlarm(duhaTriggerMillis, intent, reqCode)
+                }
+            } else {
+                cancelAlarmByRequestCode(getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_NAFL_DUHA))
+                cancelSpecialNotification(targetDateStr, SPECIAL_SLOT_NAFL_DUHA)
             }
 
             // Tahajjud
-            naflWindows.find { it.type == NaflType.TAHAJJUD }?.let { tahajjud ->
-                val tahajjudMillis = tahajjud.startMillis
+            if (tahajjudItem != null) {
+                val tahajjudMillis = tahajjudItem.startMillis
                 if (tahajjudMillis > nowMillis) {
                     val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
+                        action = ACTION_SMART_PRAYER_NOTIF
+                        data = Uri.parse("fivelight://nafl/$targetDateStr/tahajjud")
                         putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_NAFL_TAHAJJUD)
-                        putExtra(EXTRA_WINDOW_TEXT, tahajjud.timeFormatted)
-                        putExtra(EXTRA_PRAYER_DATE, todayDate)
+                        putExtra(EXTRA_PRAYER_DATE, targetDateStr)
                         putExtra(EXTRA_TRIGGER_MILLIS, tahajjudMillis)
-                        putExtra(EXTRA_WINDOW_END_MILLIS, tahajjud.endMillis)
+                        putExtra(EXTRA_WINDOW_END_MILLIS, tahajjudItem.endMillis)
                     }
-                    scheduleAlarm(tahajjudMillis, intent, REQ_CODE_NAFL_TAHAJJUD)
+                    val reqCode = getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_NAFL_TAHAJJUD)
+                    scheduleAlarm(tahajjudMillis, intent, reqCode)
                 }
+            } else {
+                cancelAlarmByRequestCode(getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_NAFL_TAHAJJUD))
+                cancelSpecialNotification(targetDateStr, SPECIAL_SLOT_NAFL_TAHAJJUD)
             }
+
+            // Awwabin (if enabled in preferences/naflWindows)
+            if (awwabinItem != null) {
+                val awwabinMillis = awwabinItem.startMillis
+                if (awwabinMillis > nowMillis) {
+                    val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
+                        action = ACTION_SMART_PRAYER_NOTIF
+                        data = Uri.parse("fivelight://nafl/$targetDateStr/awwabin")
+                        putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_NAFL_AWWABIN)
+                        putExtra(EXTRA_PRAYER_DATE, targetDateStr)
+                        putExtra(EXTRA_TRIGGER_MILLIS, awwabinMillis)
+                        putExtra(EXTRA_WINDOW_END_MILLIS, awwabinItem.endMillis)
+                    }
+                    val reqCode = getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_NAFL_AWWABIN)
+                    scheduleAlarm(awwabinMillis, intent, reqCode)
+                }
+            } else {
+                cancelAlarmByRequestCode(getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_NAFL_AWWABIN))
+                cancelSpecialNotification(targetDateStr, SPECIAL_SLOT_NAFL_AWWABIN)
+            }
+        } else {
+            cancelAlarmByRequestCode(getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_NAFL_DUHA))
+            cancelAlarmByRequestCode(getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_NAFL_TAHAJJUD))
+            cancelAlarmByRequestCode(getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_NAFL_ISHRAQ))
+            cancelAlarmByRequestCode(getSpecialAlarmRequestCode(targetDate, SPECIAL_SLOT_NAFL_AWWABIN))
+            cancelSpecialNotification(targetDateStr, SPECIAL_SLOT_NAFL_DUHA)
+            cancelSpecialNotification(targetDateStr, SPECIAL_SLOT_NAFL_TAHAJJUD)
+            cancelSpecialNotification(targetDateStr, SPECIAL_SLOT_NAFL_ISHRAQ)
+            cancelSpecialNotification(targetDateStr, SPECIAL_SLOT_NAFL_AWWABIN)
         }
     }
 
-    private fun scheduleAlarm(triggerAtMillis: Long, intent: Intent, requestCode: Int) {
+    fun scheduleFollowUpAlarm(prayerName: PrayerName, dateStr: String, followUpMillis: Long, windowEndMillis: Long) {
+        val targetDate = parseDateOrToday(dateStr)
+        val followUpIntent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
+            action = ACTION_SMART_PRAYER_NOTIF
+            data = Uri.parse("fivelight://prayer/$dateStr/${prayerName.name}/followup")
+            putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_FARD_FOLLOWUP)
+            putExtra(EXTRA_PRAYER_NAME, prayerName.name)
+            putExtra(EXTRA_PRAYER_DATE, dateStr)
+            putExtra(EXTRA_TRIGGER_MILLIS, followUpMillis)
+            putExtra(EXTRA_WINDOW_END_MILLIS, windowEndMillis)
+        }
+        val followUpReqCode = getAlarmRequestCode(prayerName, targetDate, ALARM_SLOT_FOLLOWUP)
+        scheduleAlarm(followUpMillis, followUpIntent, followUpReqCode)
+    }
+
+    internal fun scheduleAlarm(triggerAtMillis: Long, intent: Intent, requestCode: Int) {
         val nowMillis = System.currentTimeMillis()
         if (triggerAtMillis <= nowMillis) {
             // CRITICAL: NEVER schedule an alarm in the past! AlarmManager fires it immediately.
@@ -334,36 +467,75 @@ class SmartPrayerNotificationManager(private val context: Context) {
         } catch (_: Exception) {}
     }
 
+    fun cancelPrayerNotification(prayerName: PrayerName, dateStr: String = LocalDate.now().toString()) {
+        val notifId = getNotificationId(prayerName, dateStr)
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.cancel(notifId)
+    }
+
+    fun cancelSpecialNotification(dateStr: String?, slot: Int) {
+        val notifId = getSpecialNotificationId(dateStr, slot)
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.cancel(notifId)
+    }
+
+    fun cancelFollowUpAlarm(prayerName: PrayerName, dateStr: String = LocalDate.now().toString()) {
+        val reqCode = getAlarmRequestCode(prayerName, dateStr, ALARM_SLOT_FOLLOWUP)
+        cancelAlarmByRequestCode(reqCode)
+    }
+
     fun cancelFollowUp(prayerName: PrayerName) {
+        cancelFollowUpAlarm(prayerName, LocalDate.now().toString())
+    }
+
+    fun cancelAlarmsForPrayer(prayerName: PrayerName, dateStr: String = LocalDate.now().toString()) {
+        val entryCode = getAlarmRequestCode(prayerName, dateStr, ALARM_SLOT_ENTRY)
+        val preCode = getAlarmRequestCode(prayerName, dateStr, ALARM_SLOT_PRE_REMINDER)
+        val followUpCode = getAlarmRequestCode(prayerName, dateStr, ALARM_SLOT_FOLLOWUP)
+        cancelAlarmByRequestCode(entryCode)
+        cancelAlarmByRequestCode(preCode)
+        cancelAlarmByRequestCode(followUpCode)
+    }
+
+    fun cancelAlarmByRequestCode(requestCode: Int) {
         val intent = Intent(context, SmartPrayerNotificationReceiver::class.java)
-        val code = REQ_CODE_FARD_FOLLOWUP_BASE + prayerName.ordinal
         val pendingIntent = PendingIntent.getBroadcast(
             context,
-            code,
+            requestCode,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
         )
-        alarmManager.cancel(pendingIntent)
+        if (pendingIntent != null) {
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+        }
+    }
+
+    fun cancelSchedulesForDate(date: LocalDate) {
+        val fardPrayers = listOf(
+            PrayerName.FAJR,
+            PrayerName.DHUHR,
+            PrayerName.ASR,
+            PrayerName.MAGHRIB,
+            PrayerName.ISHA
+        )
+        fardPrayers.forEach { prayer ->
+            cancelAlarmsForPrayer(prayer, date.toString())
+        }
+        for (slot in 1..10) {
+            cancelAlarmByRequestCode(getSpecialAlarmRequestCode(date, slot))
+            cancelSpecialNotification(date.toString(), slot)
+        }
+    }
+
+    fun onPrayerCompletedInApp(prayerName: PrayerName, dateStr: String = LocalDate.now().toString()) {
+        cancelFollowUpAlarm(prayerName, dateStr)
+        cancelPrayerNotification(prayerName, dateStr)
     }
 
     fun cancelAllSchedules() {
-        val intent = Intent(context, SmartPrayerNotificationReceiver::class.java)
-        val allRequestCodes = listOf(
-            100, 101, 102, 103, 104, 105,
-            200, 201, 202, 203, 204, 205,
-            301, 302, 303,
-            401, 402,
-            500, 501, 502, 503, 504, 505
-        )
-        allRequestCodes.forEach { code ->
-            val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                code,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            alarmManager.cancel(pendingIntent)
-        }
+        // Safe fallback for full teardown
+        cancelSchedulesForDate(LocalDate.now())
     }
 
     companion object {
@@ -390,6 +562,7 @@ class SmartPrayerNotificationManager(private val context: Context) {
         const val EXTRA_OFFSET_MINS = "extra_offset_mins"
         const val EXTRA_WINDOW_TEXT = "extra_window_text"
 
+        const val ACTION_SMART_PRAYER_NOTIF = "com.example.ACTION_SMART_PRAYER_NOTIF"
         const val ACTION_MARK_PRAYED = "com.example.ACTION_MARK_PRAYED"
         const val ACTION_UNDO_PRAYED = "com.example.ACTION_UNDO_PRAYED"
 
@@ -402,15 +575,77 @@ class SmartPrayerNotificationManager(private val context: Context) {
         const val EVENT_TYPE_CONTEXTUAL_NIGHT = "contextual_night"
         const val EVENT_TYPE_NAFL_DUHA = "nafl_duha"
         const val EVENT_TYPE_NAFL_TAHAJJUD = "nafl_tahajjud"
+        const val EVENT_TYPE_NAFL_ISHRAQ = "nafl_ishraq"
+        const val EVENT_TYPE_NAFL_AWWABIN = "nafl_awwabin"
 
-        const val REQ_CODE_FARD_BASE = 100
-        const val REQ_CODE_PRE_BASE = 200
-        const val REQ_CODE_CONTEXTUAL_MORNING = 301
-        const val REQ_CODE_CONTEXTUAL_EVENING = 302
-        const val REQ_CODE_CONTEXTUAL_NIGHT = 303
-        const val REQ_CODE_NAFL_DUHA = 401
-        const val REQ_CODE_NAFL_TAHAJJUD = 402
-        const val REQ_CODE_FARD_FOLLOWUP_BASE = 500
+        const val ALARM_SLOT_ENTRY = 0
+        const val ALARM_SLOT_PRE_REMINDER = 1
+        const val ALARM_SLOT_FOLLOWUP = 2
+
+        const val SPECIAL_SLOT_CONTEXTUAL_MORNING = 1
+        const val SPECIAL_SLOT_CONTEXTUAL_EVENING = 2
+        const val SPECIAL_SLOT_CONTEXTUAL_NIGHT = 3
+        const val SPECIAL_SLOT_NAFL_DUHA = 4
+        const val SPECIAL_SLOT_NAFL_TAHAJJUD = 5
+        const val SPECIAL_SLOT_NAFL_ISHRAQ = 6
+        const val SPECIAL_SLOT_NAFL_AWWABIN = 7
+
+        fun parseDateOrToday(dateStr: String?): LocalDate {
+            if (dateStr.isNullOrBlank()) return LocalDate.now()
+            return try {
+                LocalDate.parse(dateStr)
+            } catch (_: Exception) {
+                LocalDate.now()
+            }
+        }
+
+        /**
+         * Deterministic, 1-to-1 mapping for (Date, PrayerName) -> Notification ID.
+         * Guarantees that the same prayer on the same date always gets the exact same notification identity,
+         * while different prayers and different dates never collide.
+         */
+        fun getNotificationId(prayerName: PrayerName, dateStr: String?): Int {
+            val localDate = parseDateOrToday(dateStr)
+            return getNotificationId(prayerName, localDate)
+        }
+
+        fun getNotificationId(prayerName: PrayerName, date: LocalDate): Int {
+            val epochDay = date.toEpochDay().toInt()
+            return (epochDay * 10) + prayerName.ordinal
+        }
+
+        /**
+         * Deterministic Alarm Request Code for (Date, PrayerName, AlarmSlot).
+         */
+        fun getAlarmRequestCode(prayerName: PrayerName, dateStr: String?, slot: Int): Int {
+            val localDate = parseDateOrToday(dateStr)
+            return getAlarmRequestCode(prayerName, localDate, slot)
+        }
+
+        fun getAlarmRequestCode(prayerName: PrayerName, date: LocalDate, slot: Int): Int {
+            val epochDay = date.toEpochDay().toInt()
+            return ((epochDay * 10 + prayerName.ordinal) * 10) + slot
+        }
+
+        fun getSpecialNotificationId(date: LocalDate, slot: Int): Int {
+            val epochDay = date.toEpochDay().toInt()
+            return (epochDay * 100) + 60 + slot
+        }
+
+        fun getSpecialNotificationId(dateStr: String?, slot: Int): Int {
+            val localDate = parseDateOrToday(dateStr)
+            return getSpecialNotificationId(localDate, slot)
+        }
+
+        fun getSpecialAlarmRequestCode(date: LocalDate, slot: Int): Int {
+            val epochDay = date.toEpochDay().toInt()
+            return (epochDay * 1000) + 600 + slot
+        }
+
+        fun getSpecialAlarmRequestCode(dateStr: String?, slot: Int): Int {
+            val localDate = parseDateOrToday(dateStr)
+            return getSpecialAlarmRequestCode(localDate, slot)
+        }
 
         fun createNotificationChannel(context: Context) {
             createNotificationChannels(context)
@@ -423,10 +658,11 @@ class SmartPrayerNotificationManager(private val context: Context) {
                 val smartPrayerChannel = NotificationChannel(
                     CHANNEL_SMART_PRAYER,
                     "Smart Prayer",
-                    NotificationManager.IMPORTANCE_HIGH
+                    NotificationManager.IMPORTANCE_LOW
                 ).apply {
-                    description = "Contextual and intelligent reminders for prayer and spiritual moments"
-                    enableVibration(true)
+                    description = "Contextual reminders for day-part transitions"
+                    enableVibration(false)
+                    setSound(null, null)
                 }
 
                 val prayerTimeChannel = NotificationChannel(
@@ -450,10 +686,11 @@ class SmartPrayerNotificationManager(private val context: Context) {
                 val quietReminderChannel = NotificationChannel(
                     CHANNEL_QUIET_REMINDER,
                     "Quiet Prayer Reminder",
-                    NotificationManager.IMPORTANCE_DEFAULT
+                    NotificationManager.IMPORTANCE_LOW
                 ).apply {
-                    description = "Gentle reminders for voluntary prayers and dhikr"
+                    description = "Gentle reminders for voluntary prayers and spiritual moments"
                     enableVibration(false)
+                    setSound(null, null)
                 }
 
                 notificationManager.createNotificationChannels(

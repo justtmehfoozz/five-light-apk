@@ -3,10 +3,9 @@ package com.example.data.reminder
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.example.data.util.PrayerCalc
+import com.example.data.db.AppDatabase
+import com.example.data.repository.AppRepository
 import com.example.data.util.NaflCalc
-import com.example.data.model.NaflPreferences
-import java.util.Date
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -16,30 +15,23 @@ class BootReceiver : BroadcastReceiver() {
             action == Intent.ACTION_TIMEZONE_CHANGED ||
             action == Intent.ACTION_TIME_CHANGED
         ) {
-            SmartPrayerNotificationManager.createNotificationChannel(context)
+            SmartPrayerNotificationManager.createNotificationChannels(context)
 
-            // Load preferences / defaults to calculate prayer times
-            val prefs = context.getSharedPreferences("fivelight_prefs", Context.MODE_PRIVATE)
-            val lat = prefs.getFloat("lat", 21.4225f).toDouble()
-            val lng = prefs.getFloat("lng", 39.8262f).toDouble()
+            try {
+                val db = AppDatabase.getDatabase(context.applicationContext)
+                val repo = AppRepository(db, context.applicationContext)
+                val calculatedPrayers = repo.getTodayPrayerTimes()
+                val is24H = repo.timeFormat.value.is24Hour
+                val naflWindows = NaflCalc.calculateNaflTimes(
+                    fardPrayers = calculatedPrayers,
+                    preferences = repo.naflPreferences.value,
+                    is24Hour = is24H
+                )
+                val todayStr = repo.getTodayDateString()
 
-            val calculatedPrayers = PrayerCalc.calculatePrayerTimes(
-                latitude = lat,
-                longitude = lng,
-                date = Date()
-            )
-
-            val naflPrefs = NaflPreferences(
-                tahajjudEnabled = prefs.getBoolean("nafl_tahajjud_enabled", false),
-                ishraqEnabled = prefs.getBoolean("nafl_ishraq_enabled", false),
-                duhaEnabled = prefs.getBoolean("nafl_duha_enabled", false),
-                awwabinEnabled = prefs.getBoolean("nafl_awwabin_enabled", false)
-            )
-            
-            val naflWindows = NaflCalc.calculateNaflTimes(calculatedPrayers, naflPrefs)
-
-            val manager = SmartPrayerNotificationManager(context)
-            manager.scheduleSmartNotifications(calculatedPrayers, naflWindows)
+                val manager = SmartPrayerNotificationManager(context)
+                manager.scheduleSmartNotifications(calculatedPrayers, naflWindows, todayStr)
+            } catch (_: Exception) {}
         }
     }
 }

@@ -681,7 +681,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         // Reschedule reminders for updated prayer calculation
         try {
             val smartManager = com.example.data.reminder.SmartPrayerNotificationManager(getApplication())
-            smartManager.scheduleSmartNotifications(times, _naflPrayerItems.value)
+            smartManager.scheduleSmartNotifications(times, _naflPrayerItems.value, repository.getTodayDateString())
         } catch (e: Exception) {
             // Ignore if context/alarm exception
         }

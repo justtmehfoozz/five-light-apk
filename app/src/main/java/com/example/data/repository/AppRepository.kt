@@ -30,6 +30,7 @@ class AppRepository(
     private val db: AppDatabase,
     context: Context? = null
 ) {
+    private val appContext = context?.applicationContext
     private val prefs = context?.getSharedPreferences("fivelight_prefs", Context.MODE_PRIVATE)
 
     val PREDEFINED_CITIES = listOf(
@@ -734,6 +735,21 @@ class AppRepository(
             PrayerName.SUNRISE -> existing
         }
         db.prayerLogDao().insertOrUpdatePrayerLog(updated)
+
+        appContext?.let { ctx ->
+            if (isCompleted) {
+                try {
+                    val smartManager = com.example.data.reminder.SmartPrayerNotificationManager(ctx)
+                    smartManager.onPrayerCompletedInApp(prayerName, dateString)
+                } catch (_: Exception) {}
+            } else if (isMissed) {
+                try {
+                    val smartManager = com.example.data.reminder.SmartPrayerNotificationManager(ctx)
+                    smartManager.cancelFollowUpAlarm(prayerName, dateString)
+                    smartManager.cancelPrayerNotification(prayerName, dateString)
+                } catch (_: Exception) {}
+            }
+        }
 
         if (isCompleted && wasQadaAdded) {
             val currentCount = getQadaCount(prayerName)
