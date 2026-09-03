@@ -189,16 +189,16 @@ class MainActivity : ComponentActivity() {
                             .haze(state = hazeState),
                         beyondViewportPageCount = 1
                     ) { pageIndex ->
+                        val pageOffset = (
+                            (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
+                        )
+                        val absOffset = kotlin.math.abs(pageOffset.coerceIn(-1f, 1f))
+
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .zIndex(if (pageIndex == pagerState.currentPage) 1f else 0f)
+                                .zIndex(1f - absOffset)
                                 .graphicsLayer {
-                                    val pageOffset = (
-                                        (pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction
-                                    )
-                                    val absOffset = kotlin.math.abs(pageOffset.coerceIn(-1f, 1f))
-
                                     // Fade: 1f at 0 offset -> 0f at 1.0 offset
                                     alpha = (1f - absOffset).coerceIn(0f, 1f)
 
