@@ -65,44 +65,28 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun FiveLightTheme(
     appearanceMode: AppearanceMode = AppearanceMode.SYSTEM,
+    themeTransitionController: ThemeTransitionController? = null,
     content: @Composable () -> Unit
 ) {
-    val darkTheme = when (appearanceMode) {
+    val controller = themeTransitionController ?: rememberThemeTransitionController()
+    val activeMode = controller.effectiveAppearanceMode ?: appearanceMode
+
+    val darkTheme = when (activeMode) {
         AppearanceMode.SYSTEM -> isSystemInDarkTheme()
         AppearanceMode.DARK -> true
         AppearanceMode.LIGHT -> false
     }
     val targetScheme = if (darkTheme) DarkColorScheme else LightColorScheme
 
-    val animatedBg by animateColorAsState(targetScheme.background, tween(400), label = "bgAnim")
-    val animatedSurface by animateColorAsState(targetScheme.surface, tween(400), label = "surfaceAnim")
-    val animatedSurfaceVariant by animateColorAsState(targetScheme.surfaceVariant, tween(400), label = "surfaceVarAnim")
-    val animatedOnSurface by animateColorAsState(targetScheme.onSurface, tween(400), label = "onSurfaceAnim")
-    val animatedOnSurfaceVariant by animateColorAsState(targetScheme.onSurfaceVariant, tween(400), label = "onSurfaceVarAnim")
-    val animatedPrimary by animateColorAsState(targetScheme.primary, tween(400), label = "primaryAnim")
-    val animatedSecondary by animateColorAsState(targetScheme.secondary, tween(400), label = "secondaryAnim")
-    val animatedTertiary by animateColorAsState(targetScheme.tertiary, tween(400), label = "tertiaryAnim")
-    val animatedOutline by animateColorAsState(targetScheme.outline, tween(400), label = "outlineAnim")
-    val animatedOutlineVariant by animateColorAsState(targetScheme.outlineVariant, tween(400), label = "outlineVarAnim")
-
-    val colorScheme = targetScheme.copy(
-        background = animatedBg,
-        surface = animatedSurface,
-        surfaceVariant = animatedSurfaceVariant,
-        onSurface = animatedOnSurface,
-        onSurfaceVariant = animatedOnSurfaceVariant,
-        primary = animatedPrimary,
-        secondary = animatedSecondary,
-        tertiary = animatedTertiary,
-        outline = animatedOutline,
-        outlineVariant = animatedOutlineVariant
-    )
-
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+    androidx.compose.runtime.CompositionLocalProvider(
+        LocalThemeTransitionController provides controller
+    ) {
+        MaterialTheme(
+            colorScheme = targetScheme,
+            typography = Typography,
+            content = content
+        )
+    }
 }
 
 

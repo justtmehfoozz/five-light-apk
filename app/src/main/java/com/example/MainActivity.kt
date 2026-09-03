@@ -42,7 +42,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.RegisterPredictiveBackHandler
 import com.example.ui.components.rememberPredictiveBackState
 import com.example.data.util.DuaItem
+import com.example.data.model.AppearanceMode
 import com.example.ui.components.ExploreSearchScope
+import androidx.compose.foundation.isSystemInDarkTheme
+import com.example.ui.theme.rememberThemeTransitionController
+import com.example.ui.theme.isSystemReducedMotion
+import com.example.ui.theme.themeRadialReveal
 import com.example.ui.components.ExpandedQuranPlayerSheet
 import com.example.ui.components.NavItem
 import com.example.ui.components.SereneBottomNavBar
@@ -75,8 +80,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             val appearanceMode by viewModel.appearanceMode.collectAsStateWithLifecycle()
             val vibrationEnabled by viewModel.vibrationEnabled.collectAsStateWithLifecycle()
+            val themeTransitionController = rememberThemeTransitionController()
+            val isReducedMotion = isSystemReducedMotion()
+            val isSystemDark = isSystemInDarkTheme()
 
-            FiveLightTheme(appearanceMode = appearanceMode) {
+            FiveLightTheme(
+                appearanceMode = appearanceMode,
+                themeTransitionController = themeTransitionController
+            ) {
                 androidx.compose.runtime.CompositionLocalProvider(com.example.ui.theme.LocalVibrationEnabled provides vibrationEnabled) {
                 val coroutineScope = rememberCoroutineScope()
                 val pagerState = rememberPagerState(initialPage = 0, pageCount = { NavItem.entries.size })
@@ -164,6 +175,7 @@ class MainActivity : ComponentActivity() {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .themeRadialReveal(themeTransitionController)
                         .background(MaterialTheme.colorScheme.background)
                 ) {
                     val appContentAlpha = if (isSplashFinished) 1f else splashExitProgress
@@ -656,6 +668,25 @@ class MainActivity : ComponentActivity() {
                             onSelectTimeFormat = { tf -> viewModel.setTimeFormat(tf) },
                             selectedAppearanceMode = appearanceMode,
                             onSelectAppearanceMode = { mode -> viewModel.setAppearanceMode(mode) },
+                            onSelectAppearanceModeWithOrigin = { mode, origin ->
+                                val currentIsDark = when (appearanceMode) {
+                                    AppearanceMode.SYSTEM -> isSystemDark
+                                    AppearanceMode.DARK -> true
+                                    AppearanceMode.LIGHT -> false
+                                }
+                                val targetIsDark = when (mode) {
+                                    AppearanceMode.SYSTEM -> isSystemDark
+                                    AppearanceMode.DARK -> true
+                                    AppearanceMode.LIGHT -> false
+                                }
+                                themeTransitionController.startTransition(
+                                    targetMode = mode,
+                                    tapOrigin = origin,
+                                    isReducedMotion = isReducedMotion,
+                                    isEffectiveThemeChanging = (currentIsDark != targetIsDark)
+                                )
+                                viewModel.setAppearanceMode(mode)
+                            },
                             selectedTasbeehSound = tasbeehSound,
                             onSelectTasbeehSound = { s -> viewModel.setTasbeehSound(s) },
                             selectedHijriMethod = hijriDateMethod,

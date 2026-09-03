@@ -14,6 +14,13 @@ import com.example.ui.theme.semanticMutedText
 import com.example.ui.theme.semanticBorder
 import com.example.ui.theme.semanticBackground
 import com.example.ui.theme.semanticWarning
+import com.example.ui.theme.themeRadialReveal
+import com.example.ui.theme.LocalThemeTransitionController
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 
 
 import androidx.compose.animation.AnimatedContent
@@ -128,6 +135,7 @@ fun SettingsBottomSheet(
     onSelectTimeFormat: (TimeFormat) -> Unit,
     selectedAppearanceMode: AppearanceMode,
     onSelectAppearanceMode: (AppearanceMode) -> Unit,
+    onSelectAppearanceModeWithOrigin: ((AppearanceMode, Offset) -> Unit)? = null,
     selectedTasbeehSound: TasbeehSound,
     onSelectTasbeehSound: (TasbeehSound) -> Unit,
     selectedHijriMethod: com.example.data.model.HijriDateMethod = com.example.data.model.HijriDateMethod.REGIONAL_INDIA,
@@ -196,6 +204,7 @@ fun SettingsBottomSheet(
     }
 
     val isDark = isAppInDarkTheme()
+    val themeTransitionController = LocalThemeTransitionController.current
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -212,6 +221,7 @@ fun SettingsBottomSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .themeRadialReveal(themeTransitionController)
                 .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
             AnimatedContent(
@@ -232,6 +242,7 @@ fun SettingsBottomSheet(
                         MainPreferencesView(
                             selectedAppearanceMode = selectedAppearanceMode,
                             onSelectAppearanceMode = onSelectAppearanceMode,
+                            onSelectAppearanceModeWithOrigin = onSelectAppearanceModeWithOrigin,
                             selectedCity = selectedCity,
                             selectedCalcMethod = selectedCalcMethod,
                             selectedMadhab = selectedMadhab,
@@ -872,6 +883,7 @@ fun SettingsBottomSheet(
 fun MainPreferencesView(
     selectedAppearanceMode: AppearanceMode,
     onSelectAppearanceMode: (AppearanceMode) -> Unit,
+    onSelectAppearanceModeWithOrigin: ((AppearanceMode, Offset) -> Unit)? = null,
     selectedCity: CityLocation,
     selectedCalcMethod: CalcMethod,
     selectedMadhab: Madhab,
@@ -919,6 +931,7 @@ fun MainPreferencesView(
                         AppearanceSegmentedControl(
                             selectedMode = selectedAppearanceMode,
                             onModeSelected = onSelectAppearanceMode,
+                            onModeSelectedWithOrigin = onSelectAppearanceModeWithOrigin,
                             showTitle = false
                         )
                     }
@@ -1280,7 +1293,8 @@ fun <T> SpringPillSelector(
     items: List<PillItem<T>>,
     selectedItem: T,
     onItemSelected: (T) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onItemSelectedWithOrigin: ((T, Offset) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val isReducedMotion = remember(context) {
@@ -1356,13 +1370,30 @@ fun <T> SpringPillSelector(
             items.forEach { item ->
                 val isSelected = item.value == selectedItem
                 val contentColor = if (isSelected) activeContentColor else inactiveContentColor
+                var itemBoundsInWindow by remember { mutableStateOf(androidx.compose.ui.geometry.Rect.Zero) }
 
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .height(36.dp)
                         .clip(CircleShape)
-                        .clickable { onItemSelected(item.value) },
+                        .onGloballyPositioned { coords ->
+                            itemBoundsInWindow = coords.boundsInWindow()
+                        }
+                        .pointerInput(item.value) {
+                            detectTapGestures { tapOffset ->
+                                val origin = if (itemBoundsInWindow != androidx.compose.ui.geometry.Rect.Zero) {
+                                    itemBoundsInWindow.topLeft + tapOffset
+                                } else {
+                                    Offset.Zero
+                                }
+                                if (onItemSelectedWithOrigin != null) {
+                                    onItemSelectedWithOrigin(item.value, origin)
+                                } else {
+                                    onItemSelected(item.value)
+                                }
+                            }
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
@@ -1399,7 +1430,8 @@ fun AppearanceSegmentedControl(
     selectedMode: AppearanceMode,
     onModeSelected: (AppearanceMode) -> Unit,
     showTitle: Boolean = true,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onModeSelectedWithOrigin: ((AppearanceMode, Offset) -> Unit)? = null
 ) {
     val modes = remember {
         listOf(
@@ -1426,7 +1458,8 @@ fun AppearanceSegmentedControl(
         SpringPillSelector(
             items = modes,
             selectedItem = selectedMode,
-            onItemSelected = onModeSelected
+            onItemSelected = onModeSelected,
+            onItemSelectedWithOrigin = onModeSelectedWithOrigin
         )
 
         Spacer(modifier = Modifier.height(6.dp))
