@@ -39,6 +39,17 @@ jobs:
             echo "$KEYSTORE_BASE64" | base64 --decode > "${{ runner.temp }}/release.jks"
           fi
 
+      - name: Diagnostic - Print Release Keystore Fingerprints
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          if [ -f "${{ runner.temp }}/release.jks" ]; then
+            echo "=== RELEASE KEYSTORE FINGERPRINTS ==="
+            keytool -list -v -keystore "${{ runner.temp }}/release.jks" -alias "$KEY_ALIAS" -storepass "$KEYSTORE_PASSWORD" | grep -E "SHA1:|SHA256:"
+            echo "======================================"
+          fi
+
       - name: Write Google Services JSON
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
