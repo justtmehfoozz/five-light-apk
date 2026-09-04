@@ -178,7 +178,7 @@ class AuthRepository(private val context: Context) {
                     Log.e(tag, "Stage 1 provider failure: type=${e.type}, class=${e.javaClass.name}, message=${e.message}", e)
                     return@withContext Result.failure(
                         GoogleAuthException.ProviderError(
-                            "Google Sign-In is unavailable. Please check Google Play services.",
+                            "Google Sign-In failed in Stage 1: [${e.javaClass.simpleName}] type=${e.type} - ${e.message ?: "no message"}",
                             e
                         )
                     )
@@ -200,7 +200,7 @@ class AuthRepository(private val context: Context) {
                 Result.success(user)
             } else {
                 Log.e(tag, "Unsupported credential type: ${credential.type}")
-                Result.failure(GoogleAuthException.ProviderError("Unsupported credential type returned from provider."))
+                Result.failure(GoogleAuthException.ProviderError("Unsupported credential type: ${credential.type}"))
             }
         } catch (e: GoogleAuthException.Cancelled) {
             Result.failure(e)
@@ -211,10 +211,10 @@ class AuthRepository(private val context: Context) {
             Result.failure(GoogleAuthException.Cancelled)
         } catch (e: FirebaseAuthException) {
             Log.e(tag, "Firebase authentication failed: ${e.errorCode} - ${e.message}", e)
-            Result.failure(GoogleAuthException.FirebaseAuthFailure(e.localizedMessage ?: "Firebase authentication failed.", e))
+            Result.failure(GoogleAuthException.FirebaseAuthFailure("Firebase auth failed: [${e.errorCode}] ${e.localizedMessage ?: e.message ?: "Unknown error"}", e))
         } catch (e: Exception) {
             Log.e(tag, "Google Sign-In error: ${e.javaClass.name}: ${e.message}", e)
-            Result.failure(e)
+            Result.failure(GoogleAuthException.ProviderError("Google Sign-In error: [${e.javaClass.simpleName}] ${e.message ?: "no message"}", e))
         }
     }
 
@@ -244,52 +244,23 @@ class AuthRepository(private val context: Context) {
             null
         } catch (e: NoCredentialException) {
             Log.w(tag, "Stage 2 NoCredentialException: class=${e.javaClass.name}, message=${e.message}", e)
-            val msg = e.message.orEmpty().lowercase()
-            if (msg.contains("no google account") || msg.contains("no accounts")) {
-                throw GoogleAuthException.NoAccountsAvailable(
-                    "No Google account found on device. Please add a Google account in system settings."
-                )
-            } else {
-                throw GoogleAuthException.EnvironmentLimitation(
-                    "Google Sign-In is unavailable in this environment. Please ensure Google Play services is active.",
-                    e
-                )
-            }
+            val msg = e.message.orEmpty()
+            throw GoogleAuthException.EnvironmentLimitation(
+                "Google Sign-In failed (Stage 2): [${e.javaClass.simpleName}] ${if (msg.isNotBlank()) msg else "No accounts/credentials available"}",
+                e
+            )
         } catch (e: GetCredentialException) {
             Log.e(tag, "Stage 2 GetCredentialException: type=${e.type}, class=${e.javaClass.name}, message=${e.message}", e)
             val type = e.type.lowercase()
-            val msg = e.message.orEmpty().lowercase()
+            val msg = e.message.orEmpty()
             when {
-                type.contains("cancel") || type.contains("interrupted") || msg.contains("cancel") -> {
+                type.contains("cancel") || type.contains("interrupted") || msg.lowercase().contains("cancel") -> {
                     Log.d(tag, "Stage 2: Cancellation detected from exception type: ${e.type}")
                     null
                 }
-                type.contains("unsupported") || msg.contains("unsupported") -> {
-                    throw GoogleAuthException.EnvironmentLimitation(
-                        "Google Sign-In is not supported on this device or environment.",
-                        e
-                    )
-                }
-                type.contains("configuration") || type.contains("developer") || msg.contains("configuration") -> {
-                    throw GoogleAuthException.ConfigurationError(
-                        "Google Sign-In configuration error. Please verify Google Play services and Firebase settings."
-                    )
-                }
-                type.contains("no_credential") || msg.contains("no credentials") -> {
-                    if (msg.contains("no google account") || msg.contains("no accounts")) {
-                        throw GoogleAuthException.NoAccountsAvailable(
-                            "No Google account found on device. Please add a Google account in system settings."
-                        )
-                    } else {
-                        throw GoogleAuthException.EnvironmentLimitation(
-                            "Google Sign-In is unavailable in this environment. Please verify Google Play services.",
-                            e
-                        )
-                    }
-                }
                 else -> {
                     throw GoogleAuthException.ProviderError(
-                        "Google Sign-In could not be completed. Please try again or sign in with email.",
+                        "Google Sign-In failed (Stage 2): [${e.javaClass.simpleName}] type=${e.type} - ${if (msg.isNotBlank()) msg else "no message"}",
                         e
                     )
                 }

@@ -73,11 +73,9 @@ android {
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
-      isDebuggable = false
-      isMinifyEnabled = true
-      isShrinkResources = true
-      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-      // Uses the default Android Gradle debug signing config (~/.android/debug.keystore generated automatically by AGP)
+      isDebuggable = true
+      isMinifyEnabled = false
+      isShrinkResources = false
       signingConfig = signingConfigs.getByName("debug")
     }
   }
