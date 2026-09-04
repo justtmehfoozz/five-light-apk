@@ -35,8 +35,15 @@ class AppUpdateManagerTest {
 
     @Test
     fun testCurrentVersionProperties() {
-        assertEquals("1.7", updateManager.currentVersionName)
-        assertEquals(5L, updateManager.currentVersionCode)
+        assertEquals("1.6", updateManager.currentVersionName)
+        assertEquals(4L, updateManager.currentVersionCode)
+    }
+
+    @Test
+    fun testOfficialRepositoryConfig() {
+        assertEquals("justtmehfoozz", AppUpdateManager.OFFICIAL_REPO_OWNER)
+        assertEquals("five-light-apk", AppUpdateManager.OFFICIAL_REPO_NAME)
+        assertEquals("https://api.github.com/repos/justtmehfoozz/five-light-apk/releases/latest", AppUpdateManager.GITHUB_API_URL)
     }
 
     @Test
@@ -52,7 +59,7 @@ class AppUpdateManagerTest {
             name = "FiveLight v1.7",
             body = "New features",
             publishedAt = "2026-09-04T00:00:00Z",
-            apkDownloadUrl = "https://github.com/mehfoozzshaikhh/FiveLight/releases/download/v1.7/fivelight.apk",
+            apkDownloadUrl = "https://github.com/justtmehfoozz/five-light-apk/releases/download/v1.7/fivelight.apk",
             apkFileName = "fivelight.apk",
             apkSize = 1024L
         )

@@ -61,9 +61,17 @@ class AppUpdateManager(private val context: Context) {
         }
     }
 
+    companion object {
+        const val OFFICIAL_REPO_OWNER = "justtmehfoozz"
+        const val OFFICIAL_REPO_NAME = "five-light-apk"
+        const val GITHUB_API_URL = "https://api.github.com/repos/justtmehfoozz/five-light-apk/releases/latest"
+    }
+
+    private var rateLimitResetEpochSeconds: Long = 0L
+
     /**
-     * Checks the official GitHub repository for the latest release.
-     * Prevents concurrent or duplicate requests.
+     * Checks the official FiveLight GitHub repository for the latest release.
+     * Prevents concurrent or duplicate requests and respects rate-limit cooldowns.
      */
     suspend fun checkForUpdates(force: Boolean = false): UpdateState = withContext(Dispatchers.IO) {
         val currentState = _updateState.value
@@ -71,77 +79,115 @@ class AppUpdateManager(private val context: Context) {
             return@withContext currentState
         }
 
-        _updateState.value = UpdateState.Checking
-
-        val repoCandidates = listOf(
-            "mehfoozzshaikhh/FiveLight",
-            "mehfoozshaikh/FiveLight",
-            "FiveLight/FiveLight"
-        )
-
-        var lastError: String? = null
-        var foundRelease: ReleaseInfo? = null
-
-        for (repo in repoCandidates) {
-            val releaseUrl = "https://api.github.com/repos/$repo/releases/latest"
-            val request = Request.Builder()
-                .url(releaseUrl)
-                .header("Accept", "application/vnd.github.v3+json")
-                .header("User-Agent", "FiveLight-Android-App/$currentVersionName")
-                .get()
-                .build()
-
-            try {
-                val response = httpClient.newCall(request).execute()
-                response.use { resp ->
-                    if (resp.isSuccessful) {
-                        val bodyString = resp.body?.string()
-                        if (!bodyString.isNullOrBlank()) {
-                            val parsed = parseReleaseJson(bodyString)
-                            if (parsed != null) {
-                                foundRelease = parsed
-                                return@use
-                            }
-                        }
-                    } else if (resp.code != 404) {
-                        lastError = "GitHub API responded with status ${resp.code}"
-                    }
-                }
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                lastError = "Network error: ${e.localizedMessage ?: "Unable to contact GitHub"}"
-            }
-
-            if (foundRelease != null) break
+        val nowEpochSeconds = System.currentTimeMillis() / 1000
+        if (!force && rateLimitResetEpochSeconds > nowEpochSeconds) {
+            val secondsRemaining = rateLimitResetEpochSeconds - nowEpochSeconds
+            val minutesRemaining = (secondsRemaining + 59) / 60
+            val rateLimitMsg = "GitHub API hourly request limit reached. Please try again in $minutesRemaining ${if (minutesRemaining == 1L) "minute" else "minutes"}."
+            val state = UpdateState.Error(message = rateLimitMsg, isNetworkError = true, canRetry = false)
+            _updateState.value = state
+            return@withContext state
         }
 
-        val release = foundRelease
-        val err = lastError
+        _updateState.value = UpdateState.Checking
 
-        val finalState = if (release != null) {
-            val remoteVersionCode = release.versionCode
-            if (remoteVersionCode > currentVersionCode) {
-                UpdateState.UpdateAvailable(
-                    releaseInfo = release,
-                    installedVersionName = currentVersionName,
-                    installedVersionCode = currentVersionCode
-                )
-            } else {
-                UpdateState.UpToDate(
-                    installedVersionName = currentVersionName,
-                    installedVersionCode = currentVersionCode
-                )
+        val request = Request.Builder()
+            .url(GITHUB_API_URL)
+            .header("Accept", "application/vnd.github.v3+json")
+            .header("User-Agent", "FiveLight-Android-App/$currentVersionName")
+            .get()
+            .build()
+
+        val finalState: UpdateState = try {
+            val response = httpClient.newCall(request).execute()
+            response.use { resp ->
+                val remainingHeader = resp.header("X-RateLimit-Remaining")?.toLongOrNull()
+                val resetHeader = resp.header("X-RateLimit-Reset")?.toLongOrNull()
+
+                if (resp.isSuccessful) {
+                    rateLimitResetEpochSeconds = 0L
+                    val bodyString = resp.body?.string()
+                    if (!bodyString.isNullOrBlank()) {
+                        val parsed = parseReleaseJson(bodyString)
+                        if (parsed != null) {
+                            val remoteVersionCode = parsed.versionCode
+                            if (remoteVersionCode > currentVersionCode) {
+                                UpdateState.UpdateAvailable(
+                                    releaseInfo = parsed,
+                                    installedVersionName = currentVersionName,
+                                    installedVersionCode = currentVersionCode
+                                )
+                            } else {
+                                UpdateState.UpToDate(
+                                    installedVersionName = currentVersionName,
+                                    installedVersionCode = currentVersionCode
+                                )
+                            }
+                        } else {
+                            UpdateState.Error(
+                                message = "Latest release on FiveLight does not contain a compatible APK asset.",
+                                canRetry = true
+                            )
+                        }
+                    } else {
+                        UpdateState.Error(
+                            message = "Empty response received from GitHub Releases API.",
+                            isNetworkError = true,
+                            canRetry = true
+                        )
+                    }
+                } else if (resp.code == 403) {
+                    val respBody = try { resp.body?.string() ?: "" } catch (_: Exception) { "" }
+                    val isRateLimit = remainingHeader == 0L || respBody.contains("rate limit", ignoreCase = true)
+
+                    if (isRateLimit) {
+                        if (resetHeader != null && resetHeader > 0) {
+                            rateLimitResetEpochSeconds = resetHeader
+                            val now = System.currentTimeMillis() / 1000
+                            val secondsRemaining = (resetHeader - now).coerceAtLeast(0)
+                            val minutesRemaining = (secondsRemaining + 59) / 60
+                            val formattedTime = try {
+                                val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                                sdf.format(java.util.Date(resetHeader * 1000))
+                            } catch (_: Exception) { null }
+
+                            val timeHint = if (formattedTime != null) " (around $formattedTime)" else ""
+                            val msg = "GitHub API hourly request limit reached. Please try again in $minutesRemaining ${if (minutesRemaining == 1L) "minute" else "minutes"}$timeHint."
+                            UpdateState.Error(message = msg, isNetworkError = true, canRetry = false)
+                        } else {
+                            UpdateState.Error(
+                                message = "GitHub API hourly request limit reached. Please try again in a few minutes.",
+                                isNetworkError = true,
+                                canRetry = true
+                            )
+                        }
+                    } else {
+                        UpdateState.Error(
+                            message = "Unable to access GitHub releases (HTTP 403). Please verify network access or try again later.",
+                            isNetworkError = true,
+                            canRetry = true
+                        )
+                    }
+                } else if (resp.code == 404) {
+                    UpdateState.Error(
+                        message = "No published releases found on the official FiveLight repository.",
+                        canRetry = true
+                    )
+                } else {
+                    UpdateState.Error(
+                        message = "GitHub API request failed (HTTP ${resp.code}). Please try again later.",
+                        isNetworkError = true,
+                        canRetry = true
+                    )
+                }
             }
-        } else {
-            if (err != null && !err.contains("404")) {
-                UpdateState.Error(message = err, isNetworkError = true)
-            } else {
-                // If no releases found or repo has no newer published release
-                UpdateState.UpToDate(
-                    installedVersionName = currentVersionName,
-                    installedVersionCode = currentVersionCode
-                )
-            }
+        } catch (e: Exception) {
+            if (e is CancellationException) throw e
+            UpdateState.Error(
+                message = "Network error: ${e.localizedMessage ?: "Unable to connect to GitHub"}",
+                isNetworkError = true,
+                canRetry = true
+            )
         }
 
         _updateState.value = finalState
