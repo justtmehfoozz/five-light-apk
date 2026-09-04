@@ -36,21 +36,25 @@ class FiveLightApp : Application() {
                     if (app == null || FirebaseApp.getApps(appContext).isEmpty()) {
                         Log.w(TAG, "Standard Firebase initialization returned null. Initializing with explicit FirebaseOptions...")
                         
-                        val res = appContext.resources
-                        fun resolveString(key: String): String? {
-                            val id = res.getIdentifier(key, "string", appContext.packageName).takeIf { it != 0 }
-                                ?: res.getIdentifier(key, "string", "com.example").takeIf { it != 0 }
-                                ?: 0
-                            return if (id != 0) {
-                                try { res.getString(id).trim().takeIf { it.isNotBlank() } } catch (_: Exception) { null }
-                            } else null
+                        fun getStringRes(resId: Int, key: String): String? {
+                            return try {
+                                appContext.getString(resId).trim().takeIf { it.isNotBlank() }
+                            } catch (_: Exception) {
+                                val res = appContext.resources
+                                val id = res.getIdentifier(key, "string", appContext.packageName).takeIf { it != 0 }
+                                    ?: res.getIdentifier(key, "string", "com.example").takeIf { it != 0 }
+                                    ?: 0
+                                if (id != 0) {
+                                    try { res.getString(id).trim().takeIf { it.isNotBlank() } } catch (_: Exception) { null }
+                                } else null
+                            }
                         }
 
-                        val appId = resolveString("google_app_id")
-                        val apiKey = resolveString("google_api_key")
-                        val projectId = resolveString("project_id")
-                        val gcmSenderId = resolveString("gcm_defaultSenderId")
-                        val storageBucket = resolveString("google_storage_bucket")
+                        val appId = getStringRes(com.example.R.string.google_app_id, "google_app_id")
+                        val apiKey = getStringRes(com.example.R.string.google_api_key, "google_api_key")
+                        val projectId = getStringRes(com.example.R.string.project_id, "project_id")
+                        val gcmSenderId = getStringRes(com.example.R.string.gcm_defaultSenderId, "gcm_defaultSenderId")
+                        val storageBucket = getStringRes(com.example.R.string.google_storage_bucket, "google_storage_bucket")
 
                         if (!appId.isNullOrBlank() && !apiKey.isNullOrBlank() && !projectId.isNullOrBlank()) {
                             val builder = FirebaseOptions.Builder()

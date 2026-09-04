@@ -119,18 +119,20 @@ class AuthRepository(private val context: Context) {
             // 0. Ensure Firebase is initialized
             com.example.FiveLightApp.ensureFirebaseInitialized(activityContext)
 
-            // 1. Resolve Server Web Client ID dynamically from resources
-            val res = activityContext.resources
-            fun resolveString(key: String): String? {
-                val id = res.getIdentifier(key, "string", activityContext.packageName).takeIf { it != 0 }
-                    ?: res.getIdentifier(key, "string", "com.example").takeIf { it != 0 }
+            // 1. Resolve Server Web Client ID from compile-time generated resources
+            val webClientId = try {
+                activityContext.getString(com.example.R.string.default_web_client_id).trim().takeIf { it.isNotBlank() }
+            } catch (_: Exception) {
+                null
+            } ?: run {
+                val res = activityContext.resources
+                val id = res.getIdentifier("default_web_client_id", "string", activityContext.packageName).takeIf { it != 0 }
+                    ?: res.getIdentifier("default_web_client_id", "string", "com.example").takeIf { it != 0 }
                     ?: 0
-                return if (id != 0) {
+                if (id != 0) {
                     try { res.getString(id).trim().takeIf { it.isNotBlank() } } catch (_: Exception) { null }
                 } else null
             }
-
-            val webClientId = resolveString("default_web_client_id")
             if (webClientId.isNullOrBlank()) {
                 Log.w(tag, "Google Sign-In configuration check: default_web_client_id resource not found in configuration.")
                 return@withContext Result.failure(
