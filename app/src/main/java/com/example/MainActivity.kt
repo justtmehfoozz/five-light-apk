@@ -214,18 +214,19 @@ class MainActivity : ComponentActivity() {
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.background)
                 ) {
-                    val appContentAlpha = if (isSplashFinished) 1f else splashExitProgress
-                    val appContentScale = if (isSplashFinished) 1f else (0.98f + 0.02f * splashExitProgress)
+                    if (hasSeenAccountPrompt) {
+                        val appContentAlpha = if (isSplashFinished) 1f else splashExitProgress
+                        val appContentScale = if (isSplashFinished) 1f else (0.98f + 0.02f * splashExitProgress)
 
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                alpha = appContentAlpha
-                                scaleX = appContentScale
-                                scaleY = appContentScale
-                            }
-                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    alpha = appContentAlpha
+                                    scaleX = appContentScale
+                                    scaleY = appContentScale
+                                }
+                        ) {
 
                     val pagerFlingBehavior = PagerDefaults.flingBehavior(
                         state = pagerState,
@@ -768,27 +769,30 @@ class MainActivity : ComponentActivity() {
                             onSettingsChanged = { viewModel.refreshPrayerTimes() }
                         )
                     }
-
-                    if (showLoginBottomSheet) {
-                        LoginBottomSheet(
-                            sheetState = loginSheetState,
-                            authRepository = viewModel.authRepository,
-                            onDismiss = { showLoginBottomSheet = false },
-                            onAuthSuccess = { showLoginBottomSheet = false }
-                        )
-                    }
                     } // end inner Box
+                    } // end if (hasSeenAccountPrompt)
 
                     if (isSplashFinished && !hasSeenAccountPrompt) {
                         PreLoginPromptScreen(
                             onLoginOrRegister = {
-                                viewModel.setHasSeenAccountPrompt(true)
                                 showLoginBottomSheet = true
                             },
                             onContinueAsGuest = {
                                 viewModel.setHasSeenAccountPrompt(true)
                             },
                             modifier = Modifier.fillMaxSize()
+                        )
+                    }
+
+                    if (showLoginBottomSheet) {
+                        LoginBottomSheet(
+                            sheetState = loginSheetState,
+                            authRepository = viewModel.authRepository,
+                            onDismiss = { showLoginBottomSheet = false },
+                            onAuthSuccess = {
+                                viewModel.setHasSeenAccountPrompt(true)
+                                showLoginBottomSheet = false
+                            }
                         )
                     }
 

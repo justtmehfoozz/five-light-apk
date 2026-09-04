@@ -33,6 +33,7 @@ class AppRepository(
     private val appContext = context?.applicationContext
     private val prefs = context?.getSharedPreferences("fivelight_prefs", Context.MODE_PRIVATE)
     val authRepository: com.example.data.auth.AuthRepository? = appContext?.let { com.example.data.auth.AuthRepository.getInstance(it) }
+    var syncManager: com.example.data.sync.FirestoreSyncManager? = null
 
     val PREDEFINED_CITIES = listOf(
         // Indian locations
@@ -306,19 +307,25 @@ class AppRepository(
         val updated = _customDhikrs.value + preset
         _customDhikrs.value = updated
         saveCustomDhikrsToPrefs(updated)
+        prefs?.edit()?.putLong("tasbeeh_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyTasbeehStateChanged()
     }
 
     fun updateCustomDhikr(preset: DhikrPreset) {
         val updated = _customDhikrs.value.map { if (it.id == preset.id) preset else it }
         _customDhikrs.value = updated
         saveCustomDhikrsToPrefs(updated)
+        prefs?.edit()?.putLong("tasbeeh_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyTasbeehStateChanged()
     }
 
     fun deleteCustomDhikr(presetId: String) {
         val updated = _customDhikrs.value.filterNot { it.id == presetId }
         _customDhikrs.value = updated
         saveCustomDhikrsToPrefs(updated)
-        prefs?.edit()?.remove("dhikr_count_$presetId")?.remove("dhikr_target_$presetId")?.apply()
+        prefs?.edit()?.remove("dhikr_count_$presetId")?.remove("dhikr_target_$presetId")
+            ?.putLong("tasbeeh_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyTasbeehStateChanged()
     }
 
     // Custom Targets Persistence
@@ -354,6 +361,8 @@ class AppRepository(
         val updated = _customTargets.value + target
         _customTargets.value = updated
         saveCustomTargetsToPrefs(updated)
+        prefs?.edit()?.putLong("tasbeeh_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyTasbeehStateChanged()
     }
 
     fun deleteCustomTarget(target: Int) {
@@ -361,6 +370,8 @@ class AppRepository(
         val updated = _customTargets.value.filterNot { it == target }
         _customTargets.value = updated
         saveCustomTargetsToPrefs(updated)
+        prefs?.edit()?.putLong("tasbeeh_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyTasbeehStateChanged()
     }
 
     // Per-Dhikr Count & Target Persistence
@@ -368,16 +379,28 @@ class AppRepository(
         return prefs?.getInt("dhikr_count_$presetId", 0) ?: 0
     }
 
+    fun getDhikrCount(presetId: String): Int {
+        return getSavedDhikrCount(presetId)
+    }
+
     fun saveDhikrCount(presetId: String, count: Int) {
-        prefs?.edit()?.putInt("dhikr_count_$presetId", count)?.apply()
+        prefs?.edit()?.putInt("dhikr_count_$presetId", count)
+            ?.putLong("tasbeeh_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyTasbeehStateChanged()
     }
 
     fun getSavedDhikrTarget(presetId: String, defaultTarget: Int): Int {
         return prefs?.getInt("dhikr_target_$presetId", defaultTarget) ?: defaultTarget
     }
 
+    fun getDhikrTarget(presetId: String): Int {
+        return getSavedDhikrTarget(presetId, 33)
+    }
+
     fun saveDhikrTarget(presetId: String, target: Int) {
-        prefs?.edit()?.putInt("dhikr_target_$presetId", target)?.apply()
+        prefs?.edit()?.putInt("dhikr_target_$presetId", target)
+            ?.putLong("tasbeeh_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyTasbeehStateChanged()
     }
 
     fun setCity(city: CityLocation) {
@@ -388,45 +411,61 @@ class AppRepository(
 
     fun setCalcMethod(method: CalcMethod) {
         _calcMethod.value = method
-        prefs?.edit()?.putString("calc_method", method.name)?.apply()
+        prefs?.edit()?.putString("calc_method", method.name)
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
         islamicDateRepository.updateCalcMethod(method)
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 
     fun setMadhab(m: Madhab) {
         _madhab.value = m
-        prefs?.edit()?.putString("madhab", m.name)?.apply()
+        prefs?.edit()?.putString("madhab", m.name)
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 
     fun setAppearanceMode(mode: AppearanceMode) {
         _appearanceMode.value = mode
-        prefs?.edit()?.putString("appearance_mode", mode.name)?.apply()
+        prefs?.edit()?.putString("appearance_mode", mode.name)
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 
     fun setTimeFormat(format: TimeFormat) {
         _timeFormat.value = format
-        prefs?.edit()?.putString("time_format", format.name)?.apply()
+        prefs?.edit()?.putString("time_format", format.name)
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 
     fun setTasbeehSound(sound: com.example.data.model.TasbeehSound) {
         _tasbeehSound.value = sound
-        prefs?.edit()?.putString("tasbeeh_sound", sound.id)?.apply()
+        prefs?.edit()?.putString("tasbeeh_sound", sound.id)
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 
     fun setVibrationEnabled(enabled: Boolean) {
         _vibrationEnabled.value = enabled
-        prefs?.edit()?.putBoolean("vibration_enabled", enabled)?.apply()
+        prefs?.edit()?.putBoolean("vibration_enabled", enabled)
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 
     fun setHijriDateMethod(method: com.example.data.model.HijriDateMethod) {
         _hijriDateMethod.value = method
-        prefs?.edit()?.putString("hijri_date_method", method.name)?.apply()
+        prefs?.edit()?.putString("hijri_date_method", method.name)
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
         islamicDateRepository.updateHijriMethod(method)
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 
     fun setCustomHijriOffset(offset: Int) {
         _customHijriOffset.value = offset
-        prefs?.edit()?.putInt("custom_hijri_offset", offset)?.apply()
+        prefs?.edit()?.putInt("custom_hijri_offset", offset)
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
         islamicDateRepository.updateCustomOffset(offset)
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 
     fun setNaflPreference(
@@ -448,13 +487,17 @@ class AppRepository(
             ?.putBoolean("nafl_ishraq_enabled", ishraq)
             ?.putBoolean("nafl_duha_enabled", duha)
             ?.putBoolean("nafl_awwabin_enabled", awwabin)
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())
             ?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 
     fun setNaflOrder(newOrder: List<String>) {
         val updated = _naflPreferences.value.copy(naflOrder = newOrder)
         _naflPreferences.value = updated
-        prefs?.edit()?.putString("nafl_prayer_order", newOrder.joinToString(","))?.apply()
+        prefs?.edit()?.putString("nafl_prayer_order", newOrder.joinToString(","))
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 
     fun resetNaflOrder() {
@@ -517,13 +560,17 @@ class AppRepository(
             ?.putBoolean("feat_recently_read", recentlyRead)
             ?.putBoolean("feat_quran_lens", quranLens)
             ?.putBoolean("feat_night_is_coming", nightIsComing)
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())
             ?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 
     fun setHomeFeatureOrder(newOrder: List<String>) {
         val updated = _homeFeaturesPreferences.value.copy(featureOrder = newOrder)
         _homeFeaturesPreferences.value = updated
-        prefs?.edit()?.putString("home_feature_order", newOrder.joinToString(","))?.apply()
+        prefs?.edit()?.putString("home_feature_order", newOrder.joinToString(","))
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 
     fun resetHomeFeatureOrder() {
@@ -537,13 +584,14 @@ class AppRepository(
         verseNumber: Int,
         verseIndex: Int
     ) {
+        val now = System.currentTimeMillis()
         val lastRead = com.example.data.model.QuranLastRead(
             surahNumber = surahNumber,
             surahNameEnglish = surahNameEn,
             surahNameArabic = surahNameAr,
             verseNumber = verseNumber,
             verseIndex = verseIndex,
-            timestamp = System.currentTimeMillis()
+            timestamp = now
         )
         _lastReadPosition.value = lastRead
 
@@ -563,7 +611,9 @@ class AppRepository(
             ?.putInt("last_read_verse", verseNumber)
             ?.putInt("last_read_verse_index", verseIndex)
             ?.putLong("last_read_timestamp", lastRead.timestamp)
+            ?.putLong("quran_progress_updated_at", now)
             ?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyQuranProgressChanged()
     }
 
     fun getPrayerLogsForDates(dates: List<String>): Flow<List<PrayerLogEntity>> {
@@ -574,14 +624,21 @@ class AppRepository(
         return prefs?.getInt("qada_${prayerName.name}", 0) ?: 0
     }
 
+    fun getQadaTimestamp(prayerName: com.example.data.model.PrayerName): Long {
+        return prefs?.getLong("qada_timestamp_${prayerName.name}", 0L) ?: 0L
+    }
+
     fun setQadaCount(prayerName: com.example.data.model.PrayerName, count: Int) {
         val safeCount = Math.max(0, count)
+        val now = System.currentTimeMillis()
         val editor = prefs?.edit()
         editor?.putInt("qada_${prayerName.name}", safeCount)
+        editor?.putLong("qada_timestamp_${prayerName.name}", now)
         if (safeCount > 0) {
             editor?.putBoolean("qada_ever_added_${prayerName.name}", true)
         }
         editor?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyQadaChanged(prayerName)
     }
 
     fun hasEverHadQada(prayerName: com.example.data.model.PrayerName): Boolean {
@@ -589,7 +646,9 @@ class AppRepository(
     }
 
     fun setHasEverHadQada(prayerName: com.example.data.model.PrayerName, everAdded: Boolean) {
-        prefs?.edit()?.putBoolean("qada_ever_added_${prayerName.name}", everAdded)?.apply()
+        prefs?.edit()?.putBoolean("qada_ever_added_${prayerName.name}", everAdded)
+            ?.putLong("qada_timestamp_${prayerName.name}", System.currentTimeMillis())
+            ?.apply()
     }
     
     // Quran Goal Persistence
@@ -599,7 +658,10 @@ class AppRepository(
     
     fun setDailyQuranGoal(pages: Int) {
         val safePages = Math.max(0, pages)
-        prefs?.edit()?.putInt("daily_quran_goal", safePages)?.apply()
+        val now = System.currentTimeMillis()
+        prefs?.edit()?.putInt("daily_quran_goal", safePages)
+            ?.putLong("quran_progress_updated_at", now)?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyQuranProgressChanged()
     }
 
     // Surah Playback Progress Persistence
@@ -668,8 +730,10 @@ class AppRepository(
     ): Boolean = prayerLogMutex.withLock {
         if (prayerName == PrayerName.SUNRISE) return@withLock false
         val existing = db.prayerLogDao().getPrayerLogForDateDirect(dateString) ?: PrayerLogEntity(date = dateString)
-        val updated = existing.withNote(prayerName, note)
+        val now = System.currentTimeMillis()
+        val updated = existing.withNote(prayerName, note).copy(updatedAt = now, isDeleted = false)
         db.prayerLogDao().insertOrUpdatePrayerLog(updated)
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPrayerLogChanged(updated)
         return@withLock true
     }
 
@@ -680,8 +744,10 @@ class AppRepository(
     ): Boolean = prayerLogMutex.withLock {
         if (prayerName == PrayerName.SUNRISE) return@withLock false
         val existing = db.prayerLogDao().getPrayerLogForDateDirect(dateString) ?: PrayerLogEntity(date = dateString)
-        val updated = existing.withQadaAdded(prayerName, added)
+        val now = System.currentTimeMillis()
+        val updated = existing.withQadaAdded(prayerName, added).copy(updatedAt = now, isDeleted = false)
         db.prayerLogDao().insertOrUpdatePrayerLog(updated)
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPrayerLogChanged(updated)
         return@withLock true
     }
 
@@ -706,36 +772,48 @@ class AppRepository(
         val wasQadaAdded = existing.isQadaAdded(prayerName)
         val isCompleted = status == com.example.data.model.PrayerStatus.PRAYED
         val isMissed = status == com.example.data.model.PrayerStatus.MISSED
+        val now = System.currentTimeMillis()
 
         val updated = when (prayerName) {
             PrayerName.FAJR -> existing.copy(
                 fajrCompleted = isCompleted,
                 fajrMissed = isMissed,
-                fajrQadaAdded = if (isCompleted) false else existing.fajrQadaAdded
+                fajrQadaAdded = if (isCompleted) false else existing.fajrQadaAdded,
+                updatedAt = now,
+                isDeleted = false
             )
             PrayerName.DHUHR -> existing.copy(
                 dhuhrCompleted = isCompleted,
                 dhuhrMissed = isMissed,
-                dhuhrQadaAdded = if (isCompleted) false else existing.dhuhrQadaAdded
+                dhuhrQadaAdded = if (isCompleted) false else existing.dhuhrQadaAdded,
+                updatedAt = now,
+                isDeleted = false
             )
             PrayerName.ASR -> existing.copy(
                 asrCompleted = isCompleted,
                 asrMissed = isMissed,
-                asrQadaAdded = if (isCompleted) false else existing.asrQadaAdded
+                asrQadaAdded = if (isCompleted) false else existing.asrQadaAdded,
+                updatedAt = now,
+                isDeleted = false
             )
             PrayerName.MAGHRIB -> existing.copy(
                 maghribCompleted = isCompleted,
                 maghribMissed = isMissed,
-                maghribQadaAdded = if (isCompleted) false else existing.maghribQadaAdded
+                maghribQadaAdded = if (isCompleted) false else existing.maghribQadaAdded,
+                updatedAt = now,
+                isDeleted = false
             )
             PrayerName.ISHA -> existing.copy(
                 ishaCompleted = isCompleted,
                 ishaMissed = isMissed,
-                ishaQadaAdded = if (isCompleted) false else existing.ishaQadaAdded
+                ishaQadaAdded = if (isCompleted) false else existing.ishaQadaAdded,
+                updatedAt = now,
+                isDeleted = false
             )
             PrayerName.SUNRISE -> existing
         }
         db.prayerLogDao().insertOrUpdatePrayerLog(updated)
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPrayerLogChanged(updated)
 
         appContext?.let { ctx ->
             if (isCompleted) {
@@ -787,15 +865,17 @@ class AppRepository(
         val targetLog = explicitTarget ?: fallbackTarget
 
         if (targetLog != null) {
+            val now = System.currentTimeMillis()
             val updated = when (prayerName) {
-                PrayerName.FAJR -> targetLog.copy(fajrCompleted = true, fajrMissed = false, fajrQadaAdded = false)
-                PrayerName.DHUHR -> targetLog.copy(dhuhrCompleted = true, dhuhrMissed = false, dhuhrQadaAdded = false)
-                PrayerName.ASR -> targetLog.copy(asrCompleted = true, asrMissed = false, asrQadaAdded = false)
-                PrayerName.MAGHRIB -> targetLog.copy(maghribCompleted = true, maghribMissed = false, maghribQadaAdded = false)
-                PrayerName.ISHA -> targetLog.copy(ishaCompleted = true, ishaMissed = false, ishaQadaAdded = false)
+                PrayerName.FAJR -> targetLog.copy(fajrCompleted = true, fajrMissed = false, fajrQadaAdded = false, updatedAt = now, isDeleted = false)
+                PrayerName.DHUHR -> targetLog.copy(dhuhrCompleted = true, dhuhrMissed = false, dhuhrQadaAdded = false, updatedAt = now, isDeleted = false)
+                PrayerName.ASR -> targetLog.copy(asrCompleted = true, asrMissed = false, asrQadaAdded = false, updatedAt = now, isDeleted = false)
+                PrayerName.MAGHRIB -> targetLog.copy(maghribCompleted = true, maghribMissed = false, maghribQadaAdded = false, updatedAt = now, isDeleted = false)
+                PrayerName.ISHA -> targetLog.copy(ishaCompleted = true, ishaMissed = false, ishaQadaAdded = false, updatedAt = now, isDeleted = false)
                 PrayerName.SUNRISE -> targetLog
             }
             db.prayerLogDao().insertOrUpdatePrayerLog(updated)
+            if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPrayerLogChanged(updated)
         }
 
         return@withLock true
@@ -841,36 +921,48 @@ class AppRepository(
         val wasQadaAdded = existing.isQadaAdded(prayerName)
         val isCompleted = targetStatus == com.example.data.model.PrayerStatus.PRAYED
         val isMissed = targetStatus == com.example.data.model.PrayerStatus.MISSED
+        val now = System.currentTimeMillis()
 
         val updated = when (prayerName) {
             PrayerName.FAJR -> existing.copy(
                 fajrCompleted = isCompleted,
                 fajrMissed = isMissed,
-                fajrQadaAdded = if (isCompleted) false else existing.fajrQadaAdded
+                fajrQadaAdded = if (isCompleted) false else existing.fajrQadaAdded,
+                updatedAt = now,
+                isDeleted = false
             )
             PrayerName.DHUHR -> existing.copy(
                 dhuhrCompleted = isCompleted,
                 dhuhrMissed = isMissed,
-                dhuhrQadaAdded = if (isCompleted) false else existing.dhuhrQadaAdded
+                dhuhrQadaAdded = if (isCompleted) false else existing.dhuhrQadaAdded,
+                updatedAt = now,
+                isDeleted = false
             )
             PrayerName.ASR -> existing.copy(
                 asrCompleted = isCompleted,
                 asrMissed = isMissed,
-                asrQadaAdded = if (isCompleted) false else existing.asrQadaAdded
+                asrQadaAdded = if (isCompleted) false else existing.asrQadaAdded,
+                updatedAt = now,
+                isDeleted = false
             )
             PrayerName.MAGHRIB -> existing.copy(
                 maghribCompleted = isCompleted,
                 maghribMissed = isMissed,
-                maghribQadaAdded = if (isCompleted) false else existing.maghribQadaAdded
+                maghribQadaAdded = if (isCompleted) false else existing.maghribQadaAdded,
+                updatedAt = now,
+                isDeleted = false
             )
             PrayerName.ISHA -> existing.copy(
                 ishaCompleted = isCompleted,
                 ishaMissed = isMissed,
-                ishaQadaAdded = if (isCompleted) false else existing.ishaQadaAdded
+                ishaQadaAdded = if (isCompleted) false else existing.ishaQadaAdded,
+                updatedAt = now,
+                isDeleted = false
             )
             PrayerName.SUNRISE -> existing
         }
         db.prayerLogDao().insertOrUpdatePrayerLog(updated)
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPrayerLogChanged(updated)
 
         if (isCompleted && wasQadaAdded) {
             val currentCount = getQadaCount(prayerName)
@@ -889,9 +981,11 @@ class AppRepository(
             dhikrName = dhikrPreset.nameEnglish,
             arabicText = dhikrPreset.nameArabic,
             countCompleted = count,
-            target = target
+            target = target,
+            syncId = java.util.UUID.randomUUID().toString()
         )
         db.dhikrHistoryDao().insertDhikrHistory(entity)
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyDhikrHistoryAdded(entity)
     }
 
     // Quran Bookmarks
@@ -910,18 +1004,31 @@ class AppRepository(
         textEn: String,
         currentlyBookmarked: Boolean
     ) {
+        val now = System.currentTimeMillis()
         if (currentlyBookmarked) {
-            db.bookmarkDao().removeBookmark(surahNumber, verseNumber)
+            db.bookmarkDao().markBookmarkDeleted(surahNumber, verseNumber, now)
+            val deleted = db.bookmarkDao().getBookmarkByVerse(surahNumber, verseNumber)
+            if (deleted != null && syncManager?.isSyncingFromRemote?.get() != true) {
+                syncManager?.notifyBookmarkChanged(deleted)
+            }
         } else {
+            val existing = db.bookmarkDao().getBookmarkByVerse(surahNumber, verseNumber)
             val bookmark = BookmarkEntity(
+                id = existing?.id ?: 0,
                 surahNumber = surahNumber,
                 verseNumber = verseNumber,
                 surahNameEnglish = surahNameEn,
                 surahNameArabic = surahNameAr,
                 verseTextArabic = textAr,
-                verseTextTranslation = textEn
+                verseTextTranslation = textEn,
+                timestamp = now,
+                updatedAt = now,
+                isDeleted = false
             )
             db.bookmarkDao().addBookmark(bookmark)
+            if (syncManager?.isSyncingFromRemote?.get() != true) {
+                syncManager?.notifyBookmarkChanged(bookmark)
+            }
         }
     }
 
@@ -950,5 +1057,204 @@ class AppRepository(
             db.duaDao().insertCategories(categories)
             db.duaDao().insertDuas(duas)
         }
+    }
+
+    // =========================================================================
+    // SYNC MANAGER SUPPORT METHODS (LOCAL PERSISTENCE LAYER FOR CLOUD SYNC)
+    // =========================================================================
+
+    fun getPreferencesTimestamp(): Long = prefs?.getLong("preferences_updated_at", 0L) ?: 0L
+    fun getQuranProgressTimestamp(): Long = prefs?.getLong("quran_progress_updated_at", 0L) ?: 0L
+    fun getTasbeehStateTimestamp(): Long = prefs?.getLong("tasbeeh_updated_at", 0L) ?: 0L
+
+    suspend fun getAllRawPrayerLogsDirect(): List<PrayerLogEntity> = db.prayerLogDao().getAllRawPrayerLogsDirect()
+    suspend fun getRawPrayerLogForDateDirect(date: String): PrayerLogEntity? = db.prayerLogDao().getRawPrayerLogForDateDirect(date)
+
+    suspend fun applyPrayerLogFromRemote(log: PrayerLogEntity) {
+        db.prayerLogDao().insertOrUpdatePrayerLog(log)
+    }
+
+    suspend fun getAllRawBookmarksDirect(): List<BookmarkEntity> = db.bookmarkDao().getAllRawBookmarksDirect()
+    suspend fun getRawBookmarkDirect(surah: Int, verse: Int): BookmarkEntity? = db.bookmarkDao().getBookmarkByVerse(surah, verse)
+
+    suspend fun applyBookmarkFromRemote(bookmark: BookmarkEntity) {
+        val existing = db.bookmarkDao().getBookmarkByVerse(bookmark.surahNumber, bookmark.verseNumber)
+        val entity = bookmark.copy(id = existing?.id ?: 0)
+        db.bookmarkDao().addBookmark(entity)
+    }
+
+    suspend fun getAllDhikrHistoryDirect(): List<DhikrHistoryEntity> = db.dhikrHistoryDao().getAllDhikrHistoryDirect()
+    suspend fun getDhikrHistoryBySyncId(syncId: String): DhikrHistoryEntity? = db.dhikrHistoryDao().getDhikrHistoryBySyncId(syncId)
+
+    suspend fun applyDhikrHistoryFromRemote(entry: DhikrHistoryEntity) {
+        val existing = db.dhikrHistoryDao().getDhikrHistoryBySyncId(entry.syncId)
+        if (existing == null) {
+            db.dhikrHistoryDao().insertDhikrHistory(entry.copy(id = 0))
+        }
+    }
+
+    fun applyQadaFromRemote(prayerName: PrayerName, count: Int, everAdded: Boolean, timestamp: Long) {
+        val editor = prefs?.edit()
+        editor?.putInt("qada_${prayerName.name}", count)
+        editor?.putBoolean("qada_ever_added_${prayerName.name}", everAdded)
+        editor?.putLong("qada_timestamp_${prayerName.name}", timestamp)
+        editor?.apply()
+    }
+
+    fun applyQuranProgressFromRemote(
+        lastRead: com.example.data.model.QuranLastRead?,
+        recentlyRead: List<com.example.data.model.QuranLastRead>,
+        dailyGoal: Int,
+        timestamp: Long
+    ) {
+        _lastReadPosition.value = lastRead
+        _recentlyReadList.value = recentlyRead
+        saveRecentlyReadToPrefs(recentlyRead)
+        val editor = prefs?.edit()
+        if (lastRead != null) {
+            editor?.putInt("last_read_surah", lastRead.surahNumber)
+                ?.putString("last_read_surah_en", lastRead.surahNameEnglish)
+                ?.putString("last_read_surah_ar", lastRead.surahNameArabic)
+                ?.putInt("last_read_verse", lastRead.verseNumber)
+                ?.putInt("last_read_verse_index", lastRead.verseIndex)
+                ?.putLong("last_read_timestamp", lastRead.timestamp)
+        }
+        editor?.putInt("daily_quran_goal", dailyGoal)
+        editor?.putLong("quran_progress_updated_at", timestamp)
+        editor?.apply()
+    }
+
+    fun applyTasbeehStateFromRemote(
+        customPresets: List<DhikrPreset>,
+        customTargets: List<Int>,
+        activeCounts: Map<String, Int>,
+        activeTargets: Map<String, Int>,
+        timestamp: Long
+    ) {
+        // Merge custom presets (union by ID)
+        val currentPresets = _customDhikrs.value.associateBy { it.id }.toMutableMap()
+        for (p in customPresets) {
+            currentPresets[p.id] = p
+        }
+        val mergedPresets = currentPresets.values.toList()
+        _customDhikrs.value = mergedPresets
+        saveCustomDhikrsToPrefs(mergedPresets)
+
+        // Merge custom targets (union)
+        val mergedTargets = (_customTargets.value + customTargets).distinct().filter { !BUILT_IN_TARGETS.contains(it) }
+        _customTargets.value = mergedTargets
+        saveCustomTargetsToPrefs(mergedTargets)
+
+        // Apply counts and targets
+        val editor = prefs?.edit()
+        for ((k, v) in activeCounts) {
+            editor?.putInt("dhikr_count_$k", v)
+        }
+        for ((k, v) in activeTargets) {
+            editor?.putInt("dhikr_target_$k", v)
+        }
+        editor?.putLong("tasbeeh_updated_at", timestamp)
+        editor?.apply()
+    }
+
+    fun applyPreferencesFromRemote(map: Map<String, Any?>, timestamp: Long) {
+        val editor = prefs?.edit()
+
+        (map["calcMethod"] as? String)?.let { name ->
+            try {
+                val method = CalcMethod.valueOf(name)
+                _calcMethod.value = method
+                editor?.putString("calc_method", name)
+                islamicDateRepository.updateCalcMethod(method)
+            } catch (_: Exception) {}
+        }
+
+        (map["madhab"] as? String)?.let { name ->
+            try {
+                val m = Madhab.valueOf(name)
+                _madhab.value = m
+                editor?.putString("madhab", name)
+            } catch (_: Exception) {}
+        }
+
+        (map["appearanceMode"] as? String)?.let { name ->
+            try {
+                val mode = AppearanceMode.valueOf(name)
+                _appearanceMode.value = mode
+                editor?.putString("appearance_mode", name)
+            } catch (_: Exception) {}
+        }
+
+        (map["timeFormat"] as? String)?.let { name ->
+            try {
+                val fmt = TimeFormat.valueOf(name)
+                _timeFormat.value = fmt
+                editor?.putString("time_format", name)
+            } catch (_: Exception) {}
+        }
+
+        (map["hijriDateMethod"] as? String)?.let { name ->
+            try {
+                val hMethod = com.example.data.model.HijriDateMethod.valueOf(name)
+                _hijriDateMethod.value = hMethod
+                editor?.putString("hijri_date_method", name)
+                islamicDateRepository.updateHijriMethod(hMethod)
+            } catch (_: Exception) {}
+        }
+
+        (map["customHijriOffset"] as? Number)?.let { offset ->
+            _customHijriOffset.value = offset.toInt()
+            editor?.putInt("custom_hijri_offset", offset.toInt())
+            islamicDateRepository.updateCustomOffset(offset.toInt())
+        }
+
+        (map["tasbeehSound"] as? String)?.let { soundId ->
+            com.example.data.model.TasbeehSound.values().find { it.id == soundId }?.let { sound ->
+                _tasbeehSound.value = sound
+                editor?.putString("tasbeeh_sound", soundId)
+            }
+        }
+
+        (map["vibrationEnabled"] as? Boolean)?.let { vib ->
+            _vibrationEnabled.value = vib
+            editor?.putBoolean("vibration_enabled", vib)
+        }
+
+        (map["homeFeatureOrder"] as? String)?.let { orderStr ->
+            if (orderStr.isNotBlank()) {
+                val order = orderStr.split(",")
+                _homeFeaturesPreferences.value = _homeFeaturesPreferences.value.copy(featureOrder = order)
+                editor?.putString("home_feature_order", orderStr)
+            }
+        }
+
+        // Apply notification settings via SmartPrayerNotificationManager
+        appContext?.let { ctx ->
+            try {
+                val smart = com.example.data.reminder.SmartPrayerNotificationManager(ctx)
+                (map["notificationsSmartEnabled"] as? Boolean)?.let { smart.isSmartNotificationsEnabled = it }
+                (map["notificationsPrayerTimeEnabled"] as? Boolean)?.let { smart.isPrayerTimeNotificationsEnabled = it }
+                (map["notificationsPreReminderMins"] as? Number)?.let { mins ->
+                    com.example.data.reminder.PrePrayerReminderOffset.values().find { it.minutes == mins.toInt() }?.let {
+                        smart.preReminderOffset = it
+                    }
+                }
+                (map["notificationsContextualEnabled"] as? Boolean)?.let { smart.isContextualRemindersEnabled = it }
+                (map["notificationsNaflEnabled"] as? Boolean)?.let { smart.isNaflOpportunitiesEnabled = it }
+                (map["notificationsPrayerTogglesJson"] as? String)?.let { jsonStr ->
+                    try {
+                        val obj = org.json.JSONObject(jsonStr)
+                        for (key in listOf("Fajr", "Dhuhr", "Asr", "Maghrib", "Isha")) {
+                            if (obj.has(key)) {
+                                smart.setPrayerEnabled(key, obj.getBoolean(key))
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            } catch (_: Exception) {}
+        }
+
+        editor?.putLong("preferences_updated_at", timestamp)
+        editor?.apply()
     }
 }

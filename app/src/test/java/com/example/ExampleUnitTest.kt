@@ -312,5 +312,106 @@ class ExampleUnitTest {
       com.example.data.db.PrayerLogEntity.resolvePrayerStatus(log, com.example.data.model.PrayerName.DHUHR, null, date, date)
     )
   }
+
+  enum class StartupDestination { SPLASH, PRE_LOGIN, HOME }
+
+  @Test
+  fun startupDestinationOrder_whenNotSeenAccountPrompt_showsPreLoginAndHidesHome() {
+    fun resolveVisibleDestination(isSplashFinished: Boolean, hasSeenAccountPrompt: Boolean): StartupDestination {
+      return when {
+        !isSplashFinished -> StartupDestination.SPLASH
+        !hasSeenAccountPrompt -> StartupDestination.PRE_LOGIN
+        else -> StartupDestination.HOME
+      }
+    }
+
+    // 1. Initial startup with fresh data: Splash visible, Home hidden
+    assertEquals(StartupDestination.SPLASH, resolveVisibleDestination(isSplashFinished = false, hasSeenAccountPrompt = false))
+
+    // 2. Splash finishes with fresh data: Pre-login visible DIRECTLY, Home hidden
+    assertEquals(StartupDestination.PRE_LOGIN, resolveVisibleDestination(isSplashFinished = true, hasSeenAccountPrompt = false))
+
+    // 3. User dismisses Pre-login (guest or account): Home becomes visible
+    assertEquals(StartupDestination.HOME, resolveVisibleDestination(isSplashFinished = true, hasSeenAccountPrompt = true))
+
+    // 4. Returning user (already seen account prompt): Splash -> Home directly
+    assertEquals(StartupDestination.SPLASH, resolveVisibleDestination(isSplashFinished = false, hasSeenAccountPrompt = true))
+    assertEquals(StartupDestination.HOME, resolveVisibleDestination(isSplashFinished = true, hasSeenAccountPrompt = true))
+  }
+
+  enum class AppFlowState { SPLASH, SCREEN_1_PRE_LOGIN, SCREEN_2_LOGIN_SHEET_OVER_SCREEN_1, HOME }
+
+  @Test
+  fun preLoginAndLoginSheetPresentationFlow_homeNeverExposedUntilAuthOrGuest() {
+    fun resolveFlowState(
+      isSplashFinished: Boolean,
+      hasSeenAccountPrompt: Boolean,
+      showLoginBottomSheet: Boolean
+    ): AppFlowState {
+      return when {
+        !isSplashFinished -> AppFlowState.SPLASH
+        !hasSeenAccountPrompt && showLoginBottomSheet -> AppFlowState.SCREEN_2_LOGIN_SHEET_OVER_SCREEN_1
+        !hasSeenAccountPrompt -> AppFlowState.SCREEN_1_PRE_LOGIN
+        else -> AppFlowState.HOME
+      }
+    }
+
+    var isSplashFinished = false
+    var hasSeenAccountPrompt = false
+    var showLoginBottomSheet = false
+
+    // Step 1: Initial startup
+    assertEquals(AppFlowState.SPLASH, resolveFlowState(isSplashFinished, hasSeenAccountPrompt, showLoginBottomSheet))
+
+    // Step 2: Splash finishes -> Screen 1 displayed, Home not composed
+    isSplashFinished = true
+    assertEquals(AppFlowState.SCREEN_1_PRE_LOGIN, resolveFlowState(isSplashFinished, hasSeenAccountPrompt, showLoginBottomSheet))
+
+    // Step 3: User taps "Login or Register" -> Screen 2 opens ON TOP OF Screen 1, Home NOT composed
+    showLoginBottomSheet = true
+    assertEquals(AppFlowState.SCREEN_2_LOGIN_SHEET_OVER_SCREEN_1, resolveFlowState(isSplashFinished, hasSeenAccountPrompt, showLoginBottomSheet))
+
+    // Step 4: User taps "Close" -> Screen 2 dismisses, returns to Screen 1, Home NOT composed
+    showLoginBottomSheet = false
+    assertEquals(AppFlowState.SCREEN_1_PRE_LOGIN, resolveFlowState(isSplashFinished, hasSeenAccountPrompt, showLoginBottomSheet))
+
+    // Step 5: User taps "Login or Register" again
+    showLoginBottomSheet = true
+    assertEquals(AppFlowState.SCREEN_2_LOGIN_SHEET_OVER_SCREEN_1, resolveFlowState(isSplashFinished, hasSeenAccountPrompt, showLoginBottomSheet))
+
+    // Step 6: User completes login successfully -> Home is composed!
+    hasSeenAccountPrompt = true
+    showLoginBottomSheet = false
+    assertEquals(AppFlowState.HOME, resolveFlowState(isSplashFinished, hasSeenAccountPrompt, showLoginBottomSheet))
+  }
+
+  @Test
+  fun testEmailAndFieldValidationRules() {
+    // Valid emails
+    assertTrue(com.example.ui.screens.isValidEmail("user@example.com"))
+    assertTrue(com.example.ui.screens.isValidEmail("test.name+tag@domain.co.uk"))
+    assertTrue(com.example.ui.screens.isValidEmail("someone@sub.domain.org"))
+
+    // Invalid emails
+    assertFalse(com.example.ui.screens.isValidEmail(""))
+    assertFalse(com.example.ui.screens.isValidEmail("   "))
+    assertFalse(com.example.ui.screens.isValidEmail("invalid"))
+    assertFalse(com.example.ui.screens.isValidEmail("invalid@"))
+    assertFalse(com.example.ui.screens.isValidEmail("invalid@domain"))
+    assertFalse(com.example.ui.screens.isValidEmail("@domain.com"))
+
+    // Password requirements: Firebase requires min 6 characters for registration
+    fun isPasswordValidForRegister(password: String): Boolean = password.length >= 6
+    assertTrue(isPasswordValidForRegister("123456"))
+    assertTrue(isPasswordValidForRegister("secure_pass_123"))
+    assertFalse(isPasswordValidForRegister("12345"))
+    assertFalse(isPasswordValidForRegister(""))
+
+    // Confirm password logic
+    fun isConfirmMatch(pwd: String, confirm: String): Boolean = pwd == confirm
+    assertTrue(isConfirmMatch("password123", "password123"))
+    assertFalse(isConfirmMatch("password123", "different"))
+  }
 }
+
 

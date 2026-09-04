@@ -10,19 +10,26 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PrayerLogDao {
-    @Query("SELECT * FROM prayer_logs WHERE date = :date")
+    @Query("SELECT * FROM prayer_logs WHERE date = :date AND isDeleted = 0")
     fun getPrayerLogForDate(date: String): Flow<PrayerLogEntity?>
 
-    @Query("SELECT * FROM prayer_logs WHERE date = :date")
+    @Query("SELECT * FROM prayer_logs WHERE date = :date AND isDeleted = 0")
     suspend fun getPrayerLogForDateDirect(date: String): PrayerLogEntity?
 
-    @Query("SELECT * FROM prayer_logs WHERE date IN (:dates)")
+    @Query("SELECT * FROM prayer_logs WHERE date IN (:dates) AND isDeleted = 0")
     fun getPrayerLogsForDates(dates: List<String>): Flow<List<PrayerLogEntity>>
-    @Query("SELECT * FROM prayer_logs ORDER BY date DESC")
+
+    @Query("SELECT * FROM prayer_logs WHERE isDeleted = 0 ORDER BY date DESC")
     fun getAllPrayerLogs(): Flow<List<PrayerLogEntity>>
 
-    @Query("SELECT * FROM prayer_logs ORDER BY date ASC")
+    @Query("SELECT * FROM prayer_logs WHERE isDeleted = 0 ORDER BY date ASC")
     suspend fun getAllPrayerLogsDirectAsc(): List<PrayerLogEntity>
+
+    @Query("SELECT * FROM prayer_logs WHERE date = :date LIMIT 1")
+    suspend fun getRawPrayerLogForDateDirect(date: String): PrayerLogEntity?
+
+    @Query("SELECT * FROM prayer_logs")
+    suspend fun getAllRawPrayerLogsDirect(): List<PrayerLogEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdatePrayerLog(log: PrayerLogEntity)
@@ -36,23 +43,38 @@ interface DhikrHistoryDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDhikrHistory(entry: DhikrHistoryEntity)
 
+    @Query("SELECT * FROM dhikr_history WHERE syncId = :syncId LIMIT 1")
+    suspend fun getDhikrHistoryBySyncId(syncId: String): DhikrHistoryEntity?
+
+    @Query("SELECT * FROM dhikr_history ORDER BY timestamp DESC")
+    suspend fun getAllDhikrHistoryDirect(): List<DhikrHistoryEntity>
+
     @Query("DELETE FROM dhikr_history")
     suspend fun clearHistory()
 }
 
 @Dao
 interface BookmarkDao {
-    @Query("SELECT * FROM quran_bookmarks ORDER BY timestamp DESC")
+    @Query("SELECT * FROM quran_bookmarks WHERE isDeleted = 0 ORDER BY timestamp DESC")
     fun getAllBookmarks(): Flow<List<BookmarkEntity>>
 
-    @Query("SELECT EXISTS(SELECT 1 FROM quran_bookmarks WHERE surahNumber = :surahNumber AND verseNumber = :verseNumber)")
+    @Query("SELECT EXISTS(SELECT 1 FROM quran_bookmarks WHERE surahNumber = :surahNumber AND verseNumber = :verseNumber AND isDeleted = 0)")
     fun isBookmarked(surahNumber: Int, verseNumber: Int): Flow<Boolean>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun addBookmark(bookmark: BookmarkEntity)
 
+    @Query("SELECT * FROM quran_bookmarks WHERE surahNumber = :surahNumber AND verseNumber = :verseNumber LIMIT 1")
+    suspend fun getBookmarkByVerse(surahNumber: Int, verseNumber: Int): BookmarkEntity?
+
+    @Query("UPDATE quran_bookmarks SET isDeleted = 1, updatedAt = :updatedAt WHERE surahNumber = :surahNumber AND verseNumber = :verseNumber")
+    suspend fun markBookmarkDeleted(surahNumber: Int, verseNumber: Int, updatedAt: Long = System.currentTimeMillis())
+
     @Query("DELETE FROM quran_bookmarks WHERE surahNumber = :surahNumber AND verseNumber = :verseNumber")
     suspend fun removeBookmark(surahNumber: Int, verseNumber: Int)
+
+    @Query("SELECT * FROM quran_bookmarks")
+    suspend fun getAllRawBookmarksDirect(): List<BookmarkEntity>
 }
 
 @Dao

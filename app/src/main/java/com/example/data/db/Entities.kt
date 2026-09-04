@@ -31,7 +31,9 @@ data class PrayerLogEntity(
     val dhuhrQadaAdded: Boolean = false,
     val asrQadaAdded: Boolean = false,
     val maghribQadaAdded: Boolean = false,
-    val ishaQadaAdded: Boolean = false
+    val ishaQadaAdded: Boolean = false,
+    val updatedAt: Long = 0L,
+    val isDeleted: Boolean = false
 ) {
     fun isCompleted(prayerName: PrayerName): Boolean {
         return when (prayerName) {
@@ -189,7 +191,8 @@ data class DhikrHistoryEntity(
     val dhikrName: String,
     val arabicText: String,
     val countCompleted: Int,
-    val target: Int
+    val target: Int,
+    val syncId: String = java.util.UUID.randomUUID().toString()
 )
 
 @Entity(tableName = "quran_bookmarks")
@@ -201,7 +204,9 @@ data class BookmarkEntity(
     val surahNameArabic: String,
     val verseTextArabic: String,
     val verseTextTranslation: String,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val updatedAt: Long = 0L,
+    val isDeleted: Boolean = false
 )
 
 @Entity(tableName = "dua_categories")
