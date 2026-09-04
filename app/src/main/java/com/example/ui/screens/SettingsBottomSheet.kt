@@ -111,6 +111,7 @@ enum class PreferencesSubScreen {
     REMINDERS,
     NAFL_PRAYERS,
     HOME_FEATURES,
+    APP_UPDATES,
     CREDITS
 }
 
@@ -163,6 +164,7 @@ fun SettingsBottomSheet(
 ) {
     var activeSubScreen by remember { mutableStateOf(PreferencesSubScreen.MAIN) }
     val context = LocalContext.current
+    val updateManager = remember(context) { com.example.data.updater.AppUpdateManager(context) }
 
     val soundPool = remember {
         val audioAttributes = AudioAttributes.Builder()
@@ -859,6 +861,13 @@ fun SettingsBottomSheet(
                         }
                     }
 
+                    PreferencesSubScreen.APP_UPDATES -> {
+                        AppUpdatesSubScreen(
+                            updateManager = updateManager,
+                            onBack = { activeSubScreen = PreferencesSubScreen.MAIN }
+                        )
+                    }
+
                     PreferencesSubScreen.CREDITS -> {
                         CreditsSubScreen(
                             onBack = { activeSubScreen = PreferencesSubScreen.MAIN }
@@ -1067,9 +1076,16 @@ fun MainPreferencesView(
                 }
             }
 
-            // ABOUT Group
+            // ABOUT & UPDATES Group
             item {
-                MenuGroupCard(title = "ABOUT") {
+                MenuGroupCard(title = "ABOUT & UPDATES") {
+                    GroupedMenuRow(
+                        label = "App Updates",
+                        value = "v${com.example.BuildConfig.VERSION_NAME} (Build ${com.example.BuildConfig.VERSION_CODE})",
+                        onClick = { onNavigateTo(PreferencesSubScreen.APP_UPDATES) },
+                        testTag = "pref_row_app_updates"
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     GroupedMenuRow(
                         label = "Credits",
                         value = "Meet the people behind FiveLight",
