@@ -8,6 +8,7 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -23,7 +24,14 @@ import kotlinx.coroutines.withContext
 
 class AuthRepository(private val context: Context) {
 
-    private val firebaseAuth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
+    private val firebaseAuth: FirebaseAuth by lazy {
+        try {
+            if (FirebaseApp.getApps(context).isEmpty()) {
+                FirebaseApp.initializeApp(context)
+            }
+        } catch (_: Exception) {}
+        FirebaseAuth.getInstance()
+    }
     private val prefs = context.getSharedPreferences("fivelight_prefs", Context.MODE_PRIVATE)
 
     private val _hasSeenAccountPrompt = MutableStateFlow(
@@ -31,13 +39,27 @@ class AuthRepository(private val context: Context) {
     )
     val hasSeenAccountPrompt: StateFlow<Boolean> = _hasSeenAccountPrompt.asStateFlow()
 
-    private val _currentUser = MutableStateFlow<FirebaseUser?>(firebaseAuth.currentUser)
+    private val _currentUser = MutableStateFlow<FirebaseUser?>(
+        try {
+            if (FirebaseApp.getApps(context).isEmpty()) {
+                FirebaseApp.initializeApp(context)
+            }
+            firebaseAuth.currentUser
+        } catch (_: Exception) {
+            null
+        }
+    )
     val currentUser: StateFlow<FirebaseUser?> = _currentUser.asStateFlow()
 
     init {
-        firebaseAuth.addAuthStateListener { auth ->
-            _currentUser.value = auth.currentUser
-        }
+        try {
+            if (FirebaseApp.getApps(context).isEmpty()) {
+                FirebaseApp.initializeApp(context)
+            }
+            firebaseAuth.addAuthStateListener { auth ->
+                _currentUser.value = auth.currentUser
+            }
+        } catch (_: Exception) {}
     }
 
     fun setHasSeenAccountPrompt(seen: Boolean = true) {
