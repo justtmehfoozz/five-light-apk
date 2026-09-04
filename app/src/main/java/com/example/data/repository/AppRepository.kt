@@ -32,6 +32,7 @@ class AppRepository(
 ) {
     private val appContext = context?.applicationContext
     private val prefs = context?.getSharedPreferences("fivelight_prefs", Context.MODE_PRIVATE)
+    val authRepository: com.example.data.auth.AuthRepository? = appContext?.let { com.example.data.auth.AuthRepository.getInstance(it) }
 
     val PREDEFINED_CITIES = listOf(
         // Indian locations

@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import com.google.firebase.auth.FirebaseUser
 import com.example.ui.components.RegisterPredictiveBackHandler
 import com.example.ui.components.rememberPredictiveBackState
 
@@ -159,6 +160,9 @@ fun SettingsBottomSheet(
     onResetHomeFeatureOrder: () -> Unit = {},
     onUpdateNaflOrder: (List<String>) -> Unit = {},
     onResetNaflOrder: () -> Unit = {},
+    currentUser: FirebaseUser? = null,
+    onOpenLoginSheet: () -> Unit = {},
+    onSignOut: () -> Unit = {},
     onDismiss: () -> Unit,
     onSettingsChanged: () -> Unit = {}
 ) {
@@ -246,6 +250,9 @@ fun SettingsBottomSheet(
                             vibrationEnabled = vibrationEnabled,
                             onToggleVibration = onToggleVibration,
                             naflPreferences = naflPreferences,
+                            currentUser = currentUser,
+                            onOpenLoginSheet = onOpenLoginSheet,
+                            onSignOut = onSignOut,
                             onNavigateTo = { activeSubScreen = it },
                             onDismiss = onDismiss
                         )
@@ -893,6 +900,9 @@ fun MainPreferencesView(
     vibrationEnabled: Boolean = true,
     onToggleVibration: (Boolean) -> Unit = {},
     naflPreferences: NaflPreferences = NaflPreferences(),
+    currentUser: FirebaseUser? = null,
+    onOpenLoginSheet: () -> Unit = {},
+    onSignOut: () -> Unit = {},
     onNavigateTo: (PreferencesSubScreen) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -922,6 +932,52 @@ fun MainPreferencesView(
         Spacer(modifier = Modifier.height(16.dp))
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            // PROFILE / ACCOUNT Group
+            item {
+                MenuGroupCard(title = "PROFILE") {
+                    if (currentUser != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = currentUser.email ?: currentUser.displayName ?: "Signed In",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Signed in with ${if (currentUser.providerData.any { it.providerId == "google.com" }) "Google" else "Email"}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            TextButton(
+                                onClick = onSignOut,
+                                modifier = Modifier.testTag("sign_out_btn")
+                            ) {
+                                Text(
+                                    text = "Sign Out",
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
+                                )
+                            }
+                        }
+                    } else {
+                        GroupedMenuRow(
+                            label = "Profile",
+                            value = "Sign in or register",
+                            onClick = onOpenLoginSheet,
+                            testTag = "pref_row_profile"
+                        )
+                    }
+                }
+            }
+
             // GENERAL Group
             item {
                 MenuGroupCard(title = "GENERAL") {

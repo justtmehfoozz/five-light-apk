@@ -39,6 +39,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.example.ui.screens.LoginBottomSheet
+import com.example.ui.screens.PreLoginPromptScreen
 import com.example.ui.screens.SplashScreen
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -149,6 +152,10 @@ class MainActivity : ComponentActivity() {
                 }
 
                 val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                val loginSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                var showLoginBottomSheet by rememberSaveable { mutableStateOf(false) }
+                val hasSeenAccountPrompt by viewModel.hasSeenAccountPrompt.collectAsStateWithLifecycle()
+                val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
                 val hazeState = remember { HazeState() }
 
                 val playingSurahNumber  = viewModel.playingSurahNumber.collectAsStateWithLifecycle()
@@ -751,11 +758,39 @@ class MainActivity : ComponentActivity() {
                             onResetHomeFeatureOrder = { viewModel.resetHomeFeatureOrder() },
                             onUpdateNaflOrder = { order -> viewModel.setNaflOrder(order) },
                             onResetNaflOrder = { viewModel.resetNaflOrder() },
+                            currentUser = currentUser,
+                            onOpenLoginSheet = {
+                                showSettingsSheet = false
+                                showLoginBottomSheet = true
+                            },
+                            onSignOut = { viewModel.signOut() },
                             onDismiss = { showSettingsSheet = false },
                             onSettingsChanged = { viewModel.refreshPrayerTimes() }
                         )
                     }
+
+                    if (showLoginBottomSheet) {
+                        LoginBottomSheet(
+                            sheetState = loginSheetState,
+                            authRepository = viewModel.authRepository,
+                            onDismiss = { showLoginBottomSheet = false },
+                            onAuthSuccess = { showLoginBottomSheet = false }
+                        )
+                    }
                     } // end inner Box
+
+                    if (isSplashFinished && !hasSeenAccountPrompt) {
+                        PreLoginPromptScreen(
+                            onLoginOrRegister = {
+                                viewModel.setHasSeenAccountPrompt(true)
+                                showLoginBottomSheet = true
+                            },
+                            onContinueAsGuest = {
+                                viewModel.setHasSeenAccountPrompt(true)
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
 
                     if (!isSplashFinished) {
                         SplashScreen(

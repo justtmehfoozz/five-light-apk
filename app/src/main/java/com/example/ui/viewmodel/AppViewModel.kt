@@ -12,6 +12,8 @@ import com.example.ui.theme.semanticBackground
 import com.example.ui.theme.semanticWarning
 
 
+import com.example.data.auth.AuthRepository
+import com.google.firebase.auth.FirebaseUser
 import android.app.Application
 import android.content.Context
 import android.hardware.Sensor
@@ -74,6 +76,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
 
     private val db = AppDatabase.getDatabase(application)
     val repository = AppRepository(db, application)
+    val authRepository: AuthRepository = repository.authRepository ?: AuthRepository.getInstance(application)
+
+    // Account & Auth State
+    val currentUser: StateFlow<FirebaseUser?> = authRepository.currentUser
+    val hasSeenAccountPrompt: StateFlow<Boolean> = authRepository.hasSeenAccountPrompt
+
+    fun setHasSeenAccountPrompt(seen: Boolean = true) {
+        authRepository.setHasSeenAccountPrompt(seen)
+    }
+
+    fun signOut() {
+        authRepository.signOut()
+    }
 
     // Initialization State
     private val _isInitialized = MutableStateFlow(false)
