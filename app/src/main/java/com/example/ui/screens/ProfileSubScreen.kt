@@ -1,14 +1,28 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,7 +30,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -25,7 +38,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.MarkEmailUnread
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -60,6 +72,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -75,7 +88,9 @@ import com.example.ui.theme.semanticBorder
 import com.example.ui.theme.semanticControl
 import com.example.ui.theme.semanticError
 import com.example.ui.theme.semanticPrimaryAccent
+import com.example.ui.theme.semanticSuccess
 import com.example.ui.theme.semanticSurfaceElevated
+import com.example.ui.theme.semanticWarning
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -88,8 +103,8 @@ import java.util.Date
 @Composable
 fun UserAvatar(
     user: FirebaseUser?,
-    size: Dp = 48.dp,
-    textSize: TextUnit = 18.sp,
+    size: Dp = 80.dp,
+    textSize: TextUnit = 28.sp,
     modifier: Modifier = Modifier
 ) {
     val photoUrl = user?.photoUrl?.toString()
@@ -158,13 +173,13 @@ fun deriveUserInitials(displayName: String?, email: String?): String {
  * Returns human-readable sign-in provider name.
  */
 fun getAuthProviderName(user: FirebaseUser?): String {
-    if (user == null) return "Signed in with Email"
+    if (user == null) return "Email"
     val isGoogle = user.providerData.any { it.providerId == "google.com" }
     return if (isGoogle) "Google" else "Email"
 }
 
 /**
- * Dedicated Profile Sub-Screen inside Preferences Bottom Sheet (Phase 2).
+ * Dedicated Profile Sub-Screen inside Preferences Bottom Sheet (Phase 2B Motion & Micro-interaction Polish).
  */
 @Composable
 fun ProfileSubScreen(
@@ -188,43 +203,67 @@ fun ProfileSubScreen(
     var isReloadingUser by remember { mutableStateOf(false) }
 
     val isReducedMotion = rememberIsReducedMotion()
+    val easing = FastOutSlowInEasing
 
-    // Entrance Animation States (One-shot)
+    // Staggered One-shot Entrance Animation States (Section 1)
     val avatarAlpha = remember { Animatable(if (isReducedMotion) 1f else 0f) }
-    val avatarOffsetY = remember { Animatable(if (isReducedMotion) 0f else 4f) }
+    val avatarOffsetY = remember { Animatable(if (isReducedMotion) 0f else 6f) }
 
     val identityAlpha = remember { Animatable(if (isReducedMotion) 1f else 0f) }
     val identityOffsetY = remember { Animatable(if (isReducedMotion) 0f else 6f) }
 
     val accountAlpha = remember { Animatable(if (isReducedMotion) 1f else 0f) }
-    val accountOffsetY = remember { Animatable(if (isReducedMotion) 0f else 8f) }
+    val accountOffsetY = remember { Animatable(if (isReducedMotion) 0f else 6f) }
+
+    val emailAlpha = remember { Animatable(if (isReducedMotion) 1f else 0f) }
+    val emailOffsetY = remember { Animatable(if (isReducedMotion) 0f else 6f) }
 
     val syncAlpha = remember { Animatable(if (isReducedMotion) 1f else 0f) }
-    val syncOffsetY = remember { Animatable(if (isReducedMotion) 0f else 10f) }
+    val syncOffsetY = remember { Animatable(if (isReducedMotion) 0f else 6f) }
 
     val actionsAlpha = remember { Animatable(if (isReducedMotion) 1f else 0f) }
-    val actionsOffsetY = remember { Animatable(if (isReducedMotion) 0f else 12f) }
+    val actionsOffsetY = remember { Animatable(if (isReducedMotion) 0f else 6f) }
 
     LaunchedEffect(Unit) {
         if (!isReducedMotion) {
-            launch { avatarAlpha.animateTo(1f, tween(180)) }
-            launch { avatarOffsetY.animateTo(0f, tween(180)) }
+            // 0–250ms: Avatar
+            launch { avatarAlpha.animateTo(1f, tween(250, easing = easing)) }
+            launch { avatarOffsetY.animateTo(0f, tween(250, easing = easing)) }
 
-            delay(40)
-            launch { identityAlpha.animateTo(1f, tween(180)) }
-            launch { identityOffsetY.animateTo(0f, tween(180)) }
+            // 70–450ms: Name/email/provider
+            launch {
+                delay(70)
+                launch { identityAlpha.animateTo(1f, tween(380, easing = easing)) }
+                launch { identityOffsetY.animateTo(0f, tween(380, easing = easing)) }
+            }
 
-            delay(40)
-            launch { accountAlpha.animateTo(1f, tween(200)) }
-            launch { accountOffsetY.animateTo(0f, tween(200)) }
+            // 150–500ms: ACCOUNT section
+            launch {
+                delay(150)
+                launch { accountAlpha.animateTo(1f, tween(350, easing = easing)) }
+                launch { accountOffsetY.animateTo(0f, tween(350, easing = easing)) }
+            }
 
-            delay(40)
-            launch { syncAlpha.animateTo(1f, tween(200)) }
-            launch { syncOffsetY.animateTo(0f, tween(200)) }
+            // 220–550ms: EMAIL section
+            launch {
+                delay(220)
+                launch { emailAlpha.animateTo(1f, tween(330, easing = easing)) }
+                launch { emailOffsetY.animateTo(0f, tween(330, easing = easing)) }
+            }
 
-            delay(40)
-            launch { actionsAlpha.animateTo(1f, tween(220)) }
-            launch { actionsOffsetY.animateTo(0f, tween(220)) }
+            // 290–600ms: SYNC section
+            launch {
+                delay(290)
+                launch { syncAlpha.animateTo(1f, tween(310, easing = easing)) }
+                launch { syncOffsetY.animateTo(0f, tween(310, easing = easing)) }
+            }
+
+            // 360–650ms: ACCOUNT ACTIONS section
+            launch {
+                delay(360)
+                launch { actionsAlpha.animateTo(1f, tween(290, easing = easing)) }
+                launch { actionsOffsetY.animateTo(0f, tween(290, easing = easing)) }
+            }
         }
     }
 
@@ -240,6 +279,7 @@ fun ProfileSubScreen(
             authRepository.reloadUser()
         }
     }
+
     val displayName = remember(currentUser) {
         currentUser?.displayName?.takeIf { it.isNotBlank() }
             ?: currentUser?.email?.substringBefore('@')?.takeIf { it.isNotBlank() }
@@ -253,6 +293,17 @@ fun ProfileSubScreen(
             is com.example.data.sync.SyncState.Synced -> "Synced"
             is com.example.data.sync.SyncState.Error -> "Offline / Waiting for connection"
             is com.example.data.sync.SyncState.Idle -> "Synced"
+        }
+    }
+
+    val syncStatusDotColor = if (currentUser == null) {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    } else {
+        when (syncState) {
+            is com.example.data.sync.SyncState.Syncing -> Color.semanticPrimaryAccent
+            is com.example.data.sync.SyncState.Synced -> Color.semanticSuccess
+            is com.example.data.sync.SyncState.Error -> Color.semanticWarning
+            is com.example.data.sync.SyncState.Idle -> Color.semanticSuccess
         }
     }
 
@@ -274,14 +325,14 @@ fun ProfileSubScreen(
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // Header Identity Area
+            // Identity Header Area
             item {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 8.dp, bottom = 12.dp),
+                        .padding(top = 10.dp, bottom = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Box(
@@ -292,8 +343,8 @@ fun ProfileSubScreen(
                     ) {
                         UserAvatar(
                             user = currentUser,
-                            size = 76.dp,
-                            textSize = 28.sp,
+                            size = 80.dp,
+                            textSize = 30.sp,
                             modifier = Modifier.testTag("profile_avatar_large")
                         )
                     }
@@ -314,7 +365,9 @@ fun ProfileSubScreen(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 22.sp
                             ),
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
 
                         if (!currentUser?.email.isNullOrBlank()) {
@@ -322,25 +375,19 @@ fun ProfileSubScreen(
                             Text(
                                 text = currentUser?.email.orEmpty(),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
 
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(percent = 50))
-                                .background(Color.semanticControl)
-                                .border(1.dp, Color.semanticBorder, RoundedCornerShape(percent = 50))
-                                .padding(horizontal = 14.dp, vertical = 5.dp)
-                        ) {
-                            Text(
-                                text = "Signed in with $providerName",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Text(
+                            text = if (providerName == "Google") "Google account" else "Email account",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
                     }
                 }
             }
@@ -353,211 +400,219 @@ fun ProfileSubScreen(
                         translationY = accountOffsetY.value.dp.toPx()
                     }
                 ) {
-                    MenuGroupCard(title = "ACCOUNT") {
+                    ProfileSection(title = "ACCOUNT") {
                         // Name Row (Editable)
-                        AccountItemRow(
+                        ProfileRow(
                             label = "Name",
                             value = currentUser?.displayName?.takeIf { it.isNotBlank() } ?: "Not set",
-                            isEditable = true,
+                            isAction = true,
                             onClick = { showEditNameDialog = true },
                             testTag = "profile_name_row"
                         )
 
-                        HorizontalDivider(color = Color.semanticBorder, thickness = 0.6.dp)
+                        HorizontalDivider(color = Color.semanticBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
 
                         // Email Row (Informational)
-                        AccountItemRow(
+                        ProfileRow(
                             label = "Email",
                             value = currentUser?.email?.takeIf { it.isNotBlank() } ?: "Not provided",
-                            isEditable = false,
+                            isAction = false,
                             onClick = null,
                             testTag = "profile_email_row"
                         )
 
-                        if (isEmailUser) {
-                            HorizontalDivider(color = Color.semanticBorder, thickness = 0.6.dp)
+                        HorizontalDivider(color = Color.semanticBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
 
-                            val isVerified = currentUser?.isEmailVerified == true
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 12.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Email Verification",
-                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-
-                                    if (isVerified) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(percent = 50))
-                                                .background(Color.semanticControl)
-                                                .border(1.dp, Color.semanticBorder, RoundedCornerShape(percent = 50))
-                                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Outlined.CheckCircle,
-                                                contentDescription = "Verified",
-                                                tint = Color.semanticPrimaryAccent,
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Text(
-                                                text = "Verified",
-                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                                color = Color.semanticPrimaryAccent
-                                            )
-                                        }
-                                    } else {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(percent = 50))
-                                                .background(Color.semanticControl)
-                                                .border(1.dp, Color.semanticBorder, RoundedCornerShape(percent = 50))
-                                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Outlined.MarkEmailUnread,
-                                                contentDescription = "Unverified",
-                                                tint = Color.semanticError,
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Text(
-                                                text = "Not Verified",
-                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                                color = Color.semanticError
-                                            )
-                                        }
-                                    }
-                                }
-
-                                if (!isVerified) {
-                                    Spacer(modifier = Modifier.height(10.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Button(
-                                            onClick = {
-                                                if (!isResendingEmail) {
-                                                    coroutineScope.launch {
-                                                        isResendingEmail = true
-                                                        val res = authRepository.sendEmailVerification()
-                                                        isResendingEmail = false
-                                                        if (res.isSuccess) {
-                                                            Toast.makeText(context, "Verification email sent to ${currentUser?.email}", Toast.LENGTH_SHORT).show()
-                                                        } else {
-                                                            Toast.makeText(context, res.exceptionOrNull()?.message ?: "Failed to send verification email", Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    }
-                                                }
-                                            },
-                                            enabled = !isResendingEmail,
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = Color.semanticControl,
-                                                contentColor = MaterialTheme.colorScheme.onSurface
-                                            ),
-                                            shape = RoundedCornerShape(8.dp),
-                                            border = BorderStroke(1.dp, Color.semanticBorder),
-                                            modifier = Modifier
-                                                .weight(1f)
-                                                .height(36.dp)
-                                                .testTag("resend_verification_email_button")
-                                        ) {
-                                            if (isResendingEmail) {
-                                                CircularProgressIndicator(
-                                                    modifier = Modifier.size(14.dp),
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                    strokeWidth = 2.dp
-                                                )
-                                            } else {
-                                                Text(
-                                                    text = "Resend Verification Email",
-                                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
-                                                )
-                                            }
-                                        }
-
-                                        IconButton(
-                                            onClick = {
-                                                if (!isReloadingUser) {
-                                                    coroutineScope.launch {
-                                                        isReloadingUser = true
-                                                        val res = authRepository.reloadUser()
-                                                        isReloadingUser = false
-                                                        if (res.isSuccess) {
-                                                            val u = res.getOrNull()
-                                                            if (u?.isEmailVerified == true) {
-                                                                Toast.makeText(context, "Email is verified!", Toast.LENGTH_SHORT).show()
-                                                            } else {
-                                                                Toast.makeText(context, "Email is not verified yet.", Toast.LENGTH_SHORT).show()
-                                                            }
-                                                        } else {
-                                                            Toast.makeText(context, res.exceptionOrNull()?.message ?: "Failed to refresh verification status", Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    }
-                                                }
-                                            },
-                                            modifier = Modifier
-                                                .size(36.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(Color.semanticControl)
-                                                .border(1.dp, Color.semanticBorder, RoundedCornerShape(8.dp))
-                                                .testTag("refresh_verification_status_button")
-                                        ) {
-                                            if (isReloadingUser) {
-                                                CircularProgressIndicator(
-                                                    modifier = Modifier.size(14.dp),
-                                                    color = MaterialTheme.colorScheme.onSurface,
-                                                    strokeWidth = 2.dp
-                                                )
-                                            } else {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.Refresh,
-                                                    contentDescription = "Refresh Verification Status",
-                                                    tint = MaterialTheme.colorScheme.onSurface,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        HorizontalDivider(color = Color.semanticBorder, thickness = 0.6.dp)
-
-                        // Sign-in Method Row (Informational)
-                        AccountItemRow(
+                        // Sign-in Method Row
+                        ProfileRow(
                             label = "Sign-in method",
-                            value = "Signed in with $providerName",
-                            isEditable = false,
+                            value = providerName,
+                            isAction = false,
                             onClick = null,
                             testTag = "profile_signin_method_row"
                         )
 
                         if (isEmailUser) {
-                            HorizontalDivider(color = Color.semanticBorder, thickness = 0.6.dp)
+                            HorizontalDivider(color = Color.semanticBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
 
                             // Change Password Row (Email users only)
-                            AccountItemRow(
+                            ProfileRow(
                                 label = "Change Password",
                                 value = "",
-                                isEditable = true,
+                                isAction = true,
                                 onClick = { showChangePasswordDialog = true },
                                 testTag = "profile_change_password_row"
                             )
+                        }
+                    }
+                }
+            }
+
+            // EMAIL Section (Email/Password users only)
+            if (isEmailUser) {
+                item {
+                    Column(
+                        modifier = Modifier.graphicsLayer {
+                            alpha = emailAlpha.value
+                            translationY = emailOffsetY.value.dp.toPx()
+                        }
+                    ) {
+                        ProfileSection(title = "EMAIL") {
+                            val isVerified = currentUser?.isEmailVerified == true
+
+                            AnimatedContent(
+                                targetState = isVerified,
+                                transitionSpec = {
+                                    (fadeIn(animationSpec = tween(280, easing = FastOutSlowInEasing)) +
+                                            slideInVertically(animationSpec = tween(280, easing = FastOutSlowInEasing)) { -10 }) togetherWith
+                                            (fadeOut(animationSpec = tween(200, easing = FastOutSlowInEasing)) +
+                                                    slideOutVertically(animationSpec = tween(200, easing = FastOutSlowInEasing)) { 10 })
+                                },
+                                label = "emailVerificationStateTransition"
+                            ) { verified ->
+                                if (verified) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.CheckCircle,
+                                            contentDescription = "Verified",
+                                            tint = Color.semanticPrimaryAccent,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = "Email verified",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                } else {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 14.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            Text(
+                                                text = "!",
+                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = Color.semanticWarning
+                                            )
+                                            Column {
+                                                Text(
+                                                    text = "Email not verified",
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = "Verification required",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(14.dp))
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Button(
+                                                onClick = {
+                                                    if (!isResendingEmail) {
+                                                        coroutineScope.launch {
+                                                            isResendingEmail = true
+                                                            val res = authRepository.sendEmailVerification()
+                                                            isResendingEmail = false
+                                                            if (res.isSuccess) {
+                                                                Toast.makeText(context, "Verification email sent to ${currentUser?.email}", Toast.LENGTH_SHORT).show()
+                                                            } else {
+                                                                Toast.makeText(context, res.exceptionOrNull()?.message ?: "Failed to send verification email", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                enabled = !isResendingEmail,
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = Color.semanticControl,
+                                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                                ),
+                                                shape = RoundedCornerShape(10.dp),
+                                                border = BorderStroke(0.5.dp, Color.semanticBorder),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .height(38.dp)
+                                                    .testTag("resend_verification_email_button")
+                                            ) {
+                                                if (isResendingEmail) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(14.dp),
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        strokeWidth = 2.dp
+                                                    )
+                                                } else {
+                                                    Text(
+                                                        text = "Resend verification email",
+                                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
+                                                    )
+                                                }
+                                            }
+
+                                            IconButton(
+                                                onClick = {
+                                                    if (!isReloadingUser) {
+                                                        coroutineScope.launch {
+                                                            isReloadingUser = true
+                                                            val res = authRepository.reloadUser()
+                                                            isReloadingUser = false
+                                                            if (res.isSuccess) {
+                                                                val u = res.getOrNull()
+                                                                if (u?.isEmailVerified == true) {
+                                                                    Toast.makeText(context, "Email is verified!", Toast.LENGTH_SHORT).show()
+                                                                } else {
+                                                                    Toast.makeText(context, "Email is not verified yet.", Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            } else {
+                                                                Toast.makeText(context, res.exceptionOrNull()?.message ?: "Failed to refresh verification status", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                modifier = Modifier
+                                                    .size(38.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(Color.semanticControl)
+                                                    .border(0.5.dp, Color.semanticBorder, RoundedCornerShape(10.dp))
+                                                    .testTag("refresh_verification_status_button")
+                                            ) {
+                                                if (isReloadingUser) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(14.dp),
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        strokeWidth = 2.dp
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.Refresh,
+                                                        contentDescription = "Refresh Verification Status",
+                                                        tint = MaterialTheme.colorScheme.onSurface,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -571,23 +626,25 @@ fun ProfileSubScreen(
                         translationY = syncOffsetY.value.dp.toPx()
                     }
                 ) {
-                    MenuGroupCard(title = "SYNC") {
+                    ProfileSection(title = "SYNC") {
                         // Cloud Sync Row
-                        AccountItemRow(
+                        ProfileRow(
                             label = "Cloud Sync",
                             value = syncStatusText,
-                            isEditable = false,
+                            statusDotColor = syncStatusDotColor,
+                            isSyncing = syncState is com.example.data.sync.SyncState.Syncing,
+                            isAction = false,
                             onClick = null,
                             testTag = "profile_cloud_sync_row"
                         )
 
-                        HorizontalDivider(color = Color.semanticBorder, thickness = 0.6.dp)
+                        HorizontalDivider(color = Color.semanticBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
 
                         // Last Synced Row
-                        AccountItemRow(
+                        ProfileRow(
                             label = "Last synced",
                             value = formattedLastSynced,
-                            isEditable = false,
+                            isAction = false,
                             onClick = null,
                             testTag = "profile_last_synced_row"
                         )
@@ -601,70 +658,61 @@ fun ProfileSubScreen(
                     modifier = Modifier.graphicsLayer {
                         alpha = actionsAlpha.value
                         translationY = actionsOffsetY.value.dp.toPx()
-                    },
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    }
                 ) {
-                    Text(
-                        text = "ACCOUNT ACTIONS",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontFamily = SpaceGrotesk,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 4.dp, bottom = 2.dp)
-                    )
-
-                    // Sign Out Button
-                    Button(
-                        onClick = { showSignOutDialog = true },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .fiveLightPressable(pressedScale = 0.98f) { showSignOutDialog = true }
-                            .testTag("profile_sign_out_btn"),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.semanticControl,
-                            contentColor = MaterialTheme.colorScheme.onSurface
-                        ),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
-                        border = BorderStroke(1.dp, Color.semanticBorder)
-                    ) {
-                        Text(
-                            text = "Sign Out",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontFamily = SpaceGrotesk,
-                                fontWeight = FontWeight.SemiBold
+                    ProfileSection(title = "ACCOUNT ACTIONS") {
+                        // Sign Out Row
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fiveLightPressable(pressedScale = 0.98f) { showSignOutDialog = true }
+                                .padding(horizontal = 16.dp, vertical = 14.dp)
+                                .testTag("profile_sign_out_btn"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Sign Out",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Medium
                             )
-                        )
-                    }
-
-                    // Delete Account Button
-                    Button(
-                        onClick = { showDeleteAccountDialog = true },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .fiveLightPressable(pressedScale = 0.98f) { showDeleteAccountDialog = true }
-                            .testTag("profile_delete_account_btn"),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.semanticError.copy(alpha = 0.12f),
-                            contentColor = Color.semanticError
-                        ),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
-                    ) {
-                        Text(
-                            text = "Delete Account",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontFamily = SpaceGrotesk,
-                                fontWeight = FontWeight.SemiBold
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = "Sign Out",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
                             )
-                        )
+                        }
+
+                        HorizontalDivider(color = Color.semanticBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
+
+                        // Delete Account Row
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fiveLightPressable(pressedScale = 0.98f) { showDeleteAccountDialog = true }
+                                .padding(horizontal = 16.dp, vertical = 14.dp)
+                                .testTag("profile_delete_account_btn"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Delete Account",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.semanticError,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = "Delete Account",
+                                tint = Color.semanticError.copy(alpha = 0.7f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
+                    Spacer(modifier = Modifier.height(24.dp))
                 }
-                Spacer(modifier = Modifier.height(20.dp))
             }
         }
     }
@@ -709,42 +757,12 @@ fun ProfileSubScreen(
 
     // Dialog 3: Sign Out Confirmation
     if (showSignOutDialog) {
-        AlertDialog(
-            onDismissRequest = { showSignOutDialog = false },
-            title = {
-                Text(
-                    text = "Sign Out",
-                    fontFamily = SpaceGrotesk,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Text("Are you sure you want to sign out of your FiveLight account?")
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showSignOutDialog = false
-                        onSignOut()
-                    },
-                    modifier = Modifier.testTag("confirm_sign_out_btn")
-                ) {
-                    Text(
-                        text = "Sign Out",
-                        color = Color.semanticError,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showSignOutDialog = false }
-                ) {
-                    Text("Cancel")
-                }
-            },
-            containerColor = Color.semanticSurfaceElevated,
-            shape = RoundedCornerShape(18.dp)
+        SignOutDialog(
+            onDismiss = { showSignOutDialog = false },
+            onConfirmSignOut = {
+                showSignOutDialog = false
+                onSignOut()
+            }
         )
     }
 
@@ -775,22 +793,71 @@ fun ProfileSubScreen(
 }
 
 @Composable
-private fun AccountItemRow(
-    label: String,
-    value: String,
-    isEditable: Boolean,
-    onClick: (() -> Unit)?,
-    testTag: String
+private fun ProfileSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
 ) {
-    val modifier = if (isEditable && onClick != null) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontFamily = SpaceGrotesk,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.2.sp
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.semanticSurfaceElevated)
+                .border(0.5.dp, Color.semanticBorder.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+        ) {
+            Column(content = content)
+        }
+    }
+}
+
+@Composable
+private fun ProfileRow(
+    label: String,
+    value: String = "",
+    valueColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    statusDotColor: Color? = null,
+    isSyncing: Boolean = false,
+    isAction: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    testTag: String = ""
+) {
+    val isReducedMotion = rememberIsReducedMotion()
+
+    val dotAlpha = if (isSyncing && !isReducedMotion) {
+        val infiniteTransition = rememberInfiniteTransition(label = "syncDotPulse")
+        val alpha by infiniteTransition.animateFloat(
+            initialValue = 0.35f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(600, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "syncPulseAlpha"
+        )
+        alpha
+    } else {
+        1.0f
+    }
+
+    val modifier = if (onClick != null) {
         Modifier
             .fillMaxWidth()
             .fiveLightPressable(pressedScale = 0.98f) { onClick() }
-            .padding(horizontal = 16.dp, vertical = 15.dp)
+            .padding(horizontal = 16.dp, vertical = 14.dp)
     } else {
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 15.dp)
+            .padding(horizontal = 16.dp, vertical = 14.dp)
     }
 
     Row(
@@ -806,21 +873,33 @@ private fun AccountItemRow(
         )
 
         Row(
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            if (statusDotColor != null) {
+                Box(
+                    modifier = Modifier
+                        .size(7.dp)
+                        .graphicsLayer { alpha = dotAlpha }
+                        .clip(CircleShape)
+                        .background(statusDotColor)
+                )
+            }
+
             if (value.isNotEmpty()) {
                 Text(
                     text = value,
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
-                    color = if (isEditable) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = valueColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
-            if (isEditable) {
-                Spacer(modifier = Modifier.width(6.dp))
+            if (isAction) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                    contentDescription = "Edit $label",
+                    contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(18.dp)
                 )
@@ -839,6 +918,25 @@ private fun EditNameDialog(
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+
+    val isReducedMotion = rememberIsReducedMotion()
+    var isVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        isVisible = true
+    }
+
+    val alpha by animateFloatAsState(
+        targetValue = if (isVisible) 1f else 0f,
+        animationSpec = tween(200, easing = FastOutSlowInEasing),
+        label = "editNameDialogAlpha"
+    )
+
+    val offsetY by animateDpAsState(
+        targetValue = if (isVisible || isReducedMotion) 0.dp else 16.dp,
+        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        label = "editNameDialogOffsetY"
+    )
 
     val validateAndSave = {
         val trimmed = text.trim()
@@ -859,6 +957,10 @@ private fun EditNameDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
+        modifier = Modifier.graphicsLayer {
+            this.alpha = if (isReducedMotion) 1f else alpha
+            this.translationY = offsetY.toPx()
+        },
         title = {
             Text(
                 text = "Edit Name",
@@ -952,26 +1054,34 @@ private fun ChangePasswordDialog(
     var isSubmitting by remember { mutableStateOf(false) }
 
     val focusManager = LocalFocusManager.current
+    val isReducedMotion = rememberIsReducedMotion()
+    var isVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        isVisible = true
+    }
+
+    val alpha by animateFloatAsState(
+        targetValue = if (isVisible) 1f else 0f,
+        animationSpec = tween(200, easing = FastOutSlowInEasing),
+        label = "changePasswordDialogAlpha"
+    )
+
+    val offsetY by animateDpAsState(
+        targetValue = if (isVisible || isReducedMotion) 0.dp else 16.dp,
+        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        label = "changePasswordDialogOffsetY"
+    )
 
     val validateAndSave = {
-        val curr = currentPassword.trim()
-        val newP = newPassword.trim()
-        val conf = confirmPassword.trim()
-
         when {
-            curr.isEmpty() -> {
-                errorMsg = "Current password is required"
-            }
-            newP.length < 6 -> {
-                errorMsg = "New password must be at least 6 characters"
-            }
-            conf != newP -> {
-                errorMsg = "Passwords do not match"
-            }
+            currentPassword.isEmpty() -> errorMsg = "Current password is required"
+            newPassword.length < 6 -> errorMsg = "New password must be at least 6 characters"
+            newPassword != confirmPassword -> errorMsg = "New passwords do not match"
             else -> {
                 errorMsg = null
                 isSubmitting = true
-                onConfirm(curr, newP) { err ->
+                onConfirm(currentPassword, newPassword) { err ->
                     isSubmitting = false
                     errorMsg = err
                 }
@@ -981,6 +1091,10 @@ private fun ChangePasswordDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isSubmitting) onDismiss() },
+        modifier = Modifier.graphicsLayer {
+            this.alpha = if (isReducedMotion) 1f else alpha
+            this.translationY = offsetY.toPx()
+        },
         title = {
             Text(
                 text = "Change Password",
@@ -990,7 +1104,7 @@ private fun ChangePasswordDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = currentPassword,
                     onValueChange = {
@@ -1009,6 +1123,7 @@ private fun ChangePasswordDialog(
                             )
                         }
                     },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1021,7 +1136,7 @@ private fun ChangePasswordDialog(
                         newPassword = it
                         if (errorMsg != null) errorMsg = null
                     },
-                    label = { Text("New Password") },
+                    label = { Text("New Password (min 6 chars)") },
                     singleLine = true,
                     enabled = !isSubmitting,
                     visualTransformation = if (newPassVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -1033,6 +1148,7 @@ private fun ChangePasswordDialog(
                             )
                         }
                     },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1113,6 +1229,68 @@ private fun ChangePasswordDialog(
 }
 
 @Composable
+private fun SignOutDialog(
+    onDismiss: () -> Unit,
+    onConfirmSignOut: () -> Unit
+) {
+    val isReducedMotion = rememberIsReducedMotion()
+    var isVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        isVisible = true
+    }
+
+    val alpha by animateFloatAsState(
+        targetValue = if (isVisible) 1f else 0f,
+        animationSpec = tween(200, easing = FastOutSlowInEasing),
+        label = "signOutDialogAlpha"
+    )
+
+    val offsetY by animateDpAsState(
+        targetValue = if (isVisible || isReducedMotion) 0.dp else 16.dp,
+        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        label = "signOutDialogOffsetY"
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.graphicsLayer {
+            this.alpha = if (isReducedMotion) 1f else alpha
+            this.translationY = offsetY.toPx()
+        },
+        title = {
+            Text(
+                text = "Sign Out",
+                fontFamily = SpaceGrotesk,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Text("Are you sure you want to sign out of your FiveLight account?")
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirmSignOut,
+                modifier = Modifier.testTag("confirm_sign_out_btn")
+            ) {
+                Text(
+                    text = "Sign Out",
+                    color = Color.semanticError,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+        containerColor = Color.semanticSurfaceElevated,
+        shape = RoundedCornerShape(18.dp)
+    )
+}
+
+@Composable
 private fun DeleteAccountDialog(
     isEmailUser: Boolean,
     onDismiss: () -> Unit,
@@ -1124,6 +1302,24 @@ private fun DeleteAccountDialog(
     var isDeleting by remember { mutableStateOf(false) }
 
     val focusManager = LocalFocusManager.current
+    val isReducedMotion = rememberIsReducedMotion()
+    var isVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        isVisible = true
+    }
+
+    val alpha by animateFloatAsState(
+        targetValue = if (isVisible) 1f else 0f,
+        animationSpec = tween(200, easing = FastOutSlowInEasing),
+        label = "deleteAccountDialogAlpha"
+    )
+
+    val offsetY by animateDpAsState(
+        targetValue = if (isVisible || isReducedMotion) 0.dp else 16.dp,
+        animationSpec = tween(220, easing = FastOutSlowInEasing),
+        label = "deleteAccountDialogOffsetY"
+    )
 
     val handleDelete = {
         if (isEmailUser && password.trim().isEmpty()) {
@@ -1140,6 +1336,10 @@ private fun DeleteAccountDialog(
 
     AlertDialog(
         onDismissRequest = { if (!isDeleting) onDismiss() },
+        modifier = Modifier.graphicsLayer {
+            this.alpha = if (isReducedMotion) 1f else alpha
+            this.translationY = offsetY.toPx()
+        },
         title = {
             Text(
                 text = "Delete your account?",

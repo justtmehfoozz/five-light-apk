@@ -24,10 +24,13 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
@@ -224,6 +227,7 @@ fun SettingsBottomSheet(
             onBack = { activeSubScreen = PreferencesSubScreen.MAIN }
         )
 
+        val density = LocalDensity.current.density
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -232,12 +236,13 @@ fun SettingsBottomSheet(
             AnimatedContent(
                 targetState = activeSubScreen,
                 transitionSpec = {
+                    val distance = (24 * density).toInt()
                     if (targetState != PreferencesSubScreen.MAIN) {
-                        slideInHorizontally { width -> width } + fadeIn() togetherWith
-                                slideOutHorizontally { width -> -width } + fadeOut()
+                        slideInHorizontally { distance } + fadeIn(tween(220, easing = FastOutSlowInEasing)) togetherWith
+                                slideOutHorizontally { -distance } + fadeOut(tween(180, easing = FastOutSlowInEasing))
                     } else {
-                        slideInHorizontally { width -> -width } + fadeIn() togetherWith
-                                slideOutHorizontally { width -> width } + fadeOut()
+                        slideInHorizontally { -distance } + fadeIn(tween(220, easing = FastOutSlowInEasing)) togetherWith
+                                slideOutHorizontally { distance } + fadeOut(tween(180, easing = FastOutSlowInEasing))
                     }
                 },
                 label = "preferencesDrillDown"
