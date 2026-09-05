@@ -9,7 +9,8 @@ import com.example.ui.theme.semanticAccentForeground
 import com.example.ui.theme.semanticSuccess
 import com.example.ui.theme.semanticError
 import com.example.ui.theme.semanticSurface
-import com.example.ui.theme.semanticSurfaceElevated
+import com.example.ui.theme.fiveLightPressable
+import com.example.ui.theme.rememberIsReducedMotion
 import com.example.ui.theme.semanticPrimaryText
 import com.example.ui.theme.semanticMutedText
 import com.example.ui.theme.semanticBorder
@@ -104,6 +105,7 @@ import com.example.ui.theme.SerifHeaderFont
 
 enum class PreferencesSubScreen {
     MAIN,
+    PROFILE,
     CITY,
     CALC_METHOD,
     MADHAB,
@@ -161,6 +163,7 @@ fun SettingsBottomSheet(
     onUpdateNaflOrder: (List<String>) -> Unit = {},
     onResetNaflOrder: () -> Unit = {},
     currentUser: FirebaseUser? = null,
+    authRepository: com.example.data.auth.AuthRepository? = null,
     onOpenLoginSheet: () -> Unit = {},
     onSignOut: () -> Unit = {},
     onDismiss: () -> Unit,
@@ -880,6 +883,18 @@ fun SettingsBottomSheet(
                             onBack = { activeSubScreen = PreferencesSubScreen.MAIN }
                         )
                     }
+
+                    PreferencesSubScreen.PROFILE -> {
+                        ProfileSubScreen(
+                            currentUser = currentUser,
+                            authRepository = authRepository ?: com.example.data.auth.AuthRepository.getInstance(context),
+                            onBack = { activeSubScreen = PreferencesSubScreen.MAIN },
+                            onSignOut = {
+                                onSignOut()
+                                activeSubScreen = PreferencesSubScreen.MAIN
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -939,33 +954,55 @@ fun MainPreferencesView(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                                .fiveLightPressable(pressedScale = 0.98f) { onNavigateTo(PreferencesSubScreen.PROFILE) }
+                                .padding(horizontal = 16.dp, vertical = 14.dp)
+                                .testTag("pref_row_profile_authenticated"),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            UserAvatar(
+                                user = currentUser,
+                                size = 48.dp,
+                                textSize = 17.sp,
+                                modifier = Modifier.testTag("pref_profile_avatar")
+                            )
+
+                            Spacer(modifier = Modifier.width(14.dp))
+
                             Column(modifier = Modifier.weight(1f)) {
+                                val nameText = currentUser.displayName?.takeIf { it.isNotBlank() }
+                                    ?: currentUser.email?.substringBefore('@')
+                                    ?: "Signed In"
                                 Text(
-                                    text = currentUser.email ?: currentUser.displayName ?: "Signed In",
+                                    text = nameText,
                                     style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1
                                 )
+                                if (!currentUser.email.isNullOrBlank()) {
+                                    Text(
+                                        text = currentUser.email.orEmpty(),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
+                                    )
+                                }
                                 Text(
-                                    text = "Signed in with ${if (currentUser.providerData.any { it.providerId == "google.com" }) "Google" else "Email"}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = "Signed in with ${getAuthProviderName(currentUser)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.semanticMutedText,
+                                    maxLines = 1
                                 )
                             }
-                            TextButton(
-                                onClick = onSignOut,
-                                modifier = Modifier.testTag("sign_out_btn")
-                            ) {
-                                Text(
-                                    text = "Sign Out",
-                                    color = MaterialTheme.colorScheme.error,
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)
-                                )
-                            }
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = "Open Profile",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
                     } else {
                         GroupedMenuRow(

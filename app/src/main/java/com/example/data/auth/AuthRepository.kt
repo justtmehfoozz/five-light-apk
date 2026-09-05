@@ -16,6 +16,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -89,17 +90,51 @@ class AuthRepository(private val context: Context) {
         }
     }
 
-    suspend fun registerWithEmail(email: String, password: String): Result<FirebaseUser> = withContext(Dispatchers.IO) {
+    suspend fun registerWithEmail(email: String, password: String, displayName: String? = null): Result<FirebaseUser> = withContext(Dispatchers.IO) {
         val tag = "AuthRepository"
         try {
             com.example.FiveLightApp.ensureFirebaseInitialized(context)
             Log.d(tag, "Attempting email registration with Firebase project: ${firebaseAuth.app.options.projectId}")
             val authResult = firebaseAuth.createUserWithEmailAndPassword(email.trim(), password).await()
             val user = authResult.user ?: throw Exception("Registration succeeded but user is null")
-            _currentUser.value = user
-            Result.success(user)
+            val cleanName = displayName?.trim()
+            if (!cleanName.isNullOrBlank()) {
+                try {
+                    val profileUpdates = UserProfileChangeRequest.Builder()
+                        .setDisplayName(cleanName)
+                        .build()
+                    user.updateProfile(profileUpdates).await()
+                    user.reload().await()
+                } catch (pe: Exception) {
+                    Log.w(tag, "Failed to update profile name on registration", pe)
+                }
+            }
+            _currentUser.value = firebaseAuth.currentUser ?: user
+            Result.success(_currentUser.value ?: user)
         } catch (e: Exception) {
             Log.e(tag, "Email registration failure: ${e.javaClass.name} - ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateDisplayName(newName: String): Result<FirebaseUser> = withContext(Dispatchers.IO) {
+        val tag = "AuthRepository"
+        try {
+            val user = firebaseAuth.currentUser ?: throw Exception("No authenticated user found")
+            val cleanName = newName.trim()
+            if (cleanName.isBlank()) {
+                throw Exception("Display name cannot be empty")
+            }
+            val profileUpdates = UserProfileChangeRequest.Builder()
+                .setDisplayName(cleanName)
+                .build()
+            user.updateProfile(profileUpdates).await()
+            user.reload().await()
+            val updatedUser = firebaseAuth.currentUser ?: user
+            _currentUser.value = updatedUser
+            Result.success(updatedUser)
+        } catch (e: Exception) {
+            Log.e(tag, "Update display name failure: ${e.javaClass.name} - ${e.message}", e)
             Result.failure(e)
         }
     }

@@ -760,6 +760,7 @@ class MainActivity : ComponentActivity() {
                             onUpdateNaflOrder = { order -> viewModel.setNaflOrder(order) },
                             onResetNaflOrder = { viewModel.resetNaflOrder() },
                             currentUser = currentUser,
+                            authRepository = viewModel.authRepository,
                             onOpenLoginSheet = {
                                 showSettingsSheet = false
                                 showLoginBottomSheet = true

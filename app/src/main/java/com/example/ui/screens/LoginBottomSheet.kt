@@ -34,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
@@ -289,13 +290,17 @@ fun LoginBottomSheet(
                                     currentStep = LoginSheetStep.OPTIONS
                                 }
                             },
-                            onRegister = { email, password ->
+                            onRegister = { name, email, password ->
                                 if (!isLoading) {
                                     errorMessage = null
                                     infoMessage = null
                                     isLoading = true
                                     coroutineScope.launch {
-                                        val result = authRepository.registerWithEmail(email, password)
+                                        val result = authRepository.registerWithEmail(
+                                            email = email,
+                                            password = password,
+                                            displayName = name.ifBlank { null }
+                                        )
                                         isLoading = false
                                         result.onSuccess {
                                             onAuthSuccess()
@@ -870,8 +875,9 @@ private fun RegisterForm(
     isLoading: Boolean,
     isDark: Boolean,
     onBack: () -> Unit,
-    onRegister: (email: String, pass: String) -> Unit
+    onRegister: (name: String, email: String, pass: String) -> Unit
 ) {
+    var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
@@ -940,6 +946,25 @@ private fun RegisterForm(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Full Name (Optional)") },
+            leadingIcon = {
+                Icon(Icons.Outlined.Person, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            },
+            singleLine = true,
+            enabled = !isLoading,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("register_name_input")
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
             value = email,
@@ -1042,7 +1067,7 @@ private fun RegisterForm(
                 focusManager.clearFocus()
                 hasAttemptedSubmit = true
                 if (isEmailFormatValid && isPasswordLengthValid && isConfirmPasswordMatching && !isLoading) {
-                    onRegister(email.trim(), password)
+                    onRegister(name.trim(), email.trim(), password)
                 }
             }),
             shape = RoundedCornerShape(14.dp),
@@ -1058,7 +1083,7 @@ private fun RegisterForm(
                 focusManager.clearFocus()
                 hasAttemptedSubmit = true
                 if (isEmailFormatValid && isPasswordLengthValid && isConfirmPasswordMatching && !isLoading) {
-                    onRegister(email.trim(), password)
+                    onRegister(name.trim(), email.trim(), password)
                 }
             },
             enabled = !isLoading,
