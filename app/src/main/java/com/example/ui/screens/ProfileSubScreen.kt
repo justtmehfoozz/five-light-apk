@@ -32,6 +32,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -332,6 +335,9 @@ fun ProfileSubScreen(
         mutableStateOf(com.example.data.backup.GoogleDriveService.getAuthorizedAccount(context))
     }
     var showDisconnectDialog by remember { mutableStateOf(false) }
+    var showDebugErrorDialog by remember { mutableStateOf(false) }
+    var debugErrorTitle by remember { mutableStateOf("") }
+    var debugErrorMessage by remember { mutableStateOf("") }
     var pendingBackupAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     val driveAuthLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -401,6 +407,36 @@ fun ProfileSubScreen(
             dismissButton = {
                 TextButton(onClick = { showDisconnectDialog = false }) {
                     Text("Cancel")
+                }
+            },
+            containerColor = Color.semanticSurfaceElevated,
+            shape = RoundedCornerShape(18.dp)
+        )
+    }
+
+    if (showDebugErrorDialog) {
+        AlertDialog(
+            onDismissRequest = { showDebugErrorDialog = false },
+            title = { Text(debugErrorTitle, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 400.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = debugErrorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDebugErrorDialog = false }) {
+                    Text("Dismiss")
                 }
             },
             containerColor = Color.semanticSurfaceElevated,
@@ -798,7 +834,14 @@ fun ProfileSubScreen(
                                                         lastBackupTime = res.getOrNull() ?: System.currentTimeMillis()
                                                         Toast.makeText(context, "Google Drive backup completed successfully", Toast.LENGTH_SHORT).show()
                                                     } else {
-                                                        Toast.makeText(context, "Backup failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                                        val exception = res.exceptionOrNull()
+                                                        val rawMessage = exception?.message ?: "Unknown backup error"
+                                                        val account = com.example.data.backup.GoogleDriveService.getAuthorizedAccount(context)
+                                                        val scopeList = account?.grantedScopes?.map { it.scopeUri }?.joinToString("\n") ?: "No active account or no scopes found"
+                                                        debugErrorTitle = "Backup Diagnostic Info"
+                                                        debugErrorMessage = "--- ERROR DETAILS ---\n$rawMessage\n\n--- GRANTED OAUTH SCOPES ---\n$scopeList"
+                                                        showDebugErrorDialog = true
+                                                        Toast.makeText(context, "Backup failed! Detailed diagnostic info shown on screen.", Toast.LENGTH_LONG).show()
                                                     }
                                                 } finally {
                                                     isBackingUp = false
@@ -858,7 +901,14 @@ fun ProfileSubScreen(
                                                     if (res.isSuccess) {
                                                         Toast.makeText(context, "Data restored successfully from Google Drive", Toast.LENGTH_SHORT).show()
                                                     } else {
-                                                        Toast.makeText(context, "Restore failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                                        val exception = res.exceptionOrNull()
+                                                        val rawMessage = exception?.message ?: "Unknown restore error"
+                                                        val account = com.example.data.backup.GoogleDriveService.getAuthorizedAccount(context)
+                                                        val scopeList = account?.grantedScopes?.map { it.scopeUri }?.joinToString("\n") ?: "No active account or no scopes found"
+                                                        debugErrorTitle = "Restore Diagnostic Info"
+                                                        debugErrorMessage = "--- ERROR DETAILS ---\n$rawMessage\n\n--- GRANTED OAUTH SCOPES ---\n$scopeList"
+                                                        showDebugErrorDialog = true
+                                                        Toast.makeText(context, "Restore failed! Detailed diagnostic info shown on screen.", Toast.LENGTH_LONG).show()
                                                     }
                                                 } finally {
                                                     isRestoring = false
