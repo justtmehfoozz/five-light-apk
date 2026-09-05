@@ -23,6 +23,9 @@ object GoogleDriveService {
     val DRIVE_APPDATA_SCOPE = Scope("https://www.googleapis.com/auth/drive.appdata")
     private const val OAUTH_SCOPE_STRING = "oauth2:https://www.googleapis.com/auth/drive.appdata"
 
+    @Volatile
+    var lastFoundFileMetadata: String? = null
+
     private val httpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -116,7 +119,8 @@ object GoogleDriveService {
      */
     suspend fun findBackupFileId(accessToken: String): Result<String?> = withContext(Dispatchers.IO) {
         try {
-            val url = "https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D%27$BACKUP_FILENAME%27+and+trashed%3Dfalse&fields=files(id%2Cname%2CmodifiedTime)"
+            lastFoundFileMetadata = null
+            val url = "https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D%27$BACKUP_FILENAME%27+and+trashed%3Dfalse&fields=files(id%2Cname%2Cparents%2CmimeType%2CmodifiedTime%2Ccapabilities%2Ctrashed)"
             val request = Request.Builder()
                 .url(url)
                 .addHeader("Authorization", "Bearer $accessToken")
@@ -134,8 +138,39 @@ object GoogleDriveService {
                 if (files != null && files.length() > 0) {
                     val fileObj = files.getJSONObject(0)
                     val fileId = fileObj.getString("id")
+                    
+                    val name = fileObj.optString("name", "N/A")
+                    val parents = fileObj.optJSONArray("parents")?.let { arr ->
+                        (0 until arr.length()).map { arr.getString(it) }.joinToString(", ")
+                    } ?: "N/A"
+                    val mimeType = fileObj.optString("mimeType", "N/A")
+                    val modifiedTime = fileObj.optString("modifiedTime", "N/A")
+                    val trashed = fileObj.optBoolean("trashed", false).toString()
+                    val capabilities = fileObj.optJSONObject("capabilities")?.let { cap ->
+                        val keys = cap.keys()
+                        val list = mutableListOf<String>()
+                        while (keys.hasNext()) {
+                            val key = keys.next()
+                            list.add("$key: ${cap.opt(key)}")
+                        }
+                        list.joinToString("\n    ")
+                    } ?: "N/A"
+                    
+                    lastFoundFileMetadata = """
+                        id: "$fileId"
+                        name: "$name"
+                        parents: [$parents]
+                        mimeType: "$mimeType"
+                        modifiedTime: "$modifiedTime"
+                        trashed: $trashed
+                        capabilities:
+                            $capabilities
+                    """.trimIndent()
+                    Log.d(TAG, "findBackupFileId diagnostic metadata loaded:\n$lastFoundFileMetadata")
                     Result.success(fileId)
                 } else {
+                    lastFoundFileMetadata = "No existing backup file found in Drive appDataFolder."
+                    Log.d(TAG, "findBackupFileId: No file found")
                     Result.success(null)
                 }
             }
@@ -165,7 +200,9 @@ object GoogleDriveService {
                 httpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
                         val errBody = response.body?.string() ?: ""
-                        return@withContext Result.failure(Exception(parseGoogleError(response.code, errBody)))
+                        val mainErr = parseGoogleError(response.code, errBody)
+                        val metadataText = lastFoundFileMetadata ?: "N/A"
+                        return@withContext Result.failure(Exception("$mainErr\n\n--- EXISTING FILE METADATA ---\n$metadataText"))
                     }
                     Result.success(existingFileId)
                 }
