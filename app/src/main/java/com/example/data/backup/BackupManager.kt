@@ -20,6 +20,40 @@ import javax.crypto.spec.SecretKeySpec
 
 object BackupManager {
 
+    private suspend fun <T> runWithDriveRetry(
+        context: Context,
+        googleAccount: com.google.android.gms.auth.api.signin.GoogleSignInAccount,
+        block: suspend (accessToken: String) -> Result<T>
+    ): Result<T> {
+        var tokenResult = GoogleDriveService.getAccessToken(context, googleAccount)
+        if (tokenResult.isFailure) {
+            return Result.failure(Exception("Failed to obtain Drive OAuth token: " + tokenResult.exceptionOrNull()?.message))
+        }
+        var accessToken = tokenResult.getOrThrow()
+
+        var result = block(accessToken)
+        
+        val exception = result.exceptionOrNull()
+        if (exception != null && (exception.message?.contains("HTTP 403") == true || exception.message?.contains("HTTP 401") == true)) {
+            Log.w(TAG, "Drive request failed with HTTP 403/401, invalidating token and retrying...", exception)
+            GoogleDriveService.invalidateToken(context, accessToken)
+            
+            tokenResult = GoogleDriveService.getAccessToken(context, googleAccount)
+            if (tokenResult.isSuccess) {
+                accessToken = tokenResult.getOrThrow()
+                result = block(accessToken)
+            }
+        }
+        
+        val finalException = result.exceptionOrNull()
+        if (finalException != null && finalException.message?.contains("HTTP 403") == true) {
+            return Result.failure(Exception("Google Drive access was denied (HTTP 403). Please ensure you have granted FiveLight permission to access Google Drive during sign-in, or try disconnecting and reconnecting your Google account."))
+        }
+        
+        return result
+    }
+
+
     private const val TAG = "BackupManager"
     private const val PREFS_NAME = "fivelight_drive_backup_meta"
     private const val KEY_LAST_BACKUP = "last_drive_backup_time"
@@ -53,14 +87,6 @@ object BackupManager {
             // 1. Ensure Google Drive Authorization
             val googleAccount = GoogleDriveService.getAuthorizedAccount(context)
                 ?: return@withContext Result.failure(Exception("Google Drive authorization required. Please connect your Google account."))
-
-            val tokenResult = GoogleDriveService.getAccessToken(context, googleAccount)
-            if (tokenResult.isFailure) {
-                return@withContext Result.failure(
-                    Exception("Failed to obtain Drive OAuth token: ${tokenResult.exceptionOrNull()?.message}")
-                )
-            }
-            val accessToken = tokenResult.getOrThrow()
 
             // 2. Gather all MUST SYNC data into JSON
             val root = JSONObject()
@@ -236,18 +262,16 @@ object BackupManager {
             val encryptedBytes = encryptData(root.toString(), uid)
 
             // 5. Upload/update backup in Google Drive appDataFolder
-            val searchResult = GoogleDriveService.findBackupFileId(accessToken)
-            if (searchResult.isFailure) {
-                return@withContext Result.failure(
-                    Exception("Failed to query Google Drive: ${searchResult.exceptionOrNull()?.message}")
-                )
-            }
-            val existingFileId = searchResult.getOrNull()
+            val uploadFlowResult = runWithDriveRetry(context, googleAccount) { token ->
+                val searchResult = GoogleDriveService.findBackupFileId(token)
+                if (searchResult.isFailure) return@runWithDriveRetry Result.failure(searchResult.exceptionOrNull()!!)
+                val existingFileId = searchResult.getOrNull()
 
-            val uploadResult = GoogleDriveService.uploadBackupFile(accessToken, encryptedBytes, existingFileId)
-            if (uploadResult.isFailure) {
+                GoogleDriveService.uploadBackupFile(token, encryptedBytes, existingFileId)
+            }
+            if (uploadFlowResult.isFailure) {
                 return@withContext Result.failure(
-                    Exception("Drive upload failed: ${uploadResult.exceptionOrNull()?.message}")
+                    Exception("Drive upload failed: ${uploadFlowResult.exceptionOrNull()?.message}")
                 )
             }
 
@@ -287,32 +311,21 @@ object BackupManager {
             val googleAccount = GoogleDriveService.getAuthorizedAccount(context)
                 ?: return@withContext Result.failure(Exception("Google Drive authorization required. Please connect your Google account."))
 
-            val tokenResult = GoogleDriveService.getAccessToken(context, googleAccount)
-            if (tokenResult.isFailure) {
-                return@withContext Result.failure(
-                    Exception("Failed to obtain Drive OAuth token: ${tokenResult.exceptionOrNull()?.message}")
-                )
-            }
-            val accessToken = tokenResult.getOrThrow()
+            // 2. Search & Download backup from Drive with retry
+            val downloadFlowResult = runWithDriveRetry(context, googleAccount) { token ->
+                val searchResult = GoogleDriveService.findBackupFileId(token)
+                if (searchResult.isFailure) return@runWithDriveRetry Result.failure(searchResult.exceptionOrNull()!!)
+                val fileId = searchResult.getOrNull()
+                    ?: return@runWithDriveRetry Result.failure(Exception("No FiveLight backup found in Google Drive appDataFolder."))
 
-            // 2. Search for FiveLight backup in Drive appDataFolder
-            val searchResult = GoogleDriveService.findBackupFileId(accessToken)
-            if (searchResult.isFailure) {
+                GoogleDriveService.downloadBackupFile(token, fileId)
+            }
+            if (downloadFlowResult.isFailure) {
                 return@withContext Result.failure(
-                    Exception("Failed to query Google Drive: ${searchResult.exceptionOrNull()?.message}")
+                    Exception("Restore failed: ${downloadFlowResult.exceptionOrNull()?.message}")
                 )
             }
-            val fileId = searchResult.getOrNull()
-                ?: return@withContext Result.failure(Exception("No FiveLight backup found in Google Drive appDataFolder."))
-
-            // 3. Download encrypted bytes directly from Drive
-            val downloadResult = GoogleDriveService.downloadBackupFile(accessToken, fileId)
-            if (downloadResult.isFailure) {
-                return@withContext Result.failure(
-                    Exception("Failed to download backup from Drive: ${downloadResult.exceptionOrNull()?.message}")
-                )
-            }
-            val encryptedBytes = downloadResult.getOrThrow()
+            val encryptedBytes = downloadFlowResult.getOrThrow()
 
             // 4. Decrypt payload
             val decryptedJsonStr = try {
@@ -560,17 +573,15 @@ object BackupManager {
         try {
             val googleAccount = GoogleDriveService.getAuthorizedAccount(context)
             if (googleAccount != null) {
-                val tokenResult = GoogleDriveService.getAccessToken(context, googleAccount)
-                if (tokenResult.isSuccess) {
-                    val token = tokenResult.getOrThrow()
+                runWithDriveRetry(context, googleAccount) { token ->
                     val searchResult = GoogleDriveService.findBackupFileId(token)
-                    if (searchResult.isSuccess) {
-                        val fileId = searchResult.getOrNull()
-                        if (fileId != null) {
-                            GoogleDriveService.deleteBackupFile(token, fileId)
-                            Log.d(TAG, "Deleted FiveLight backup from Google Drive appDataFolder")
-                        }
+                    if (searchResult.isFailure) return@runWithDriveRetry Result.failure(searchResult.exceptionOrNull()!!)
+                    val fileId = searchResult.getOrNull()
+                    if (fileId != null) {
+                        GoogleDriveService.deleteBackupFile(token, fileId)
+                        Log.d(TAG, "Deleted FiveLight backup from Google Drive appDataFolder")
                     }
+                    Result.success(Unit)
                 }
             }
 
