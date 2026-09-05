@@ -85,6 +85,31 @@ object GoogleDriveService {
         }
     }
 
+    fun parseGoogleError(httpCode: Int, bodyStr: String): String {
+        try {
+            if (bodyStr.trim().startsWith("{")) {
+                val json = JSONObject(bodyStr)
+                val errorObj = json.optJSONObject("error")
+                if (errorObj != null) {
+                    val code = errorObj.optInt("code", httpCode)
+                    val message = errorObj.optString("message", "")
+                    val errorsArr = errorObj.optJSONArray("errors")
+                    var reason = ""
+                    var domain = ""
+                    if (errorsArr != null && errorsArr.length() > 0) {
+                        val firstError = errorsArr.getJSONObject(0)
+                        reason = firstError.optString("reason", "")
+                        domain = firstError.optString("domain", "")
+                    }
+                    return "Google API Error (HTTP $httpCode, code: $code, message: \"$message\", reason: \"$reason\", domain: \"$domain\")"
+                }
+            }
+        } catch (e: Exception) {
+            // Fallback to raw string
+        }
+        return "HTTP $httpCode: $bodyStr"
+    }
+
     /**
      * Searches appDataFolder for existing FiveLight backup file.
      * Returns fileId if found, null otherwise.
@@ -101,7 +126,7 @@ object GoogleDriveService {
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     val errBody = response.body?.string() ?: ""
-                    return@withContext Result.failure(Exception("Drive search failed HTTP ${response.code}: $errBody"))
+                    return@withContext Result.failure(Exception(parseGoogleError(response.code, errBody)))
                 }
                 val bodyStr = response.body?.string() ?: ""
                 val json = JSONObject(bodyStr)
@@ -140,12 +165,12 @@ object GoogleDriveService {
                 httpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
                         val errBody = response.body?.string() ?: ""
-                        return@withContext Result.failure(Exception("Drive file update failed HTTP ${response.code}: $errBody"))
+                        return@withContext Result.failure(Exception(parseGoogleError(response.code, errBody)))
                     }
                     Result.success(existingFileId)
                 }
             } else {
-                // Create new file via multipart
+                // Create new file via multipart/related
                 val url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
                 val metadataJson = JSONObject().apply {
                     put("name", BACKUP_FILENAME)
@@ -153,7 +178,7 @@ object GoogleDriveService {
                 }.toString()
 
                 val multipartBody = MultipartBody.Builder()
-                    .setType(MultipartBody.FORM)
+                    .setType("multipart/related".toMediaType())
                     .addPart(
                         metadataJson.toRequestBody("application/json; charset=UTF-8".toMediaType())
                     )
@@ -171,7 +196,7 @@ object GoogleDriveService {
                 httpClient.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
                         val errBody = response.body?.string() ?: ""
-                        return@withContext Result.failure(Exception("Drive file upload failed HTTP ${response.code}: $errBody"))
+                        return@withContext Result.failure(Exception(parseGoogleError(response.code, errBody)))
                     }
                     val bodyStr = response.body?.string() ?: ""
                     val json = JSONObject(bodyStr)
@@ -200,7 +225,7 @@ object GoogleDriveService {
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
                     val errBody = response.body?.string() ?: ""
-                    return@withContext Result.failure(Exception("Drive download failed HTTP ${response.code}: $errBody"))
+                    return@withContext Result.failure(Exception(parseGoogleError(response.code, errBody)))
                 }
                 val bytes = response.body?.bytes()
                     ?: return@withContext Result.failure(Exception("Drive response body is empty."))
@@ -227,7 +252,7 @@ object GoogleDriveService {
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful && response.code != 404) {
                     val errBody = response.body?.string() ?: ""
-                    return@withContext Result.failure(Exception("Drive file delete failed HTTP ${response.code}: $errBody"))
+                    return@withContext Result.failure(Exception(parseGoogleError(response.code, errBody)))
                 }
                 Result.success(Unit)
             }

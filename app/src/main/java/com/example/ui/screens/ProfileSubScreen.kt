@@ -340,11 +340,16 @@ fun ProfileSubScreen(
         val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(result.data)
         try {
             val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
-            if (account != null && com.google.android.gms.auth.api.signin.GoogleSignIn.hasPermissions(account, com.example.data.backup.GoogleDriveService.DRIVE_APPDATA_SCOPE)) {
-                driveAccount = account
-                Toast.makeText(context, "Google Drive connected: ${account.email}", Toast.LENGTH_SHORT).show()
-                pendingBackupAction?.invoke()
-                pendingBackupAction = null
+            if (account != null) {
+                val hasScope = account.grantedScopes.any { it.scopeUri.equals("https://www.googleapis.com/auth/drive.appdata", ignoreCase = true) }
+                if (hasScope) {
+                    driveAccount = account
+                    Toast.makeText(context, "Google Drive connected: ${account.email}", Toast.LENGTH_SHORT).show()
+                    pendingBackupAction?.invoke()
+                    pendingBackupAction = null
+                } else {
+                    Toast.makeText(context, "Authorization failed: Please make sure to check the checkbox allowing Drive private app data access.", Toast.LENGTH_LONG).show()
+                }
             } else {
                 Toast.makeText(context, "Google Drive authorization was not granted", Toast.LENGTH_SHORT).show()
             }

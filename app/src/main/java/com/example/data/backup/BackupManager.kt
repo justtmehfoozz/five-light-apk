@@ -88,6 +88,16 @@ object BackupManager {
             val googleAccount = GoogleDriveService.getAuthorizedAccount(context)
                 ?: return@withContext Result.failure(Exception("Google Drive authorization required. Please connect your Google account."))
 
+            // Explicitly inspect and verify drive.appdata is in the granted scopes
+            val appDataScopeString = "https://www.googleapis.com/auth/drive.appdata"
+            val hasScope = googleAccount.grantedScopes.any { it.scopeUri.equals(appDataScopeString, ignoreCase = true) }
+            Log.d(TAG, "performBackup: Google Account is signed in. Granted scopes: " + googleAccount.grantedScopes.map { it.scopeUri })
+            if (!hasScope) {
+                return@withContext Result.failure(
+                    Exception("Required Google Drive permission (drive.appdata) is missing from your account's granted scopes. Please disconnect and reconnect Google Drive on your Profile screen, making sure to authorize Drive private app data access.")
+                )
+            }
+
             // 2. Gather all MUST SYNC data into JSON
             val root = JSONObject()
 
@@ -310,6 +320,16 @@ object BackupManager {
             // 1. Ensure Google Drive Authorization
             val googleAccount = GoogleDriveService.getAuthorizedAccount(context)
                 ?: return@withContext Result.failure(Exception("Google Drive authorization required. Please connect your Google account."))
+
+            // Explicitly inspect and verify drive.appdata is in the granted scopes
+            val appDataScopeString = "https://www.googleapis.com/auth/drive.appdata"
+            val hasScope = googleAccount.grantedScopes.any { it.scopeUri.equals(appDataScopeString, ignoreCase = true) }
+            Log.d(TAG, "performRestore: Google Account is signed in. Granted scopes: " + googleAccount.grantedScopes.map { it.scopeUri })
+            if (!hasScope) {
+                return@withContext Result.failure(
+                    Exception("Required Google Drive permission (drive.appdata) is missing from your account's granted scopes. Please disconnect and reconnect Google Drive on your Profile screen, making sure to authorize Drive private app data access.")
+                )
+            }
 
             // 2. Search & Download backup from Drive with retry
             val downloadFlowResult = runWithDriveRetry(context, googleAccount) { token ->
