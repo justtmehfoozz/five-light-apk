@@ -47,7 +47,7 @@ object BackupManager {
         
         val finalException = result.exceptionOrNull()
         if (finalException != null && finalException.message?.contains("HTTP 403") == true) {
-            return Result.failure(Exception("Google Drive access was denied (HTTP 403). Please ensure you have granted FiveLight permission to access Google Drive during sign-in, or try disconnecting and reconnecting your Google account."))
+            return Result.failure(Exception("Google Drive access was denied (HTTP 403): ${finalException.message}. Please ensure you have granted FiveLight permission to access Google Drive during sign-in, or try disconnecting and reconnecting your Google account."))
         }
         
         return result

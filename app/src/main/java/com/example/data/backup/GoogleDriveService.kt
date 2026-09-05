@@ -74,6 +74,18 @@ object GoogleDriveService {
     }
 
     /**
+     * Signs out the currently signed-in Google account for a fresh login.
+     */
+    suspend fun signOut(context: Context) = withContext(Dispatchers.IO) {
+        try {
+            val client = getGoogleSignInClient(context)
+            com.google.android.gms.tasks.Tasks.await(client.signOut())
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to sign out Google Sign-In client: ${e.message}", e)
+        }
+    }
+
+    /**
      * Searches appDataFolder for existing FiveLight backup file.
      * Returns fileId if found, null otherwise.
      */

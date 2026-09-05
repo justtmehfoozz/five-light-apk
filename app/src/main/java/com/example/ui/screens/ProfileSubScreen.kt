@@ -331,6 +331,7 @@ fun ProfileSubScreen(
     var driveAccount by remember {
         mutableStateOf(com.example.data.backup.GoogleDriveService.getAuthorizedAccount(context))
     }
+    var showDisconnectDialog by remember { mutableStateOf(false) }
     var pendingBackupAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     val driveAuthLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -356,7 +357,9 @@ fun ProfileSubScreen(
     val requestDriveAuth: (() -> Unit) -> Unit = { onAuthorized ->
         pendingBackupAction = onAuthorized
         val signInClient = com.example.data.backup.GoogleDriveService.getGoogleSignInClient(context)
-        driveAuthLauncher.launch(signInClient.signInIntent)
+        signInClient.signOut().addOnCompleteListener {
+            driveAuthLauncher.launch(signInClient.signInIntent)
+        }
     }
 
     val formattedLastBackup = remember(lastBackupTime) {
@@ -369,6 +372,35 @@ fun ProfileSubScreen(
         } else {
             "Not available"
         }
+    }
+
+    if (showDisconnectDialog) {
+        AlertDialog(
+            onDismissRequest = { showDisconnectDialog = false },
+            title = { Text("Disconnect Google Drive") },
+            text = { Text("Are you sure you want to disconnect your Google account from FiveLight? This will not delete your backups in Google Drive.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            com.example.data.backup.GoogleDriveService.signOut(context)
+                            driveAccount = null
+                            showDisconnectDialog = false
+                            Toast.makeText(context, "Google Drive disconnected", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                ) {
+                    Text("Disconnect", color = Color.semanticError)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDisconnectDialog = false }) {
+                    Text("Cancel")
+                }
+            },
+            containerColor = Color.semanticSurfaceElevated,
+            shape = RoundedCornerShape(18.dp)
+        )
     }
 
     SubScreenLayout(
@@ -721,8 +753,14 @@ fun ProfileSubScreen(
                         ProfileRow(
                             label = "Google Drive",
                             value = if (driveAccount != null) "Connected (${driveAccount?.email ?: ""})" else "Not Authorized",
-                            isAction = driveAccount == null,
-                            onClick = if (driveAccount == null) { { requestDriveAuth {} } } else null,
+                            isAction = true,
+                            onClick = {
+                                if (driveAccount == null) {
+                                    requestDriveAuth {}
+                                } else {
+                                    showDisconnectDialog = true
+                                }
+                            },
                             testTag = "profile_drive_status_row"
                         )
 
