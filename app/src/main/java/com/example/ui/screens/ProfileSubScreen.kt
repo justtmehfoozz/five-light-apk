@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -291,6 +292,7 @@ fun ProfileSubScreen(
         else when (syncState) {
             is com.example.data.sync.SyncState.Syncing -> "Syncing..."
             is com.example.data.sync.SyncState.Synced -> "Synced"
+            is com.example.data.sync.SyncState.Offline -> "Offline / Waiting for connection"
             is com.example.data.sync.SyncState.Error -> "Offline / Waiting for connection"
             is com.example.data.sync.SyncState.Idle -> "Synced"
         }
@@ -302,6 +304,7 @@ fun ProfileSubScreen(
         when (syncState) {
             is com.example.data.sync.SyncState.Syncing -> Color.semanticPrimaryAccent
             is com.example.data.sync.SyncState.Synced -> Color.semanticSuccess
+            is com.example.data.sync.SyncState.Offline -> Color.semanticWarning
             is com.example.data.sync.SyncState.Error -> Color.semanticWarning
             is com.example.data.sync.SyncState.Idle -> Color.semanticSuccess
         }
@@ -311,6 +314,55 @@ fun ProfileSubScreen(
         if (lastSyncedTime != null && lastSyncedTime > 0) {
             try {
                 DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(lastSyncedTime))
+            } catch (_: Exception) {
+                "Not available"
+            }
+        } else {
+            "Not available"
+        }
+    }
+
+    var lastBackupTime by remember {
+        mutableStateOf(com.example.data.backup.BackupManager.getLastBackupTime(context))
+    }
+    var isBackingUp by remember { mutableStateOf(false) }
+    var isRestoring by remember { mutableStateOf(false) }
+
+    var driveAccount by remember {
+        mutableStateOf(com.example.data.backup.GoogleDriveService.getAuthorizedAccount(context))
+    }
+    var pendingBackupAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+
+    val driveAuthLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+            if (account != null && com.google.android.gms.auth.api.signin.GoogleSignIn.hasPermissions(account, com.example.data.backup.GoogleDriveService.DRIVE_APPDATA_SCOPE)) {
+                driveAccount = account
+                Toast.makeText(context, "Google Drive connected: ${account.email}", Toast.LENGTH_SHORT).show()
+                pendingBackupAction?.invoke()
+                pendingBackupAction = null
+            } else {
+                Toast.makeText(context, "Google Drive authorization was not granted", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("ProfileSubScreen", "Google Drive authorization failed: ${e.message}")
+            Toast.makeText(context, "Google Drive authorization failed", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val requestDriveAuth: (() -> Unit) -> Unit = { onAuthorized ->
+        pendingBackupAction = onAuthorized
+        val signInClient = com.example.data.backup.GoogleDriveService.getGoogleSignInClient(context)
+        driveAuthLauncher.launch(signInClient.signInIntent)
+    }
+
+    val formattedLastBackup = remember(lastBackupTime) {
+        if (lastBackupTime > 0) {
+            try {
+                DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(lastBackupTime))
             } catch (_: Exception) {
                 "Not available"
             }
@@ -544,10 +596,13 @@ fun ProfileSubScreen(
                                                 enabled = !isResendingEmail,
                                                 colors = ButtonDefaults.buttonColors(
                                                     containerColor = Color.semanticControl,
-                                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                                    contentColor = MaterialTheme.colorScheme.onSurface,
+                                                    disabledContainerColor = Color.semanticControl.copy(alpha = 0.6f),
+                                                    disabledContentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                                 ),
                                                 shape = RoundedCornerShape(10.dp),
                                                 border = BorderStroke(0.5.dp, Color.semanticBorder),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .height(38.dp)
@@ -567,32 +622,33 @@ fun ProfileSubScreen(
                                                 }
                                             }
 
-                                            IconButton(
-                                                onClick = {
-                                                    if (!isReloadingUser) {
-                                                        coroutineScope.launch {
-                                                            isReloadingUser = true
-                                                            val res = authRepository.reloadUser()
-                                                            isReloadingUser = false
-                                                            if (res.isSuccess) {
-                                                                val u = res.getOrNull()
-                                                                if (u?.isEmailVerified == true) {
-                                                                    Toast.makeText(context, "Email is verified!", Toast.LENGTH_SHORT).show()
-                                                                } else {
-                                                                    Toast.makeText(context, "Email is not verified yet.", Toast.LENGTH_SHORT).show()
-                                                                }
-                                                            } else {
-                                                                Toast.makeText(context, res.exceptionOrNull()?.message ?: "Failed to refresh verification status", Toast.LENGTH_SHORT).show()
-                                                            }
-                                                        }
-                                                    }
-                                                },
+                                            Box(
                                                 modifier = Modifier
                                                     .size(38.dp)
                                                     .clip(RoundedCornerShape(10.dp))
                                                     .background(Color.semanticControl)
                                                     .border(0.5.dp, Color.semanticBorder, RoundedCornerShape(10.dp))
-                                                    .testTag("refresh_verification_status_button")
+                                                    .fiveLightPressable(pressedScale = 0.98f) {
+                                                        if (!isReloadingUser) {
+                                                            coroutineScope.launch {
+                                                                isReloadingUser = true
+                                                                val res = authRepository.reloadUser()
+                                                                isReloadingUser = false
+                                                                if (res.isSuccess) {
+                                                                    val u = res.getOrNull()
+                                                                    if (u?.isEmailVerified == true) {
+                                                                        Toast.makeText(context, "Email is verified!", Toast.LENGTH_SHORT).show()
+                                                                    } else {
+                                                                        Toast.makeText(context, "Email is not verified yet.", Toast.LENGTH_SHORT).show()
+                                                                    }
+                                                                } else {
+                                                                    Toast.makeText(context, res.exceptionOrNull()?.message ?: "Failed to refresh verification status", Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    .testTag("refresh_verification_status_button"),
+                                                contentAlignment = Alignment.Center
                                             ) {
                                                 if (isReloadingUser) {
                                                     CircularProgressIndicator(
@@ -648,6 +704,158 @@ fun ProfileSubScreen(
                             onClick = null,
                             testTag = "profile_last_synced_row"
                         )
+                    }
+                }
+            }
+
+            // BACKUP Section
+            item {
+                Column(
+                    modifier = Modifier.graphicsLayer {
+                        alpha = syncAlpha.value
+                        translationY = syncOffsetY.value.dp.toPx()
+                    }
+                ) {
+                    ProfileSection(title = "BACKUP") {
+                        // Drive Backup Status Row
+                        ProfileRow(
+                            label = "Google Drive",
+                            value = if (driveAccount != null) "Connected (${driveAccount?.email ?: ""})" else "Not Authorized",
+                            isAction = driveAccount == null,
+                            onClick = if (driveAccount == null) { { requestDriveAuth {} } } else null,
+                            testTag = "profile_drive_status_row"
+                        )
+
+                        HorizontalDivider(color = Color.semanticBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
+
+                        // Last Backup Row
+                        ProfileRow(
+                            label = "Last backup",
+                            value = formattedLastBackup,
+                            isAction = false,
+                            onClick = null,
+                            testTag = "profile_last_backup_row"
+                        )
+
+                        HorizontalDivider(color = Color.semanticBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
+
+                        // Back Up Now Action Row
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fiveLightPressable(pressedScale = 0.98f) {
+                                    val runBackup = {
+                                        if (!isBackingUp) {
+                                            isBackingUp = true
+                                            coroutineScope.launch {
+                                                try {
+                                                    val repo = com.example.data.repository.AppRepository.getInstance(context)
+                                                    val res = com.example.data.backup.BackupManager.performBackup(context, repo, authRepository)
+                                                    if (res.isSuccess) {
+                                                        lastBackupTime = res.getOrNull() ?: System.currentTimeMillis()
+                                                        Toast.makeText(context, "Google Drive backup completed successfully", Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        Toast.makeText(context, "Backup failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                                    }
+                                                } finally {
+                                                    isBackingUp = false
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (driveAccount != null) {
+                                        runBackup()
+                                    } else {
+                                        requestDriveAuth { runBackup() }
+                                    }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 14.dp)
+                                .testTag("profile_backup_now_btn"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = if (isBackingUp) "Backing up..." else "Back Up Now",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.semanticPrimaryAccent,
+                                fontWeight = FontWeight.Medium
+                            )
+                            if (isBackingUp) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color.semanticPrimaryAccent
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = "Back Up Now",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        HorizontalDivider(color = Color.semanticBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
+
+                        // Restore Action Row
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .fiveLightPressable(pressedScale = 0.98f) {
+                                    val runRestore = {
+                                        if (!isRestoring) {
+                                            isRestoring = true
+                                            coroutineScope.launch {
+                                                try {
+                                                    val repo = com.example.data.repository.AppRepository.getInstance(context)
+                                                    val syncManager = com.example.data.sync.FirestoreSyncManager.getInstance(context, repo, authRepository)
+                                                    val res = com.example.data.backup.BackupManager.performRestore(context, repo, authRepository, syncManager)
+                                                    if (res.isSuccess) {
+                                                        Toast.makeText(context, "Data restored successfully from Google Drive", Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        Toast.makeText(context, "Restore failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                                    }
+                                                } finally {
+                                                    isRestoring = false
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (driveAccount != null) {
+                                        runRestore()
+                                    } else {
+                                        requestDriveAuth { runRestore() }
+                                    }
+                                }
+                                .padding(horizontal = 16.dp, vertical = 14.dp)
+                                .testTag("profile_restore_btn"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = if (isRestoring) "Restoring..." else "Restore from Google Drive",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Medium
+                            )
+                            if (isRestoring) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                    contentDescription = "Restore from Google Drive",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }

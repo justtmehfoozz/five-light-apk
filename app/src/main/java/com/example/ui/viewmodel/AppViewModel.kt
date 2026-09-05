@@ -111,7 +111,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         return authRepository.reloadUser()
     }
 
+    val lastDriveBackupTime: MutableStateFlow<Long> = MutableStateFlow(
+        com.example.data.backup.BackupManager.getLastBackupTime(getApplication())
+    )
+
+    suspend fun performDriveBackup(): Result<Long> {
+        val result = com.example.data.backup.BackupManager.performBackup(
+            getApplication(),
+            repository,
+            authRepository
+        )
+        if (result.isSuccess) {
+            lastDriveBackupTime.value = result.getOrDefault(0L)
+        }
+        return result
+    }
+
+    suspend fun performDriveRestore(): Result<Unit> {
+        return com.example.data.backup.BackupManager.performRestore(
+            getApplication(),
+            repository,
+            authRepository,
+            syncManager
+        )
+    }
+
     suspend fun deleteAccount(passwordForReauth: String? = null, activityContext: android.content.Context? = null): Result<Unit> {
+        com.example.data.backup.BackupManager.deleteDriveBackup(getApplication(), authRepository)
         return authRepository.deleteAccount(syncManager, passwordForReauth, activityContext)
     }
 

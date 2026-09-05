@@ -120,6 +120,12 @@ fun toggleDuaBookmark(context: Context, duaId: String): Boolean {
         true
     }
     prefs.edit().putStringSet("bookmarked_dua_ids", current).apply()
+    try {
+        context.getSharedPreferences("fivelight_prefs", Context.MODE_PRIVATE)
+            .edit().putLong("preferences_updated_at", System.currentTimeMillis()).apply()
+        val repo = com.example.data.repository.AppRepository.getInstance(context)
+        repo.syncManager?.notifyPreferencesChanged()
+    } catch (_: Exception) {}
     return isNowBookmarked
 }
 

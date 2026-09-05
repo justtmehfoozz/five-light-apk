@@ -405,8 +405,10 @@ class AppRepository(
 
     fun setCity(city: CityLocation) {
         _selectedCity.value = city
-        prefs?.edit()?.putString("selected_city_name", city.cityName)?.apply()
+        prefs?.edit()?.putString("selected_city_name", city.cityName)
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
         islamicDateRepository.updateLocation(city)
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 
     fun setCalcMethod(method: CalcMethod) {
@@ -1228,6 +1230,26 @@ class AppRepository(
             }
         }
 
+        (map["selectedCity"] as? String)?.let { cityName ->
+            if (cityName.isNotBlank()) {
+                PREDEFINED_CITIES.find { it.cityName.equals(cityName, ignoreCase = true) }?.let { city ->
+                    _selectedCity.value = city
+                    editor?.putString("selected_city_name", city.cityName)
+                    islamicDateRepository.updateLocation(city)
+                }
+            }
+        }
+
+        (map["bookmarkedDuaIds"] as? String)?.let { jsonStr ->
+            try {
+                val arr = org.json.JSONArray(jsonStr)
+                val set = mutableSetOf<String>()
+                for (i in 0 until arr.length()) set.add(arr.getString(i))
+                appContext?.getSharedPreferences("dua_bookmarks_prefs", android.content.Context.MODE_PRIVATE)
+                    ?.edit()?.putStringSet("bookmarked_dua_ids", set)?.apply()
+            } catch (_: Exception) {}
+        }
+
         // Apply notification settings via SmartPrayerNotificationManager
         appContext?.let { ctx ->
             try {
@@ -1256,5 +1278,19 @@ class AppRepository(
 
         editor?.putLong("preferences_updated_at", timestamp)
         editor?.apply()
+    }
+
+    companion object {
+        @Volatile
+        private var INSTANCE: AppRepository? = null
+
+        fun getInstance(context: Context): AppRepository {
+            return INSTANCE ?: synchronized(this) {
+                val db = AppDatabase.getDatabase(context)
+                val instance = AppRepository(db, context.applicationContext)
+                INSTANCE = instance
+                instance
+            }
+        }
     }
 }

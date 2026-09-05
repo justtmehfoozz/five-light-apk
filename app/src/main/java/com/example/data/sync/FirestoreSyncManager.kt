@@ -1,6 +1,10 @@
 package com.example.data.sync
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.util.Log
 import com.example.data.auth.AuthRepository
 import com.example.data.db.BookmarkEntity
@@ -81,6 +85,8 @@ class FirestoreSyncManager(
     @Volatile
     private var activeUserId: String? = null
     private val listenerRegistrations = mutableListOf<ListenerRegistration>()
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+    private var recoveryJob: kotlinx.coroutines.Job? = null
 
     init {
         // Link to repository so repository knows when remote sync is active
@@ -101,6 +107,88 @@ class FirestoreSyncManager(
         }
     }
 
+    private val prefs by lazy {
+        context.getSharedPreferences("fivelight_prefs", Context.MODE_PRIVATE)
+    }
+
+    private fun registerNetworkCallback() {
+        if (networkCallback != null) return
+        try {
+            val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    Log.d(TAG, "Network available callback received. Triggering sync recovery.")
+                    triggerNetworkRecovery()
+                }
+
+                override fun onLost(network: Network) {
+                    Log.d(TAG, "Network lost callback received.")
+                    val isConnected = com.example.data.util.NetworkUtils.isNetworkAvailable(context)
+                    if (!isConnected) {
+                        _syncState.value = SyncState.Offline
+                    }
+                }
+            }
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            connectivityManager.registerNetworkCallback(request, callback)
+            networkCallback = callback
+            Log.d(TAG, "Registered NetworkCallback for automatic sync recovery.")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to register network callback: ${e.message}")
+        }
+    }
+
+    private fun unregisterNetworkCallback() {
+        networkCallback?.let { callback ->
+            try {
+                val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                connectivityManager?.unregisterNetworkCallback(callback)
+                Log.d(TAG, "Unregistered NetworkCallback.")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to unregister network callback: ${e.message}")
+            }
+        }
+        networkCallback = null
+        recoveryJob?.cancel()
+        recoveryJob = null
+    }
+
+    /**
+     * Coalesces rapid network callbacks and automatically retries synchronization when network returns.
+     */
+    fun triggerNetworkRecovery() {
+        val uid = activeUserId ?: return
+        recoveryJob?.cancel()
+        recoveryJob = scope.launch {
+            kotlinx.coroutines.delay(500L) // Debounce 500ms
+            val currentUid = activeUserId ?: return@launch
+            if (!com.example.data.util.NetworkUtils.isNetworkAvailable(context)) {
+                _syncState.value = SyncState.Offline
+                return@launch
+            }
+            if (_syncState.value == SyncState.Syncing) {
+                Log.d(TAG, "Sync already in progress, skipping recovery attempt.")
+                return@launch
+            }
+
+            Log.d(TAG, "Executing automatic sync recovery for $currentUid")
+            _syncState.value = SyncState.Syncing
+            try {
+                performInitialMerge(currentUid)
+                val now = System.currentTimeMillis()
+                _syncState.value = SyncState.Synced
+                _lastSyncedTime.value = now
+                prefs.edit().putLong("last_synced_timestamp_$currentUid", now).apply()
+                Log.d(TAG, "Automatic sync recovery completed successfully for $currentUid")
+            } catch (e: Exception) {
+                Log.e(TAG, "Automatic sync recovery failed: ${e.message}", e)
+                _syncState.value = SyncState.Offline
+            }
+        }
+    }
+
     private fun handleUserChanged(user: FirebaseUser?) {
         val newUid = user?.uid
         if (newUid == activeUserId) return
@@ -108,6 +196,7 @@ class FirestoreSyncManager(
         if (newUid == null) {
             // User signed out -> Return to guest/local-only mode
             stopSync()
+            unregisterNetworkCallback()
             activeUserId = null
             _syncState.value = SyncState.Idle
             _lastSyncedTime.value = null
@@ -115,18 +204,36 @@ class FirestoreSyncManager(
         } else {
             // New authenticated user -> Stop previous if any, then start sync for this UID
             stopSync()
+            registerNetworkCallback()
             activeUserId = newUid
+
+            val savedTs = prefs.getLong("last_synced_timestamp_$newUid", 0L)
+            if (savedTs > 0L) {
+                _lastSyncedTime.value = savedTs
+            }
+
             Log.d(TAG, "User signed in ($newUid). Initializing Firestore sync.")
             scope.launch {
                 try {
                     _syncState.value = SyncState.Syncing
-                    performInitialMerge(newUid)
                     attachSnapshotListeners(newUid)
-                    _syncState.value = SyncState.Synced
-                    _lastSyncedTime.value = System.currentTimeMillis()
+                    try {
+                        performInitialMerge(newUid)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Initial merge finished with offline/partial results: ${e.message}")
+                    }
+
+                    if (com.example.data.util.NetworkUtils.isNetworkAvailable(context)) {
+                        _syncState.value = SyncState.Synced
+                        val now = System.currentTimeMillis()
+                        _lastSyncedTime.value = now
+                        prefs.edit().putLong("last_synced_timestamp_$newUid", now).apply()
+                    } else {
+                        _syncState.value = SyncState.Offline
+                    }
                 } catch (e: Exception) {
                     Log.e(TAG, "Error initializing sync for $newUid", e)
-                    _syncState.value = SyncState.Error(e.message ?: "Sync initialization error")
+                    _syncState.value = SyncState.Offline
                 }
             }
         }
@@ -137,6 +244,7 @@ class FirestoreSyncManager(
      */
     @Synchronized
     fun stopSync() {
+        unregisterNetworkCallback()
         for (listener in listenerRegistrations) {
             try {
                 listener.remove()
@@ -175,32 +283,17 @@ class FirestoreSyncManager(
     // =========================================================================
 
     suspend fun performInitialMerge(uid: String) = withContext(Dispatchers.IO) {
-        val userDoc = firestore.collection("users").document(uid)
-
         isSyncingFromRemote.set(true)
         try {
-            // 1. Merge Prayer Logs
-            mergePrayerLogs(uid)
+            try { mergePrayerLogs(uid) } catch (e: Exception) { Log.w(TAG, "Prayer logs merge error: ${e.message}") }
+            try { mergeBookmarks(uid) } catch (e: Exception) { Log.w(TAG, "Bookmarks merge error: ${e.message}") }
+            try { mergeDhikrHistory(uid) } catch (e: Exception) { Log.w(TAG, "Dhikr history merge error: ${e.message}") }
+            try { mergeQada(uid) } catch (e: Exception) { Log.w(TAG, "Qada merge error: ${e.message}") }
+            try { mergeQuranProgress(uid) } catch (e: Exception) { Log.w(TAG, "Quran progress merge error: ${e.message}") }
+            try { mergeTasbeehState(uid) } catch (e: Exception) { Log.w(TAG, "Tasbeeh state merge error: ${e.message}") }
+            try { mergePreferences(uid) } catch (e: Exception) { Log.w(TAG, "Preferences merge error: ${e.message}") }
 
-            // 2. Merge Bookmarks
-            mergeBookmarks(uid)
-
-            // 3. Merge Dhikr History
-            mergeDhikrHistory(uid)
-
-            // 4. Merge Qada
-            mergeQada(uid)
-
-            // 5. Merge Quran Progress
-            mergeQuranProgress(uid)
-
-            // 6. Merge Tasbeeh State
-            mergeTasbeehState(uid)
-
-            // 7. Merge Preferences / Settings
-            mergePreferences(uid)
-
-            Log.d(TAG, "Initial bidirectional merge completed successfully for $uid")
+            Log.d(TAG, "Initial bidirectional merge completed for $uid")
         } finally {
             isSyncingFromRemote.set(false)
         }
@@ -330,7 +423,7 @@ class FirestoreSyncManager(
                 val count = (cloudData["${pName}Count"] as? Number)?.toInt() ?: 0
                 val ever = (cloudData["${pName}EverAdded"] as? Boolean) ?: (count > 0)
                 repository.applyQadaFromRemote(prayer, count, ever, cloudTs)
-            } else if (localTs > cloudTs || !snapshot?.exists()!!) {
+            } else if (localTs > cloudTs || snapshot?.exists() != true) {
                 hasLocalWin = true
             }
         }
@@ -929,9 +1022,10 @@ class FirestoreSyncManager(
 
         val targetsJson = JSONArray(customTargets).toString()
 
+        val allPresets = repository.DHIKR_PRESETS + customPresets
         val countsMap = mutableMapOf<String, Int>()
         val targetsMap = mutableMapOf<String, Int>()
-        for (p in customPresets) {
+        for (p in allPresets) {
             countsMap[p.id] = repository.getDhikrCount(p.id)
             targetsMap[p.id] = repository.getDhikrTarget(p.id)
         }
@@ -1048,6 +1142,8 @@ class FirestoreSyncManager(
             "notificationsContextualEnabled" to smartManager.isContextualRemindersEnabled,
             "notificationsNaflEnabled" to smartManager.isNaflOpportunitiesEnabled,
             "notificationsPrayerTogglesJson" to prayerToggles,
+            "selectedCity" to (repository.selectedCity.value?.cityName ?: ""),
+            "bookmarkedDuaIds" to JSONArray((context.getSharedPreferences("dua_bookmarks_prefs", Context.MODE_PRIVATE).getStringSet("bookmarked_dua_ids", emptySet()) ?: emptySet()).toList()).toString(),
             "updatedAt" to repository.getPreferencesTimestamp()
         )
     }
@@ -1057,5 +1153,6 @@ sealed class SyncState {
     object Idle : SyncState()
     object Syncing : SyncState()
     object Synced : SyncState()
+    object Offline : SyncState()
     data class Error(val message: String) : SyncState()
 }
