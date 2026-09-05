@@ -41,6 +41,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.example.ui.screens.LoginBottomSheet
+import com.example.ui.screens.LoginScreen
+import com.example.ui.screens.RegisterScreen
+import com.example.ui.screens.EmailVerificationScreen
 import com.example.ui.screens.PreLoginPromptScreen
 import com.example.ui.screens.SplashScreen
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -154,9 +157,49 @@ class MainActivity : ComponentActivity() {
                 val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 val loginSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
                 var showLoginBottomSheet by rememberSaveable { mutableStateOf(false) }
+                var authRouteState by rememberSaveable { mutableStateOf("NONE") }
+                var pendingVerificationEmail by rememberSaveable { mutableStateOf("") }
+                val authPredictiveState = rememberPredictiveBackState()
+
                 val hasSeenAccountPrompt by viewModel.hasSeenAccountPrompt.collectAsStateWithLifecycle()
                 val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
                 val hazeState = remember { HazeState() }
+
+                androidx.compose.runtime.LaunchedEffect(currentUser) {
+                    val user = currentUser
+                    if (user != null) {
+                        val isGoogle = user.providerData.any { it.providerId == "google.com" }
+                        if (!user.isEmailVerified && !isGoogle) {
+                            pendingVerificationEmail = user.email ?: ""
+                            authRouteState = "EMAIL_VERIFICATION"
+                        } else {
+                            if (authRouteState == "EMAIL_VERIFICATION" || authRouteState == "REGISTER" || authRouteState == "LOGIN_EMAIL") {
+                                authRouteState = "NONE"
+                                viewModel.setHasSeenAccountPrompt(true)
+                            }
+                        }
+                    }
+                }
+
+                RegisterPredictiveBackHandler(
+                    enabled = authRouteState != "NONE",
+                    backState = authPredictiveState,
+                    onBack = {
+                        when (authRouteState) {
+                            "EMAIL_VERIFICATION" -> {
+                                coroutineScope.launch {
+                                    viewModel.authRepository.signOut()
+                                    authRouteState = "REGISTER"
+                                }
+                            }
+                            "REGISTER", "LOGIN_EMAIL" -> {
+                                authRouteState = "NONE"
+                                showLoginBottomSheet = true
+                            }
+                            else -> authRouteState = "NONE"
+                        }
+                    }
+                )
 
                 val playingSurahNumber  = viewModel.playingSurahNumber.collectAsStateWithLifecycle()
                 val showPrayerMode  = viewModel.showPrayerMode.collectAsStateWithLifecycle()
@@ -779,26 +822,91 @@ class MainActivity : ComponentActivity() {
                     } // end inner Box
                     } // end if (hasSeenAccountPrompt)
 
-                    if (isSplashFinished && !hasSeenAccountPrompt) {
-                        PreLoginPromptScreen(
-                            onLoginOrRegister = {
-                                showLoginBottomSheet = true
-                            },
-                            onContinueAsGuest = {
-                                viewModel.setHasSeenAccountPrompt(true)
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
+                    if (isSplashFinished && (!hasSeenAccountPrompt || authRouteState != "NONE")) {
+                        if (authRouteState == "NONE") {
+                            PreLoginPromptScreen(
+                                onLoginOrRegister = {
+                                    showLoginBottomSheet = true
+                                },
+                                onContinueAsGuest = {
+                                    viewModel.setHasSeenAccountPrompt(true)
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        when (authRouteState) {
+                            "LOGIN_EMAIL" -> {
+                                LoginScreen(
+                                    authRepository = viewModel.authRepository,
+                                    onBack = {
+                                        authRouteState = "NONE"
+                                        showLoginBottomSheet = true
+                                    },
+                                    onAuthSuccess = {
+                                        viewModel.setHasSeenAccountPrompt(true)
+                                        authRouteState = "NONE"
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .zIndex(10f)
+                                )
+                            }
+                            "REGISTER" -> {
+                                RegisterScreen(
+                                    authRepository = viewModel.authRepository,
+                                    onBack = {
+                                        authRouteState = "NONE"
+                                        showLoginBottomSheet = true
+                                    },
+                                    onRegistrationSuccess = { registeredEmail ->
+                                        pendingVerificationEmail = registeredEmail
+                                        authRouteState = "EMAIL_VERIFICATION"
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .zIndex(10f)
+                                )
+                            }
+                            "EMAIL_VERIFICATION" -> {
+                                EmailVerificationScreen(
+                                    email = pendingVerificationEmail,
+                                    authRepository = viewModel.authRepository,
+                                    onBack = {
+                                        coroutineScope.launch {
+                                            viewModel.authRepository.signOut()
+                                            authRouteState = "REGISTER"
+                                        }
+                                    },
+                                    onAuthSuccess = {
+                                        viewModel.setHasSeenAccountPrompt(true)
+                                        authRouteState = "NONE"
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .zIndex(10f)
+                                )
+                            }
+                        }
                     }
 
                     if (showLoginBottomSheet) {
                         LoginBottomSheet(
                             sheetState = loginSheetState,
                             authRepository = viewModel.authRepository,
+                            onNavigateToLoginEmail = {
+                                showLoginBottomSheet = false
+                                authRouteState = "LOGIN_EMAIL"
+                            },
+                            onNavigateToRegister = {
+                                showLoginBottomSheet = false
+                                authRouteState = "REGISTER"
+                            },
                             onDismiss = { showLoginBottomSheet = false },
                             onAuthSuccess = {
                                 viewModel.setHasSeenAccountPrompt(true)
                                 showLoginBottomSheet = false
+                                authRouteState = "NONE"
                             }
                         )
                     }
