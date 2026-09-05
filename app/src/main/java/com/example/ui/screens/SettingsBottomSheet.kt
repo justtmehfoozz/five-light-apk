@@ -164,6 +164,10 @@ fun SettingsBottomSheet(
     onResetNaflOrder: () -> Unit = {},
     currentUser: FirebaseUser? = null,
     authRepository: com.example.data.auth.AuthRepository? = null,
+    syncState: com.example.data.sync.SyncState = com.example.data.sync.SyncState.Idle,
+    lastSyncedTime: Long? = null,
+    onChangePassword: suspend (currentPassword: String, newPassword: String) -> Result<Unit> = { _, _ -> Result.failure(Exception("Not implemented")) },
+    onDeleteAccount: suspend (passwordForReauth: String?) -> Result<Unit> = { _ -> Result.failure(Exception("Not implemented")) },
     onOpenLoginSheet: () -> Unit = {},
     onSignOut: () -> Unit = {},
     onDismiss: () -> Unit,
@@ -888,6 +892,10 @@ fun SettingsBottomSheet(
                         ProfileSubScreen(
                             currentUser = currentUser,
                             authRepository = authRepository ?: com.example.data.auth.AuthRepository.getInstance(context),
+                            syncState = syncState,
+                            lastSyncedTime = lastSyncedTime,
+                            onChangePassword = onChangePassword,
+                            onDeleteAccount = onDeleteAccount,
                             onBack = { activeSubScreen = PreferencesSubScreen.MAIN },
                             onSignOut = {
                                 onSignOut()

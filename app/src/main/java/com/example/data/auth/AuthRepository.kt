@@ -12,8 +12,10 @@ import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
+import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.UserProfileChangeRequest
@@ -109,6 +111,12 @@ class AuthRepository(private val context: Context) {
                     Log.w(tag, "Failed to update profile name on registration", pe)
                 }
             }
+            try {
+                user.sendEmailVerification().await()
+                Log.d(tag, "Verification email sent to ${user.email}")
+            } catch (ve: Exception) {
+                Log.w(tag, "Failed to send verification email during registration", ve)
+            }
             _currentUser.value = firebaseAuth.currentUser ?: user
             Result.success(_currentUser.value ?: user)
         } catch (e: Exception) {
@@ -148,6 +156,209 @@ class AuthRepository(private val context: Context) {
         }
     }
 
+    suspend fun sendEmailVerification(): Result<Unit> = withContext(Dispatchers.IO) {
+        val tag = "AuthRepository"
+        try {
+            val user = firebaseAuth.currentUser ?: throw Exception("No authenticated user found")
+            val isGoogle = user.providerData.any { it.providerId == "google.com" }
+            if (isGoogle) {
+                throw Exception("Google accounts do not require email verification")
+            }
+            if (user.isEmailVerified) {
+                throw Exception("Email is already verified")
+            }
+            user.sendEmailVerification().await()
+            Log.d(tag, "Verification email successfully sent to ${user.email}")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(tag, "Send email verification failure: ${e.javaClass.name} - ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun reloadUser(): Result<FirebaseUser> = withContext(Dispatchers.IO) {
+        val tag = "AuthRepository"
+        try {
+            val user = firebaseAuth.currentUser ?: throw Exception("No authenticated user found")
+            user.reload().await()
+            val refreshedUser = firebaseAuth.currentUser ?: user
+            _currentUser.value = refreshedUser
+            Log.d(tag, "Refreshed user profile. isEmailVerified: ${refreshedUser.isEmailVerified}")
+            Result.success(refreshedUser)
+        } catch (e: Exception) {
+            Log.e(tag, "Reload user error: ${e.javaClass.name} - ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun changePassword(currentPassword: String, newPassword: String): Result<Unit> = withContext(Dispatchers.IO) {
+        val tag = "AuthRepository"
+        try {
+            val user = firebaseAuth.currentUser ?: throw Exception("No authenticated user found")
+            val email = user.email
+            val trimmedNewPass = newPassword.trim()
+            val trimmedCurrPass = currentPassword.trim()
+
+            if (trimmedNewPass.length < 6) {
+                throw Exception("New password must be at least 6 characters")
+            }
+
+            try {
+                user.updatePassword(trimmedNewPass).await()
+                Result.success(Unit)
+            } catch (e: FirebaseAuthRecentLoginRequiredException) {
+                if (email.isNullOrBlank() || trimmedCurrPass.isBlank()) {
+                    throw Exception("Recent authentication required. Please enter your current password.")
+                }
+                Log.d(tag, "Recent authentication required for password update. Re-authenticating...")
+                val credential = EmailAuthProvider.getCredential(email, trimmedCurrPass)
+                user.reauthenticate(credential).await()
+                user.updatePassword(trimmedNewPass).await()
+                Result.success(Unit)
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Change password error: ${e.javaClass.name} - ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    private fun resolveWebClientId(context: Context): String? {
+        return try {
+            context.getString(com.example.R.string.default_web_client_id).trim().takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        } ?: run {
+            val res = context.resources
+            val id = res.getIdentifier("default_web_client_id", "string", context.packageName).takeIf { it != 0 }
+                ?: res.getIdentifier("default_web_client_id", "string", "com.example").takeIf { it != 0 }
+                ?: 0
+            if (id != 0) {
+                try { res.getString(id).trim().takeIf { it.isNotBlank() } } catch (_: Exception) { null }
+            } else null
+        }
+    }
+
+    suspend fun reauthenticateWithGoogle(activityContext: Context, user: FirebaseUser): Result<Unit> = withContext(Dispatchers.IO) {
+        val tag = "AuthRepository"
+        try {
+            com.example.FiveLightApp.ensureFirebaseInitialized(activityContext)
+            val webClientId = resolveWebClientId(activityContext)
+                ?: return@withContext Result.failure(
+                    GoogleAuthException.ConfigurationError(
+                        "Google Sign-In is not configured for this project. Please verify default_web_client_id in Firebase configuration."
+                    )
+                )
+
+            val credentialManager = CredentialManager.create(activityContext)
+
+            Log.d(tag, "Google Re-Authentication Stage 1: Attempting with filterByAuthorizedAccounts=true")
+            val initialOption = GetGoogleIdOption.Builder()
+                .setFilterByAuthorizedAccounts(true)
+                .setServerClientId(webClientId)
+                .setAutoSelectEnabled(false)
+                .build()
+
+            val initialRequest = GetCredentialRequest.Builder()
+                .addCredentialOption(initialOption)
+                .build()
+
+            val credential = try {
+                val result = credentialManager.getCredential(activityContext, initialRequest)
+                Log.d(tag, "Google Re-Auth Stage 1 succeeded.")
+                result.credential
+            } catch (e: GetCredentialCancellationException) {
+                Log.d(tag, "Google Re-Auth cancelled by user during Stage 1")
+                return@withContext Result.failure(GoogleAuthException.Cancelled)
+            } catch (e: Exception) {
+                Log.d(tag, "Google Re-Auth Stage 1 error [${e.javaClass.simpleName}]. Proceeding to account chooser...")
+                retryWithAccountChooser(activityContext, credentialManager, webClientId)
+            }
+
+            if (credential == null) {
+                return@withContext Result.failure(GoogleAuthException.Cancelled)
+            }
+
+            if (credential is CustomCredential && credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+                val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
+                val idToken = googleIdTokenCredential.idToken
+                val authCredential = GoogleAuthProvider.getCredential(idToken, null)
+                user.reauthenticate(authCredential).await()
+                Log.d(tag, "Google re-authentication successfully re-authenticated Firebase user UID: ${user.uid}")
+                Result.success(Unit)
+            } else {
+                Log.e(tag, "Unsupported credential type during re-auth: ${credential.type}")
+                Result.failure(GoogleAuthException.ProviderError("Unsupported credential type: ${credential.type}"))
+            }
+        } catch (e: GoogleAuthException) {
+            Result.failure(e)
+        } catch (e: GetCredentialCancellationException) {
+            Result.failure(GoogleAuthException.Cancelled)
+        } catch (e: FirebaseAuthException) {
+            Log.e(tag, "Firebase re-authentication failed: ${e.errorCode} - ${e.message}", e)
+            Result.failure(GoogleAuthException.FirebaseAuthFailure("Firebase re-auth failed: [${e.errorCode}] ${e.localizedMessage ?: e.message ?: "Unknown error"}", e))
+        } catch (e: Exception) {
+            Log.e(tag, "Google re-authentication error: ${e.javaClass.name} - ${e.message}", e)
+            Result.failure(GoogleAuthException.ProviderError("Google re-authentication error: [${e.javaClass.simpleName}] ${e.message ?: "no message"}", e))
+        }
+    }
+
+    suspend fun deleteAccount(
+        syncManager: com.example.data.sync.FirestoreSyncManager,
+        passwordForReauth: String? = null,
+        activityContext: Context? = null
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val tag = "AuthRepository"
+        try {
+            val user = firebaseAuth.currentUser ?: throw Exception("No authenticated user found")
+            val uid = user.uid
+            val isGoogle = user.providerData.any { it.providerId == "google.com" }
+
+            // 1. MUST succeed Cloud Deletion BEFORE Auth account deletion
+            val cloudDeleteResult = syncManager.deleteUserCloudData(uid)
+            if (cloudDeleteResult.isFailure) {
+                val cause = cloudDeleteResult.exceptionOrNull()
+                Log.e(tag, "Cloud data cleanup failed for UID $uid. Halting account deletion to prevent orphan data.", cause)
+                return@withContext Result.failure(
+                    cause ?: Exception("Failed to delete cloud data. Account deletion aborted to protect data integrity.")
+                )
+            }
+
+            // 2. Cloud deletion succeeded -> Attempt Firebase Auth account deletion
+            try {
+                user.delete().await()
+            } catch (e: FirebaseAuthRecentLoginRequiredException) {
+                Log.d(tag, "Recent login required for account deletion. Attempting re-authentication...")
+                if (!isGoogle) {
+                    val email = user.email ?: throw Exception("User email unavailable")
+                    val pass = passwordForReauth?.trim().orEmpty()
+                    if (pass.isBlank()) {
+                        throw Exception("REAUTH_REQUIRED_PASSWORD")
+                    }
+                    val credential = EmailAuthProvider.getCredential(email, pass)
+                    user.reauthenticate(credential).await()
+                    user.delete().await()
+                } else {
+                    val targetContext = activityContext ?: context
+                    val reauthResult = reauthenticateWithGoogle(targetContext, user)
+                    if (reauthResult.isFailure) {
+                        val reauthError = reauthResult.exceptionOrNull() ?: Exception("Google re-authentication failed")
+                        Log.e(tag, "Google re-authentication failed during account deletion", reauthError)
+                        return@withContext Result.failure(reauthError)
+                    }
+                    user.delete().await()
+                }
+            }
+
+            // 3. Auth account successfully deleted -> Stop sync and sign out session
+            syncManager.stopSync()
+            signOut()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(tag, "Account deletion error: ${e.javaClass.name} - ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
     suspend fun signInWithGoogle(activityContext: Context): Result<FirebaseUser> = withContext(Dispatchers.IO) {
         val tag = "AuthRepository"
         try {
@@ -155,19 +366,7 @@ class AuthRepository(private val context: Context) {
             com.example.FiveLightApp.ensureFirebaseInitialized(activityContext)
 
             // 1. Resolve Server Web Client ID from compile-time generated resources
-            val webClientId = try {
-                activityContext.getString(com.example.R.string.default_web_client_id).trim().takeIf { it.isNotBlank() }
-            } catch (_: Exception) {
-                null
-            } ?: run {
-                val res = activityContext.resources
-                val id = res.getIdentifier("default_web_client_id", "string", activityContext.packageName).takeIf { it != 0 }
-                    ?: res.getIdentifier("default_web_client_id", "string", "com.example").takeIf { it != 0 }
-                    ?: 0
-                if (id != 0) {
-                    try { res.getString(id).trim().takeIf { it.isNotBlank() } } catch (_: Exception) { null }
-                } else null
-            }
+            val webClientId = resolveWebClientId(activityContext)
             if (webClientId.isNullOrBlank()) {
                 Log.w(tag, "Google Sign-In configuration check: default_web_client_id resource not found in configuration.")
                 return@withContext Result.failure(

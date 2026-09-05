@@ -72,6 +72,9 @@ class FirestoreSyncManager(
     private val _syncState = MutableStateFlow<SyncState>(SyncState.Idle)
     val syncState: StateFlow<SyncState> = _syncState.asStateFlow()
 
+    private val _lastSyncedTime = MutableStateFlow<Long?>(null)
+    val lastSyncedTime: StateFlow<Long?> = _lastSyncedTime.asStateFlow()
+
     // Flag to prevent listener -> local write -> cloud write -> listener feedback loops
     val isSyncingFromRemote = AtomicBoolean(false)
 
@@ -107,6 +110,7 @@ class FirestoreSyncManager(
             stopSync()
             activeUserId = null
             _syncState.value = SyncState.Idle
+            _lastSyncedTime.value = null
             Log.d(TAG, "User signed out. Firestore sync stopped, guest mode active.")
         } else {
             // New authenticated user -> Stop previous if any, then start sync for this UID
@@ -119,6 +123,7 @@ class FirestoreSyncManager(
                     performInitialMerge(newUid)
                     attachSnapshotListeners(newUid)
                     _syncState.value = SyncState.Synced
+                    _lastSyncedTime.value = System.currentTimeMillis()
                 } catch (e: Exception) {
                     Log.e(TAG, "Error initializing sync for $newUid", e)
                     _syncState.value = SyncState.Error(e.message ?: "Sync initialization error")
@@ -140,6 +145,29 @@ class FirestoreSyncManager(
             }
         }
         listenerRegistrations.clear()
+    }
+
+    /**
+     * Deletes all cloud data for the specified user ID from Firestore.
+     */
+    suspend fun deleteUserCloudData(uid: String): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val userDoc = firestore.collection("users").document(uid)
+            val subcollections = listOf("prayer_logs", "bookmarks", "dhikr_history", "data")
+
+            for (subcol in subcollections) {
+                val snapshot = userDoc.collection(subcol).get().await()
+                for (doc in snapshot.documents) {
+                    doc.reference.delete().await()
+                }
+            }
+            userDoc.delete().await()
+            Log.d(TAG, "Successfully deleted all user cloud data for UID: $uid")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to delete user cloud data for UID $uid", e)
+            Result.failure(e)
+        }
     }
 
     // =========================================================================

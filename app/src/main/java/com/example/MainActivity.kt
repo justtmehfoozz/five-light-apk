@@ -727,6 +727,8 @@ class MainActivity : ComponentActivity() {
                         val homeFeaturesPreferences by viewModel.homeFeaturesPreferences.collectAsStateWithLifecycle()
                         val hijriDateMethod by viewModel.hijriDateMethod.collectAsStateWithLifecycle()
                         val customHijriOffset by viewModel.customHijriOffset.collectAsStateWithLifecycle()
+                        val syncState by viewModel.syncState.collectAsStateWithLifecycle()
+                        val lastSyncedTime by viewModel.lastSyncedTime.collectAsStateWithLifecycle()
 
                         SettingsBottomSheet(
                             sheetState = sheetState,
@@ -761,6 +763,10 @@ class MainActivity : ComponentActivity() {
                             onResetNaflOrder = { viewModel.resetNaflOrder() },
                             currentUser = currentUser,
                             authRepository = viewModel.authRepository,
+                            syncState = syncState,
+                            lastSyncedTime = lastSyncedTime,
+                            onChangePassword = { curr, new -> viewModel.changePassword(curr, new) },
+                            onDeleteAccount = { pass -> viewModel.deleteAccount(pass, this@MainActivity) },
                             onOpenLoginSheet = {
                                 showSettingsSheet = false
                                 showLoginBottomSheet = true

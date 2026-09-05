@@ -89,6 +89,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         authRepository
     )
     val syncState: StateFlow<com.example.data.sync.SyncState> = syncManager.syncState
+    val lastSyncedTime: StateFlow<Long?> = syncManager.lastSyncedTime
 
     fun setHasSeenAccountPrompt(seen: Boolean = true) {
         authRepository.setHasSeenAccountPrompt(seen)
@@ -96,6 +97,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
 
     fun signOut() {
         authRepository.signOut()
+    }
+
+    suspend fun changePassword(currentPassword: String, newPassword: String): Result<Unit> {
+        return authRepository.changePassword(currentPassword, newPassword)
+    }
+
+    suspend fun sendEmailVerification(): Result<Unit> {
+        return authRepository.sendEmailVerification()
+    }
+
+    suspend fun reloadUser(): Result<com.google.firebase.auth.FirebaseUser> {
+        return authRepository.reloadUser()
+    }
+
+    suspend fun deleteAccount(passwordForReauth: String? = null, activityContext: android.content.Context? = null): Result<Unit> {
+        return authRepository.deleteAccount(syncManager, passwordForReauth, activityContext)
     }
 
     // Initialization State
