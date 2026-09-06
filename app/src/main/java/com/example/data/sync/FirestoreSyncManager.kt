@@ -21,8 +21,10 @@ import com.example.data.repository.AppRepository
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -263,10 +265,70 @@ class FirestoreSyncManager(
 
         _syncState.value = SyncState.Syncing
 
-        if (!com.example.data.util.NetworkUtils.isNetworkAvailable(context)) {
+        // 1. Android Network Diagnostic Check
+        val netInfo = com.example.data.util.NetworkUtils.getDiagnosticInfo(context)
+        Log.i(TAG, netInfo.toFormattedLog())
+
+        if (!netInfo.isAvailable) {
             Log.w(TAG, "SYNC INIT OFFLINE: Network not available for $maskedUid")
             if (activeUserId == uid) {
                 _syncState.value = SyncState.Offline
+            }
+            return
+        }
+
+        // 2. Direct Firestore Connectivity Server Probe
+        Log.i(TAG, "FIRESTORE PROBE START [uid: $maskedUid]")
+        val probeSuccess = try {
+            val probeDoc = withTimeout(10_000L) {
+                firestore.collection("users")
+                    .document(uid)
+                    .get(Source.SERVER)
+                    .await()
+            }
+            Log.i(TAG, "FIRESTORE PROBE SUCCESS [documentExists=${probeDoc.exists()}]")
+            true
+        } catch (ce: CancellationException) {
+            if (ce is TimeoutCancellationException) {
+                val authUser = authRepository.currentUser.value
+                val authUidMatches = (authUser?.uid == uid)
+                Log.e(
+                    TAG,
+                    "FIRESTORE PROBE FAILURE:\n" +
+                    "- Exception Class: ${ce.javaClass.name}\n" +
+                    "- Exception Message: ${ce.message ?: "Request timed out after 10000ms"}\n" +
+                    "- Firestore Error Code: DEADLINE_EXCEEDED\n" +
+                    "- FirebaseAuth currentUser is non-null: ${authUser != null}\n" +
+                    "- currentUser.uid matches requested UID: $authUidMatches"
+                )
+            } else {
+                throw ce
+            }
+            false
+        } catch (e: Exception) {
+            val authUser = authRepository.currentUser.value
+            val authUidMatches = (authUser?.uid == uid)
+            val fsCode = when (e) {
+                is FirebaseFirestoreException -> e.code.name
+                else -> (e.cause as? FirebaseFirestoreException)?.code?.name ?: "UNKNOWN"
+            }
+            Log.e(
+                TAG,
+                "FIRESTORE PROBE FAILURE:\n" +
+                "- Exception Class: ${e.javaClass.name}\n" +
+                "- Exception Message: ${e.message ?: "Unknown error"}\n" +
+                "- Firestore Error Code: $fsCode\n" +
+                "- FirebaseAuth currentUser is non-null: ${authUser != null}\n" +
+                "- currentUser.uid matches requested UID: $authUidMatches",
+                e
+            )
+            false
+        }
+
+        if (!probeSuccess) {
+            Log.w(TAG, "DIRECT FIRESTORE PROBE FAILED for $maskedUid. Skipping performInitialMerge.")
+            if (activeUserId == uid) {
+                _syncState.value = SyncState.Error("Firestore direct probe failed")
             }
             return
         }
@@ -294,11 +356,11 @@ class FirestoreSyncManager(
                 }
                 is MergeResult.PartialFailure -> {
                     Log.w(TAG, "SYNC INIT PARTIAL FAILURE for $maskedUid. Failed steps: ${mergeResult.failedSteps}")
-                    _syncState.value = SyncState.Offline
+                    _syncState.value = SyncState.Error("Partial sync failure: ${mergeResult.failedSteps.firstOrNull()}")
                 }
                 is MergeResult.Failure -> {
                     Log.e(TAG, "SYNC INIT FAILURE for $maskedUid: ${mergeResult.cause.message}", mergeResult.cause)
-                    _syncState.value = SyncState.Offline
+                    _syncState.value = SyncState.Error("Sync failure: ${mergeResult.cause.message}")
                 }
             }
         } catch (ce: CancellationException) {
@@ -307,7 +369,7 @@ class FirestoreSyncManager(
         } catch (e: Exception) {
             Log.e(TAG, "SYNC INIT UNEXPECTED ERROR for $maskedUid: ${e.message}", e)
             if (activeUserId == uid) {
-                _syncState.value = SyncState.Offline
+                _syncState.value = SyncState.Error("Unexpected sync error: ${e.message}")
             }
         }
     }
@@ -371,21 +433,25 @@ class FirestoreSyncManager(
         timeoutMs: Long = 12_000L,
         block: suspend () -> T
     ): Result<T> {
-        Log.d(TAG, "SYNC STEP START: $stepName")
+        Log.i(TAG, "START $stepName")
         return try {
             val result = withTimeout(timeoutMs) {
                 block()
             }
-            Log.d(TAG, "SYNC STEP SUCCESS: $stepName")
+            Log.i(TAG, "SUCCESS $stepName")
             Result.success(result)
         } catch (te: TimeoutCancellationException) {
-            Log.w(TAG, "SYNC STEP TIMEOUT: $stepName (${timeoutMs}ms exceeded)")
+            Log.e(TAG, "TIMEOUT $stepName (${timeoutMs}ms exceeded)")
             Result.failure(te)
         } catch (ce: CancellationException) {
-            Log.d(TAG, "SYNC STEP CANCELLED: $stepName")
+            Log.d(TAG, "CANCELLED $stepName")
             throw ce
         } catch (e: Exception) {
-            Log.w(TAG, "SYNC STEP FAILURE: $stepName - ${e.javaClass.simpleName}: ${e.message}")
+            val fsCode = when (e) {
+                is FirebaseFirestoreException -> e.code.name
+                else -> (e.cause as? FirebaseFirestoreException)?.code?.name ?: "UNKNOWN"
+            }
+            Log.e(TAG, "FAILURE $stepName - ${e.javaClass.name}: ${e.message} (code: $fsCode)", e)
             Result.failure(e)
         }
     }
@@ -397,46 +463,26 @@ class FirestoreSyncManager(
             val failedSteps = mutableListOf<String>()
             val errors = mutableListOf<String>()
 
-            val pRes = runStepWithTimeout("mergePrayerLogs") { mergePrayerLogs(uid) }
-            if (pRes.isFailure) {
-                failedSteps.add("mergePrayerLogs")
-                errors.add(pRes.exceptionOrNull()?.message ?: "Timeout/Failure")
-            }
+            val steps: List<Pair<String, suspend (String) -> Unit>> = listOf(
+                "mergePrayerLogs" to { id -> mergePrayerLogs(id) },
+                "mergeBookmarks" to { id -> mergeBookmarks(id) },
+                "mergeDhikrHistory" to { id -> mergeDhikrHistory(id) },
+                "mergeQada" to { id -> mergeQada(id) },
+                "mergeQuranProgress" to { id -> mergeQuranProgress(id) },
+                "mergeTasbeehState" to { id -> mergeTasbeehState(id) },
+                "mergePreferences" to { id -> mergePreferences(id) }
+            )
 
-            val bRes = runStepWithTimeout("mergeBookmarks") { mergeBookmarks(uid) }
-            if (bRes.isFailure) {
-                failedSteps.add("mergeBookmarks")
-                errors.add(bRes.exceptionOrNull()?.message ?: "Timeout/Failure")
-            }
-
-            val dRes = runStepWithTimeout("mergeDhikrHistory") { mergeDhikrHistory(uid) }
-            if (dRes.isFailure) {
-                failedSteps.add("mergeDhikrHistory")
-                errors.add(dRes.exceptionOrNull()?.message ?: "Timeout/Failure")
-            }
-
-            val qRes = runStepWithTimeout("mergeQada") { mergeQada(uid) }
-            if (qRes.isFailure) {
-                failedSteps.add("mergeQada")
-                errors.add(qRes.exceptionOrNull()?.message ?: "Timeout/Failure")
-            }
-
-            val qpRes = runStepWithTimeout("mergeQuranProgress") { mergeQuranProgress(uid) }
-            if (qpRes.isFailure) {
-                failedSteps.add("mergeQuranProgress")
-                errors.add(qpRes.exceptionOrNull()?.message ?: "Timeout/Failure")
-            }
-
-            val tRes = runStepWithTimeout("mergeTasbeehState") { mergeTasbeehState(uid) }
-            if (tRes.isFailure) {
-                failedSteps.add("mergeTasbeehState")
-                errors.add(tRes.exceptionOrNull()?.message ?: "Timeout/Failure")
-            }
-
-            val prRes = runStepWithTimeout("mergePreferences") { mergePreferences(uid) }
-            if (prRes.isFailure) {
-                failedSteps.add("mergePreferences")
-                errors.add(prRes.exceptionOrNull()?.message ?: "Timeout/Failure")
+            for ((stepName, stepAction) in steps) {
+                val res = runStepWithTimeout(stepName) { stepAction(uid) }
+                if (res.isFailure) {
+                    val ex = res.exceptionOrNull()
+                    val errorDesc = "${ex?.javaClass?.simpleName}: ${ex?.message ?: "Unknown"}"
+                    failedSteps.add(stepName)
+                    errors.add(errorDesc)
+                    Log.w(TAG, "Step $stepName failed ($errorDesc). Aborting remaining merge steps.")
+                    break
+                }
             }
 
             if (failedSteps.isEmpty()) {
