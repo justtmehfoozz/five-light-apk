@@ -9,6 +9,7 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.Scope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.FormBody
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -20,6 +21,7 @@ import java.util.concurrent.TimeUnit
 object GoogleDriveService {
     private const val TAG = "GoogleDriveService"
     private const val BACKUP_FILENAME = "fivelight_backup_encrypted.bin"
+    const val FIVELIGHT_WEB_CLIENT_ID = "985622795249-q417s7jbb58g4t304g5a76lq56689d1b.apps.googleusercontent.com"
     val DRIVE_APPDATA_SCOPE = Scope("https://www.googleapis.com/auth/drive.appdata")
     private const val OAUTH_SCOPE_STRING = "oauth2:https://www.googleapis.com/auth/drive.appdata"
 
@@ -33,48 +35,152 @@ object GoogleDriveService {
     var diagnosticTraceLog: String = ""
 
     data class CreateDiagnosticReport(
+        // 1. Google Account Identity
+        val googleSignInEmail: String?,
+        val googleSignInId: String?,
+        val androidAccountName: String?,
+        val androidAccountType: String?,
+        val identityMatch: Boolean,
+        val googleSignInGrantedScopes: String?,
+        val driveAppDataGrantedOnAccount: Boolean,
+        val googleAuthUtilRequestedScope: String,
+        val tokenAcquisitionSuccess: Boolean,
+
+        // 2. OAuth Client Configuration
+        val configuredProjectId: String,
+        val configuredProjectNumber: String,
+        val configuredPackageName: String,
+        val configuredWebClientId: String?,
+        val projectIdentityMatch: Boolean,
+
+        // 3. Token Effective Authorization (tokeninfo)
+        val tokenInfoStatus: Int?,
+        val tokenInfoIssuedTo: String?,
+        val tokenInfoAudience: String?,
+        val tokenInfoScope: String?,
+        val tokenInfoEmail: String?,
+        val tokenInfoUserId: String?,
+        val tokenInfoExpiresIn: Int?,
+        val tokenInfoError: String?,
+        val tokenHasAppDataScope: Boolean?,
+        val tokenAudienceMatchesWebClientId: Boolean?,
+
+        // 4. Safe Drive API About Diagnostic
+        val aboutStatus: Int?,
+        val aboutUserEmail: String?,
+        val aboutPermissionId: String?,
+        val aboutError: String?,
+
+        // 5. Safe Drive API appDataFolder Diagnostic
+        val appDataFolderStatus: Int?,
+        val appDataFolderId: String?,
+        val appDataFolderCanAddChildren: Boolean?,
+        val appDataFolderCanListChildren: Boolean?,
+        val appDataFolderError: String?,
+
+        // 6. Metadata-only Create Test Result
         val createStatus: Int,
         val createdFileId: String?,
         val createdName: String?,
         val createdParents: String?,
         val createdMimeType: String?,
-        val getStatus: Int?,
-        val getDetails: String?,
-        val canEdit: Boolean?,
-        val canDelete: Boolean?,
-        val patchStatus: Int?,
-        val patchDetails: String?,
         val googleError: String?,
-        val clientIdentity: String?
+
+        // 7. Media Update Test (if create succeeded)
+        val patchStatus: Int?,
+        val patchDetails: String?
     ) {
         fun formatReport(): String {
             val sb = StringBuilder()
-            sb.append("--- CREATE TEST ---\n\n")
-            sb.append("Metadata-only POST status: $createStatus\n")
-            sb.append("Created file ID: ${createdFileId ?: "NONE"}\n")
-            sb.append("Parents: ${createdParents ?: "NONE"}\n")
-            sb.append("Mime type: ${createdMimeType ?: "NONE"}\n")
-            if (getStatus != null) {
-                sb.append("\nGET Verification (status $getStatus):\n")
-                sb.append("capabilities.canEdit: ${canEdit ?: "UNKNOWN"}\n")
-                sb.append("capabilities.canDelete: ${canDelete ?: "UNKNOWN"}\n")
-                if (!getDetails.isNullOrBlank()) {
-                    sb.append("File verification: $getDetails\n")
+            sb.append("=== FIVELIGHT DRIVE AUTHORIZATION & CREATE DIAGNOSTIC ===\n\n")
+
+            sb.append("--- 1. GOOGLE ACCOUNT IDENTITY ---\n")
+            sb.append("GoogleSignIn Account Email: ${googleSignInEmail ?: "NONE"}\n")
+            sb.append("GoogleSignIn Account ID: ${googleSignInId ?: "NONE"}\n")
+            sb.append("Android Account Name: ${androidAccountName ?: "NONE"}\n")
+            sb.append("Android Account Type: ${androidAccountType ?: "NONE"}\n")
+            sb.append("GoogleSignIn Account Identity Match: ${if (identityMatch) "YES" else "NO"}\n")
+            sb.append("Android Account Identity Match: ${if (identityMatch) "YES" else "NO"}\n\n")
+
+            sb.append("--- 2. SCOPE VERIFICATION AT TWO LEVELS ---\n")
+            sb.append("A. GoogleSignInAccount.grantedScopes: [${googleSignInGrantedScopes ?: "NONE"}]\n")
+            sb.append("   drive.appdata granted on GoogleSignIn account: ${if (driveAppDataGrantedOnAccount) "YES" else "NO"}\n")
+            sb.append("B. GoogleAuthUtil Scope String Requested: $googleAuthUtilRequestedScope\n")
+            sb.append("   Token Acquisition Result: ${if (tokenAcquisitionSuccess) "SUCCESS (Valid token acquired)" else "FAILED"}\n\n")
+
+            sb.append("--- 3. OAUTH CLIENT CONFIGURATION ---\n")
+            sb.append("Configured Project ID: $configuredProjectId\n")
+            sb.append("Configured Project Number: $configuredProjectNumber\n")
+            sb.append("Configured Package Name: $configuredPackageName\n")
+            sb.append("Default Web Client ID: ${configuredWebClientId ?: "NOT FOUND"}\n")
+            sb.append("OAuth Client / Project Identity Match: ${if (projectIdentityMatch) "YES" else "NO"}\n\n")
+
+            sb.append("--- 4. TOKEN EFFECTIVE AUTHORIZATION (Google tokeninfo) ---\n")
+            if (tokenInfoStatus != null) {
+                sb.append("tokeninfo HTTP Status: $tokenInfoStatus\n")
+                if (tokenInfoStatus in 200..299) {
+                    sb.append("Token Issued To: ${tokenInfoIssuedTo ?: "NONE"}\n")
+                    sb.append("Token Audience: ${tokenInfoAudience ?: "NONE"}\n")
+                    sb.append("Token Associated Email: ${tokenInfoEmail ?: "NONE"}\n")
+                    sb.append("Token User ID: ${tokenInfoUserId ?: "NONE"}\n")
+                    sb.append("Token Expires In: ${tokenInfoExpiresIn ?: 0}s\n")
+                    sb.append("Token Effective Scopes: ${tokenInfoScope ?: "NONE"}\n")
+                    sb.append("Token Contains drive.appdata: ${if (tokenHasAppDataScope == true) "YES" else "NO"}\n")
+                    sb.append("Token Audience/IssuedTo Matches FiveLight Web Client ID ($FIVELIGHT_WEB_CLIENT_ID): ${if (tokenAudienceMatchesWebClientId == true) "YES" else "NO"}\n")
+                } else {
+                    sb.append("tokeninfo Error: ${tokenInfoError ?: "UNKNOWN"}\n")
                 }
+            } else {
+                sb.append("tokeninfo: NOT RUN\n")
+            }
+            sb.append("\n")
+
+            sb.append("--- 5. SAFE DRIVE API DIAGNOSTIC (about.get) ---\n")
+            if (aboutStatus != null) {
+                sb.append("about.get HTTP Status: $aboutStatus\n")
+                if (aboutStatus in 200..299) {
+                    sb.append("Drive User Email: ${aboutUserEmail ?: "NONE"}\n")
+                    sb.append("Drive Permission ID: ${aboutPermissionId ?: "NONE"}\n")
+                } else {
+                    sb.append("about.get Error: ${aboutError ?: "UNKNOWN"}\n")
+                }
+            } else {
+                sb.append("about.get: NOT RUN\n")
+            }
+            sb.append("\n")
+
+            sb.append("--- 6. SAFE DRIVE API DIAGNOSTIC (files.get appDataFolder) ---\n")
+            if (appDataFolderStatus != null) {
+                sb.append("appDataFolder HTTP Status: $appDataFolderStatus\n")
+                if (appDataFolderStatus in 200..299) {
+                    sb.append("appDataFolder ID: ${appDataFolderId ?: "NONE"}\n")
+                    sb.append("capabilities.canAddChildren: ${appDataFolderCanAddChildren ?: "UNKNOWN"}\n")
+                    sb.append("capabilities.canListChildren: ${appDataFolderCanListChildren ?: "UNKNOWN"}\n")
+                } else {
+                    sb.append("appDataFolder Error: ${appDataFolderError ?: "UNKNOWN"}\n")
+                }
+            } else {
+                sb.append("appDataFolder: NOT RUN\n")
+            }
+            sb.append("\n")
+
+            sb.append("--- 7. METADATA-ONLY FILES.CREATE TEST ---\n")
+            sb.append("POST https://www.googleapis.com/drive/v3/files\n")
+            sb.append("Status: $createStatus\n")
+            sb.append("Created File ID: ${createdFileId ?: "NONE"}\n")
+            sb.append("Parents: ${createdParents ?: "NONE"}\n")
+            sb.append("MimeType: ${createdMimeType ?: "NONE"}\n")
+            if (googleError != null) {
+                sb.append("\nGoogle Error:\n$googleError\n")
+            }
+            sb.append("\n")
+
+            if (patchStatus != null) {
+                sb.append("--- 8. MEDIA UPDATE TEST ---\n")
+                sb.append("PATCH Status: $patchStatus\n")
+                sb.append("Details: ${patchDetails ?: "NONE"}\n")
             }
 
-            sb.append("\n--- MEDIA UPDATE TEST ---\n\n")
-            sb.append("PATCH status: ${patchStatus?.toString() ?: "NOT ATTEMPTED (Metadata-only create failed)"}\n")
-            if (!patchDetails.isNullOrBlank()) {
-                sb.append("PATCH details: $patchDetails\n")
-            }
-
-            sb.append("\n--- GOOGLE ERROR ---\n\n")
-            sb.append(googleError ?: "NONE\n")
-
-            if (!clientIdentity.isNullOrBlank()) {
-                sb.append("\nOAuth Client/App Identity:\n$clientIdentity\n")
-            }
             return sb.toString().trim()
         }
     }
@@ -117,11 +223,35 @@ object GoogleDriveService {
      */
     suspend fun getAccessToken(context: Context, account: GoogleSignInAccount): Result<String> = withContext(Dispatchers.IO) {
         try {
+            val email = account.email ?: "NO_EMAIL"
+            val accountId = account.id ?: "NO_ID"
+            val grantedScopes = account.grantedScopes.map { it.scopeUri }.joinToString(", ")
+            val hasAppData = account.grantedScopes.any { it.scopeUri.equals("https://www.googleapis.com/auth/drive.appdata", ignoreCase = true) }
             val androidAccount = account.account
-                ?: return@withContext Result.failure(Exception("No valid Google account found."))
+            val androidAccountName = androidAccount?.name ?: "NULL"
+            val androidAccountType = androidAccount?.type ?: "NULL"
+            val identityMatch = (!email.isBlank() && email == androidAccountName && androidAccountType == "com.google")
+
+            appendTrace("--- TOKEN ACQUISITION TRACE ---")
+            appendTrace("GoogleSignInAccount email: $email, id: $accountId")
+            appendTrace("GoogleSignInAccount grantedScopes: [$grantedScopes]")
+            appendTrace("GoogleSignInAccount has drive.appdata: $hasAppData")
+            appendTrace("Android Account name: $androidAccountName, type: $androidAccountType")
+            appendTrace("Identity match (GoogleSignIn == AndroidAccount): ${if (identityMatch) "YES" else "NO"}")
+            appendTrace("Scope requested from GoogleAuthUtil: $OAUTH_SCOPE_STRING")
+
+            if (androidAccount == null) {
+                appendTrace("Token acquisition FAILED: androidAccount is null")
+                return@withContext Result.failure(Exception("No valid Google account found."))
+            }
+
             val token = GoogleAuthUtil.getToken(context, androidAccount, OAUTH_SCOPE_STRING)
+            val acquired = !token.isNullOrBlank()
+            appendTrace("Token acquisition result: ${if (acquired) "SUCCESS (valid non-empty token obtained)" else "FAILURE (empty token)"}")
+            // NEVER log the token itself
             Result.success(token)
         } catch (e: Exception) {
+            appendTrace("Token acquisition EXCEPTION: ${e.message}")
             Log.e(TAG, "Failed to retrieve Drive OAuth token: ${e.message}", e)
             Result.failure(e)
         }
@@ -208,46 +338,184 @@ object GoogleDriveService {
     }
 
     /**
-     * Diagnostic experiment:
-     * Attempts metadata-only file creation in appDataFolder (POST /drive/v3/files).
-     * If successful, verifies via GET and performs media PATCH (/upload/drive/v3/files/{id}?uploadType=media).
-     * If failed, captures the complete error response and client identity.
+     * Diagnostic experiment & Authorization Verification:
+     * 1. Inspects Google account identity & GoogleAuthUtil token acquisition context.
+     * 2. Inspects OAuth Client configuration (Project ID, project number, web client ID).
+     * 3. Performs safe, harmless tokeninfo inspection to verify token scopes, issued_to client, and account email.
+     * 4. Performs harmless Drive API about.get and files.get(appDataFolder) to check effective capabilities.
+     * 5. Attempts metadata-only file creation in appDataFolder (POST /drive/v3/files).
+     * 6. If creation succeeds, tests media PATCH.
+     * NEVER logs or exposes the access token itself.
      */
     suspend fun runCreateDiagnosticTest(
         context: Context,
         accessToken: String,
-        fileBytes: ByteArray
+        fileBytes: ByteArray,
+        googleAccount: GoogleSignInAccount? = null
     ): CreateDiagnosticReport = withContext(Dispatchers.IO) {
-        appendTrace("--- STARTING METADATA-ONLY FILE CREATION DIAGNOSTIC TEST ---")
+        appendTrace("--- STARTING DRIVE AUTHORIZATION & CREATE DIAGNOSTIC TEST ---")
+
+        // 1. Google Account Identity
+        val account = googleAccount ?: GoogleSignIn.getLastSignedInAccount(context)
+        val googleSignInEmail = account?.email
+        val googleSignInId = account?.id
+        val androidAccount = account?.account
+        val androidAccountName = androidAccount?.name
+        val androidAccountType = androidAccount?.type
+        val identityMatch = (!googleSignInEmail.isNullOrBlank() && googleSignInEmail == androidAccountName && androidAccountType == "com.google")
+        val googleSignInGrantedScopes = account?.grantedScopes?.map { it.scopeUri }?.joinToString(", ")
+        val driveAppDataGrantedOnAccount = account?.grantedScopes?.any { it.scopeUri.equals("https://www.googleapis.com/auth/drive.appdata", ignoreCase = true) } == true
+        val googleAuthUtilRequestedScope = OAUTH_SCOPE_STRING
+        val tokenAcquisitionSuccess = accessToken.isNotBlank()
+
+        appendTrace("Account Identity: email=$googleSignInEmail, androidName=$androidAccountName, match=$identityMatch")
+        appendTrace("GoogleSignIn grantedScopes: [$googleSignInGrantedScopes], drive.appdata granted: $driveAppDataGrantedOnAccount")
+
+        // 2. OAuth Client Configuration
+        val configuredProjectId = "fivelight"
+        val configuredProjectNumber = "985622795249"
+        val configuredPackageName = context.packageName
+        val configuredWebClientId = try {
+            val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
+            if (resId != 0) context.getString(resId) else "Not found in resources"
+        } catch (e: Exception) {
+            "Error: ${e.message}"
+        }
+        val projectIdentityMatch = configuredWebClientId?.startsWith(configuredProjectNumber) == true
+        appendTrace("Project Config: id=$configuredProjectId, number=$configuredProjectNumber, webClientId=$configuredWebClientId, match=$projectIdentityMatch")
+
+        // 3. Token Effective Authorization (tokeninfo via POST FormBody — token is never in URL or logged)
+        var tokenInfoStatus: Int? = null
+        var tokenInfoIssuedTo: String? = null
+        var tokenInfoAudience: String? = null
+        var tokenInfoScope: String? = null
+        var tokenInfoEmail: String? = null
+        var tokenInfoUserId: String? = null
+        var tokenInfoExpiresIn: Int? = null
+        var tokenInfoError: String? = null
+        var tokenHasAppDataScope: Boolean? = null
+        var tokenAudienceMatchesWebClientId: Boolean? = null
+
+        try {
+            val tokenInfoUrl = "https://oauth2.googleapis.com/tokeninfo"
+            val formBody = FormBody.Builder()
+                .add("access_token", accessToken)
+                .build()
+
+            val tokenInfoReq = Request.Builder()
+                .url(tokenInfoUrl)
+                .post(formBody)
+                .build()
+
+            httpClient.newCall(tokenInfoReq).execute().use { response ->
+                tokenInfoStatus = response.code
+                val bodyStr = response.body?.string() ?: ""
+                appendTrace("tokeninfo HTTP status: $tokenInfoStatus")
+                if (response.isSuccessful) {
+                    val json = JSONObject(bodyStr)
+                    tokenInfoIssuedTo = json.optString("issued_to", null)
+                    tokenInfoAudience = json.optString("audience", null)
+                    tokenInfoScope = json.optString("scope", null)
+                    tokenInfoEmail = json.optString("email", null)
+                    tokenInfoUserId = json.optString("user_id", null)
+                    tokenInfoExpiresIn = json.optInt("expires_in", 0)
+
+                    tokenHasAppDataScope = tokenInfoScope?.contains("https://www.googleapis.com/auth/drive.appdata") == true
+                    tokenAudienceMatchesWebClientId = (tokenInfoAudience == FIVELIGHT_WEB_CLIENT_ID ||
+                            tokenInfoIssuedTo == FIVELIGHT_WEB_CLIENT_ID)
+
+                    appendTrace("tokeninfo: issued_to=$tokenInfoIssuedTo, audience=$tokenInfoAudience, email=$tokenInfoEmail, hasAppDataScope=$tokenHasAppDataScope, matchesWebClientId=$tokenAudienceMatchesWebClientId")
+                } else {
+                    tokenInfoError = parseGoogleErrorDetailed(tokenInfoStatus!!, bodyStr)
+                    appendTrace("tokeninfo error: $tokenInfoError")
+                }
+            }
+        } catch (e: Exception) {
+            tokenInfoError = "tokeninfo exception: ${e.message}"
+            appendTrace("tokeninfo exception: ${e.message}")
+        }
+
+        // 4. Safe Drive API Diagnostic: about.get
+        var aboutStatus: Int? = null
+        var aboutUserEmail: String? = null
+        var aboutPermissionId: String? = null
+        var aboutError: String? = null
+
+        try {
+            val aboutUrl = "https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress,permissionId)"
+            val aboutReq = Request.Builder()
+                .url(aboutUrl)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+
+            httpClient.newCall(aboutReq).execute().use { response ->
+                aboutStatus = response.code
+                val bodyStr = response.body?.string() ?: ""
+                appendTrace("Drive about.get HTTP status: $aboutStatus")
+                if (response.isSuccessful) {
+                    val json = JSONObject(bodyStr)
+                    val userObj = json.optJSONObject("user")
+                    aboutUserEmail = userObj?.optString("emailAddress", null)
+                    aboutPermissionId = userObj?.optString("permissionId", null)
+                    appendTrace("Drive about.get: email=$aboutUserEmail, permissionId=$aboutPermissionId")
+                } else {
+                    aboutError = parseGoogleErrorDetailed(aboutStatus!!, bodyStr)
+                    appendTrace("Drive about.get error: $aboutError")
+                }
+            }
+        } catch (e: Exception) {
+            aboutError = "Drive about.get exception: ${e.message}"
+            appendTrace("Drive about.get exception: ${e.message}")
+        }
+
+        // 5. Safe Drive API Diagnostic: files.get(appDataFolder)
+        var appDataFolderStatus: Int? = null
+        var appDataFolderId: String? = null
+        var appDataFolderCanAddChildren: Boolean? = null
+        var appDataFolderCanListChildren: Boolean? = null
+        var appDataFolderError: String? = null
+
+        try {
+            val appDataUrl = "https://www.googleapis.com/drive/v3/files/appDataFolder?fields=id,name,capabilities"
+            val appDataReq = Request.Builder()
+                .url(appDataUrl)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+
+            httpClient.newCall(appDataReq).execute().use { response ->
+                appDataFolderStatus = response.code
+                val bodyStr = response.body?.string() ?: ""
+                appendTrace("files.get(appDataFolder) HTTP status: $appDataFolderStatus")
+                if (response.isSuccessful) {
+                    val json = JSONObject(bodyStr)
+                    appDataFolderId = json.optString("id", null)
+                    val capObj = json.optJSONObject("capabilities")
+                    appDataFolderCanAddChildren = capObj?.optBoolean("canAddChildren", false)
+                    appDataFolderCanListChildren = capObj?.optBoolean("canListChildren", false)
+                    appendTrace("appDataFolder: id=$appDataFolderId, canAddChildren=$appDataFolderCanAddChildren, canListChildren=$appDataFolderCanListChildren")
+                } else {
+                    appDataFolderError = parseGoogleErrorDetailed(appDataFolderStatus!!, bodyStr)
+                    appendTrace("files.get(appDataFolder) error: $appDataFolderError")
+                }
+            }
+        } catch (e: Exception) {
+            appDataFolderError = "files.get(appDataFolder) exception: ${e.message}"
+            appendTrace("files.get(appDataFolder) exception: ${e.message}")
+        }
+
+        // 6. Metadata-only file creation: POST https://www.googleapis.com/drive/v3/files
         var postStatus = 0
         var createdFileId: String? = null
         var createdName: String? = null
         var createdParents: String? = null
         var createdMimeType: String? = null
-        var getStatus: Int? = null
-        var getDetails: String? = null
-        var canEdit: Boolean? = null
-        var canDelete: Boolean? = null
         var patchStatus: Int? = null
         var patchDetails: String? = null
         var googleError: String? = null
-        var clientIdentity: String? = null
 
         try {
-            // OAuth Client / App Identity check
-            val account = GoogleSignIn.getLastSignedInAccount(context)
-            val email = account?.email ?: "Unknown"
-            val accountId = account?.id ?: "Unknown"
-            val packageName = context.packageName
-            val defaultWebClientId = try {
-                val resId = context.resources.getIdentifier("default_web_client_id", "string", context.packageName)
-                if (resId != 0) context.getString(resId) else "Not found in resources"
-            } catch (e: Exception) {
-                "Error retrieving: ${e.message}"
-            }
-            clientIdentity = "Account Email: $email\nAccount ID: $accountId\nPackage Name: $packageName\nDefault Web Client ID: $defaultWebClientId"
-
-            // 1. Metadata-only file creation: POST https://www.googleapis.com/drive/v3/files
             val createUrl = "https://www.googleapis.com/drive/v3/files"
             val createJson = JSONObject().apply {
                 put("name", BACKUP_FILENAME)
@@ -281,39 +549,9 @@ object GoogleDriveService {
                 }
             }
 
-            // 2. If creation succeeded, perform GET verification and media PATCH
+            // 7. If creation succeeded, perform media PATCH
             if (createdFileId != null) {
-                // Step 5: Verification GET
-                appendTrace("Executing GET verification for file ID: $createdFileId")
-                val getUrl = "https://www.googleapis.com/drive/v3/files/$createdFileId?fields=id,name,parents,mimeType,modifiedTime,trashed,capabilities,capabilities/canEdit,capabilities/canDelete"
-                val getReq = Request.Builder()
-                    .url(getUrl)
-                    .addHeader("Authorization", "Bearer $accessToken")
-                    .get()
-                    .build()
-
-                httpClient.newCall(getReq).execute().use { getResp ->
-                    getStatus = getResp.code
-                    val getBody = getResp.body?.string() ?: ""
-                    appendTrace("GET verification status: $getStatus")
-                    if (getResp.isSuccessful) {
-                        val getJson = JSONObject(getBody)
-                        val capObj = getJson.optJSONObject("capabilities")
-                        canEdit = capObj?.optBoolean("canEdit")
-                        canDelete = capObj?.optBoolean("canDelete")
-                        val pArr = getJson.optJSONArray("parents")?.let { arr ->
-                            (0 until arr.length()).map { arr.getString(it) }.joinToString(", ")
-                        } ?: "None"
-                        getDetails = "id: ${getJson.optString("id")}\nname: ${getJson.optString("name")}\nparents: [$pArr]\nmimeType: ${getJson.optString("mimeType")}\nmodifiedTime: ${getJson.optString("modifiedTime")}\ntrashed: ${getJson.optBoolean("trashed")}"
-                        appendTrace("GET verification: canEdit=$canEdit, canDelete=$canDelete, parents=[$pArr]")
-                    } else {
-                        getDetails = parseGoogleErrorDetailed(getResp.code, getBody)
-                        appendTrace("GET verification failed: $getDetails")
-                    }
-                }
-
-                // Step 3: Media PATCH
-                appendTrace("Executing media PATCH for file ID: $createdFileId")
+                appendTrace("Executing media PATCH for created file ID: $createdFileId")
                 val patchUrl = "https://www.googleapis.com/upload/drive/v3/files/$createdFileId?uploadType=media"
                 val patchReq = Request.Builder()
                     .url(patchUrl)
@@ -338,26 +576,54 @@ object GoogleDriveService {
                 }
             }
         } catch (e: Exception) {
-            appendTrace("Diagnostic test encountered exception: ${e.message}")
+            appendTrace("Metadata-only create exception: ${e.message}")
             if (googleError == null) {
-                googleError = "Exception during diagnostic test: ${e.message}"
+                googleError = "Exception during metadata create test: ${e.message}"
             }
         }
 
         val report = CreateDiagnosticReport(
+            googleSignInEmail = googleSignInEmail,
+            googleSignInId = googleSignInId,
+            androidAccountName = androidAccountName,
+            androidAccountType = androidAccountType,
+            identityMatch = identityMatch,
+            googleSignInGrantedScopes = googleSignInGrantedScopes,
+            driveAppDataGrantedOnAccount = driveAppDataGrantedOnAccount,
+            googleAuthUtilRequestedScope = googleAuthUtilRequestedScope,
+            tokenAcquisitionSuccess = tokenAcquisitionSuccess,
+            configuredProjectId = configuredProjectId,
+            configuredProjectNumber = configuredProjectNumber,
+            configuredPackageName = configuredPackageName,
+            configuredWebClientId = configuredWebClientId,
+            projectIdentityMatch = projectIdentityMatch,
+            tokenInfoStatus = tokenInfoStatus,
+            tokenInfoIssuedTo = tokenInfoIssuedTo,
+            tokenInfoAudience = tokenInfoAudience,
+            tokenInfoScope = tokenInfoScope,
+            tokenInfoEmail = tokenInfoEmail,
+            tokenInfoUserId = tokenInfoUserId,
+            tokenInfoExpiresIn = tokenInfoExpiresIn,
+            tokenInfoError = tokenInfoError,
+            tokenHasAppDataScope = tokenHasAppDataScope,
+            tokenAudienceMatchesWebClientId = tokenAudienceMatchesWebClientId,
+            aboutStatus = aboutStatus,
+            aboutUserEmail = aboutUserEmail,
+            aboutPermissionId = aboutPermissionId,
+            aboutError = aboutError,
+            appDataFolderStatus = appDataFolderStatus,
+            appDataFolderId = appDataFolderId,
+            appDataFolderCanAddChildren = appDataFolderCanAddChildren,
+            appDataFolderCanListChildren = appDataFolderCanListChildren,
+            appDataFolderError = appDataFolderError,
             createStatus = postStatus,
             createdFileId = createdFileId,
             createdName = createdName,
             createdParents = createdParents,
             createdMimeType = createdMimeType,
-            getStatus = getStatus,
-            getDetails = getDetails,
-            canEdit = canEdit,
-            canDelete = canDelete,
-            patchStatus = patchStatus,
-            patchDetails = patchDetails,
             googleError = googleError,
-            clientIdentity = clientIdentity
+            patchStatus = patchStatus,
+            patchDetails = patchDetails
         )
         lastCreateDiagnosticReport = report
         report
@@ -456,7 +722,8 @@ object GoogleDriveService {
         context: Context,
         accessToken: String,
         fileBytes: ByteArray,
-        existingFileId: String?
+        existingFileId: String?,
+        googleAccount: GoogleSignInAccount? = null
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
             appendTrace("uploadBackupFile received existingFileId: ${existingFileId ?: "NULL"}")
@@ -500,7 +767,7 @@ object GoogleDriveService {
                 appendTrace("UPLOAD PATH = CREATE NEW FILE")
 
                 // Diagnostic test: Metadata-only creation in appDataFolder
-                val diagResult = runCreateDiagnosticTest(context, accessToken, fileBytes)
+                val diagResult = runCreateDiagnosticTest(context, accessToken, fileBytes, googleAccount)
 
                 if (diagResult.createStatus == 200 || diagResult.createStatus == 201) {
                     appendTrace("Diagnostic: Metadata-only creation SUCCEEDED with ID: ${diagResult.createdFileId}")

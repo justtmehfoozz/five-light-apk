@@ -435,8 +435,18 @@ fun ProfileSubScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showDebugErrorDialog = false }) {
-                    Text("Dismiss")
+                Row {
+                    TextButton(onClick = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("Diagnostic Report", debugErrorMessage)
+                        clipboard?.setPrimaryClip(clip)
+                        Toast.makeText(context, "Report copied to clipboard", Toast.LENGTH_SHORT).show()
+                    }) {
+                        Text("Copy Report")
+                    }
+                    TextButton(onClick = { showDebugErrorDialog = false }) {
+                        Text("Dismiss")
+                    }
                 }
             },
             containerColor = Color.semanticSurfaceElevated,
