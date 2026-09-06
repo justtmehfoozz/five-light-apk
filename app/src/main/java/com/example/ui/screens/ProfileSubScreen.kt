@@ -37,6 +37,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -54,6 +55,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -290,14 +293,14 @@ fun ProfileSubScreen(
             ?: "Your Profile"
     }
 
-    val syncStatusText = remember(currentUser, syncState) {
+    val syncStatusText = remember(currentUser, syncState, lastSyncedTime) {
         if (currentUser == null) "Not signed in"
         else when (syncState) {
             is com.example.data.sync.SyncState.Syncing -> "Syncing..."
             is com.example.data.sync.SyncState.Synced -> "Synced"
             is com.example.data.sync.SyncState.Offline -> "Offline / Waiting for connection"
             is com.example.data.sync.SyncState.Error -> "Offline / Waiting for connection"
-            is com.example.data.sync.SyncState.Idle -> "Synced"
+            is com.example.data.sync.SyncState.Idle -> if (lastSyncedTime != null && lastSyncedTime > 0) "Synced" else "Idle"
         }
     }
 
@@ -309,7 +312,7 @@ fun ProfileSubScreen(
             is com.example.data.sync.SyncState.Synced -> Color.semanticSuccess
             is com.example.data.sync.SyncState.Offline -> Color.semanticWarning
             is com.example.data.sync.SyncState.Error -> Color.semanticWarning
-            is com.example.data.sync.SyncState.Idle -> Color.semanticSuccess
+            is com.example.data.sync.SyncState.Idle -> if (lastSyncedTime != null && lastSyncedTime > 0) Color.semanticSuccess else MaterialTheme.colorScheme.onSurfaceVariant
         }
     }
 
@@ -328,6 +331,10 @@ fun ProfileSubScreen(
     var lastBackupTime by remember {
         mutableStateOf(com.example.data.backup.BackupManager.getLastBackupTime(context))
     }
+    var autoBackupFrequency by remember {
+        mutableStateOf(com.example.data.backup.BackupManager.getAutoBackupFrequency(context))
+    }
+    var showAutoBackupDialog by remember { mutableStateOf(false) }
     var isBackingUp by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
 
@@ -767,13 +774,21 @@ fun ProfileSubScreen(
                 ) {
                     ProfileSection(title = "SYNC") {
                         // Cloud Sync Row
+                        val isSyncOfflineOrError = (syncState is com.example.data.sync.SyncState.Offline || syncState is com.example.data.sync.SyncState.Error) && currentUser != null
                         ProfileRow(
                             label = "Cloud Sync",
                             value = syncStatusText,
                             statusDotColor = syncStatusDotColor,
                             isSyncing = syncState is com.example.data.sync.SyncState.Syncing,
-                            isAction = false,
-                            onClick = null,
+                            isAction = isSyncOfflineOrError,
+                            onClick = if (isSyncOfflineOrError) {
+                                {
+                                    Toast.makeText(context, "Retrying sync...", Toast.LENGTH_SHORT).show()
+                                    val repo = com.example.data.repository.AppRepository.getInstance(context)
+                                    val syncMgr = com.example.data.sync.FirestoreSyncManager.getInstance(context, repo, authRepository)
+                                    syncMgr.triggerNetworkRecovery()
+                                }
+                            } else null,
                             testTag = "profile_cloud_sync_row"
                         )
 
@@ -824,6 +839,19 @@ fun ProfileSubScreen(
                             isAction = false,
                             onClick = null,
                             testTag = "profile_last_backup_row"
+                        )
+
+                        HorizontalDivider(color = Color.semanticBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
+
+                        // Auto-backup Row
+                        ProfileRow(
+                            label = "Auto-backup",
+                            value = autoBackupFrequency.label,
+                            isAction = true,
+                            onClick = {
+                                showAutoBackupDialog = true
+                            },
+                            testTag = "profile_auto_backup_row"
                         )
 
                         HorizontalDivider(color = Color.semanticBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
@@ -1136,6 +1164,34 @@ fun ProfileSubScreen(
                         }
                         onError(msg)
                     }
+                }
+            }
+        )
+    }
+
+    // Dialog 5: Auto-backup Frequency Selection
+    if (showAutoBackupDialog) {
+        AutoBackupDialog(
+            currentFrequency = autoBackupFrequency,
+            onDismiss = { showAutoBackupDialog = false },
+            onSelect = { selectedFreq ->
+                if (selectedFreq != com.example.data.backup.BackupManager.AutoBackupFrequency.OFF && driveAccount == null) {
+                    showAutoBackupDialog = false
+                    requestDriveAuth {
+                        com.example.data.backup.BackupManager.setAutoBackupFrequency(context, selectedFreq)
+                        autoBackupFrequency = selectedFreq
+                        Toast.makeText(context, "Auto-backup scheduled: ${selectedFreq.label}", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    com.example.data.backup.BackupManager.setAutoBackupFrequency(context, selectedFreq)
+                    autoBackupFrequency = selectedFreq
+                    showAutoBackupDialog = false
+                    val msg = if (selectedFreq == com.example.data.backup.BackupManager.AutoBackupFrequency.OFF) {
+                        "Auto-backup turned off"
+                    } else {
+                        "Auto-backup scheduled: ${selectedFreq.label}"
+                    }
+                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                 }
             }
         )
@@ -1773,6 +1829,83 @@ private fun DeleteAccountDialog(
                 onClick = onDismiss,
                 enabled = !isDeleting
             ) {
+                Text("Cancel")
+            }
+        },
+        containerColor = Color.semanticSurfaceElevated,
+        shape = RoundedCornerShape(18.dp)
+    )
+}
+
+@Composable
+private fun AutoBackupDialog(
+    currentFrequency: com.example.data.backup.BackupManager.AutoBackupFrequency,
+    onDismiss: () -> Unit,
+    onSelect: (com.example.data.backup.BackupManager.AutoBackupFrequency) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Auto-backup Frequency",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Automatically back up your encrypted data to your private Google Drive app storage when connected to a network.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+
+                com.example.data.backup.BackupManager.AutoBackupFrequency.entries.forEach { freq ->
+                    val isSelected = freq == currentFrequency
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onSelect(freq) }
+                            .padding(vertical = 10.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = freq.label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) Color.semanticPrimaryAccent else MaterialTheme.colorScheme.onSurface
+                            )
+                            val description = when (freq) {
+                                com.example.data.backup.BackupManager.AutoBackupFrequency.OFF -> "Disabled. Only manual backups will run."
+                                com.example.data.backup.BackupManager.AutoBackupFrequency.DAILY -> "Backs up every 24 hours in the background."
+                                com.example.data.backup.BackupManager.AutoBackupFrequency.WEEKLY -> "Backs up once a week in the background."
+                            }
+                            Text(
+                                text = description,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        RadioButton(
+                            selected = isSelected,
+                            onClick = { onSelect(freq) },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = Color.semanticPrimaryAccent
+                            )
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }
         },

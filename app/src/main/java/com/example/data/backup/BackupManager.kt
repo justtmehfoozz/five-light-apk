@@ -68,15 +68,39 @@ object BackupManager {
     private const val TAG = "BackupManager"
     private const val PREFS_NAME = "fivelight_drive_backup_meta"
     private const val KEY_LAST_BACKUP = "last_drive_backup_time"
+    private const val KEY_AUTO_BACKUP_FREQ = "auto_backup_frequency"
     private const val BACKUP_FILE_NAME = "fivelight_backup_encrypted.bin"
     private const val SCHEMA_VERSION = 1
+
+    enum class AutoBackupFrequency(val label: String) {
+        OFF("Off"),
+        DAILY("Daily"),
+        WEEKLY("Weekly");
+
+        companion object {
+            fun fromString(value: String?): AutoBackupFrequency {
+                return entries.find { it.name.equals(value, ignoreCase = true) } ?: OFF
+            }
+        }
+    }
+
+    fun getAutoBackupFrequency(context: Context): AutoBackupFrequency {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return AutoBackupFrequency.fromString(prefs.getString(KEY_AUTO_BACKUP_FREQ, AutoBackupFrequency.OFF.name))
+    }
+
+    fun setAutoBackupFrequency(context: Context, frequency: AutoBackupFrequency) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putString(KEY_AUTO_BACKUP_FREQ, frequency.name).apply()
+        GoogleDriveBackupWorker.schedule(context, frequency)
+    }
 
     fun getLastBackupTime(context: Context): Long {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return prefs.getLong(KEY_LAST_BACKUP, 0L)
     }
 
-    private fun setLastBackupTime(context: Context, timestamp: Long) {
+    fun setLastBackupTime(context: Context, timestamp: Long) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putLong(KEY_LAST_BACKUP, timestamp).apply()
     }

@@ -633,6 +633,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         refreshQadaCounts()
         _dailyQuranGoal.value = repository.getDailyQuranGoal()
 
+        val autoBackupFreq = com.example.data.backup.BackupManager.getAutoBackupFrequency(getApplication())
+        if (autoBackupFreq != com.example.data.backup.BackupManager.AutoBackupFrequency.OFF) {
+            com.example.data.backup.GoogleDriveBackupWorker.schedule(getApplication(), autoBackupFreq)
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 QuranData.preload(getApplication())

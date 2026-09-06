@@ -2,6 +2,9 @@ package com.example
 
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
@@ -10,6 +13,8 @@ import kotlin.math.sqrt
 /**
  * Unit tests for Qibla compass angle, symmetric kite geometry, and cardinal crossing calculations.
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
 class ExampleUnitTest {
   @Test
   fun addition_isCorrect() {

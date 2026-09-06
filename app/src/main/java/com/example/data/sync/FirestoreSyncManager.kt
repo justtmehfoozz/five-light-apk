@@ -23,18 +23,23 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Dedicated Firestore Synchronization Manager.
@@ -81,12 +86,36 @@ class FirestoreSyncManager(
 
     // Flag to prevent listener -> local write -> cloud write -> listener feedback loops
     val isSyncingFromRemote = AtomicBoolean(false)
+    private val remoteSyncCounter = AtomicInteger(0)
+
+    fun enterRemoteSync() {
+        remoteSyncCounter.incrementAndGet()
+        isSyncingFromRemote.set(true)
+    }
+
+    fun exitRemoteSync() {
+        val remaining = remoteSyncCounter.decrementAndGet()
+        if (remaining <= 0) {
+            remoteSyncCounter.set(0)
+            isSyncingFromRemote.set(false)
+        }
+    }
+
+    suspend inline fun <T> runRemoteSyncSuspend(crossinline block: suspend () -> T): T {
+        enterRemoteSync()
+        return try {
+            block()
+        } finally {
+            exitRemoteSync()
+        }
+    }
 
     @Volatile
     private var activeUserId: String? = null
     private val listenerRegistrations = mutableListOf<ListenerRegistration>()
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
-    private var recoveryJob: kotlinx.coroutines.Job? = null
+    private var recoveryJob: Job? = null
+    private var initialSyncJob: Job? = null
 
     init {
         // Link to repository so repository knows when remote sync is active
@@ -151,8 +180,6 @@ class FirestoreSyncManager(
             }
         }
         networkCallback = null
-        recoveryJob?.cancel()
-        recoveryJob = null
     }
 
     /**
@@ -173,78 +200,129 @@ class FirestoreSyncManager(
                 return@launch
             }
 
-            Log.d(TAG, "Executing automatic sync recovery for $currentUid")
-            _syncState.value = SyncState.Syncing
-            try {
-                performInitialMerge(currentUid)
-                val now = System.currentTimeMillis()
-                _syncState.value = SyncState.Synced
-                _lastSyncedTime.value = now
-                prefs.edit().putLong("last_synced_timestamp_$currentUid", now).apply()
-                Log.d(TAG, "Automatic sync recovery completed successfully for $currentUid")
-            } catch (e: Exception) {
-                Log.e(TAG, "Automatic sync recovery failed: ${e.message}", e)
-                _syncState.value = SyncState.Offline
-            }
+            val maskedUid = if (currentUid.length > 8) "${currentUid.take(4)}...${currentUid.takeLast(4)}" else currentUid
+            Log.d(TAG, "Executing automatic sync recovery for $maskedUid")
+            runInitialSyncForUser(currentUid)
         }
     }
 
     private fun handleUserChanged(user: FirebaseUser?) {
         val newUid = user?.uid
-        if (newUid == activeUserId) return
+        val maskedOld = activeUserId?.let { if (it.length > 8) "${it.take(4)}...${it.takeLast(4)}" else it } ?: "null"
+        val maskedNew = newUid?.let { if (it.length > 8) "${it.take(4)}...${it.takeLast(4)}" else it } ?: "null"
+        Log.d(TAG, "handleUserChanged: current activeUserId=$maskedOld, newUid=$maskedNew")
+
+        if (newUid == activeUserId && initialSyncJob?.isActive == true) {
+            Log.d(TAG, "handleUserChanged: same UID and sync job already active, ignoring duplicate trigger")
+            return
+        }
+
+        // Cancel previous sync and recovery work
+        initialSyncJob?.cancel()
+        initialSyncJob = null
+        recoveryJob?.cancel()
+        recoveryJob = null
 
         if (newUid == null) {
             // User signed out -> Return to guest/local-only mode
             stopSync()
-            unregisterNetworkCallback()
             activeUserId = null
             _syncState.value = SyncState.Idle
             _lastSyncedTime.value = null
             Log.d(TAG, "User signed out. Firestore sync stopped, guest mode active.")
-        } else {
-            // New authenticated user -> Stop previous if any, then start sync for this UID
-            stopSync()
-            registerNetworkCallback()
-            activeUserId = newUid
+            return
+        }
 
-            val savedTs = prefs.getLong("last_synced_timestamp_$newUid", 0L)
-            if (savedTs > 0L) {
-                _lastSyncedTime.value = savedTs
+        // New authenticated user -> Stop previous listeners, start fresh sync
+        stopSync()
+        registerNetworkCallback()
+        activeUserId = newUid
+
+        // Restore persisted timestamp for this user
+        val savedTs = prefs.getLong("last_synced_timestamp_$newUid", 0L)
+        if (savedTs > 0L) {
+            _lastSyncedTime.value = savedTs
+        } else {
+            _lastSyncedTime.value = null
+        }
+
+        Log.d(TAG, "User signed in ($maskedNew). Launching initial sync job.")
+        initialSyncJob = scope.launch {
+            runInitialSyncForUser(newUid)
+        }
+    }
+
+    private suspend fun runInitialSyncForUser(uid: String) {
+        val maskedUid = if (uid.length > 8) "${uid.take(4)}...${uid.takeLast(4)}" else uid
+        Log.i(TAG, "SYNC INIT START [uid: $maskedUid]")
+
+        if (activeUserId != uid) {
+            Log.w(TAG, "SYNC INIT ABORTED: UID mismatch before start ($maskedUid != ${activeUserId})")
+            return
+        }
+
+        _syncState.value = SyncState.Syncing
+
+        if (!com.example.data.util.NetworkUtils.isNetworkAvailable(context)) {
+            Log.w(TAG, "SYNC INIT OFFLINE: Network not available for $maskedUid")
+            if (activeUserId == uid) {
+                _syncState.value = SyncState.Offline
+            }
+            return
+        }
+
+        try {
+            // Step A: Perform bidirectional initial merge
+            val mergeResult = performInitialMerge(uid)
+
+            if (activeUserId != uid) {
+                Log.w(TAG, "SYNC INIT ABORTED: UID changed during merge for $maskedUid")
+                return
             }
 
-            Log.d(TAG, "User signed in ($newUid). Initializing Firestore sync.")
-            scope.launch {
-                try {
-                    _syncState.value = SyncState.Syncing
-                    attachSnapshotListeners(newUid)
-                    try {
-                        performInitialMerge(newUid)
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Initial merge finished with offline/partial results: ${e.message}")
-                    }
+            when (mergeResult) {
+                is MergeResult.Success -> {
+                    Log.i(TAG, "SYNC INIT SUCCESS: All merge steps succeeded for $maskedUid")
+                    // Step B: Attach real-time snapshot listeners for subsequent updates
+                    attachSnapshotListeners(uid)
 
-                    if (com.example.data.util.NetworkUtils.isNetworkAvailable(context)) {
-                        _syncState.value = SyncState.Synced
-                        val now = System.currentTimeMillis()
-                        _lastSyncedTime.value = now
-                        prefs.edit().putLong("last_synced_timestamp_$newUid", now).apply()
-                    } else {
-                        _syncState.value = SyncState.Offline
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error initializing sync for $newUid", e)
+                    val now = System.currentTimeMillis()
+                    _syncState.value = SyncState.Synced
+                    _lastSyncedTime.value = now
+                    prefs.edit().putLong("last_synced_timestamp_$uid", now).apply()
+                    Log.i(TAG, "SYNC STATE -> Synced, lastSyncedTime updated to $now")
+                }
+                is MergeResult.PartialFailure -> {
+                    Log.w(TAG, "SYNC INIT PARTIAL FAILURE for $maskedUid. Failed steps: ${mergeResult.failedSteps}")
                     _syncState.value = SyncState.Offline
                 }
+                is MergeResult.Failure -> {
+                    Log.e(TAG, "SYNC INIT FAILURE for $maskedUid: ${mergeResult.cause.message}", mergeResult.cause)
+                    _syncState.value = SyncState.Offline
+                }
+            }
+        } catch (ce: CancellationException) {
+            Log.d(TAG, "SYNC INIT CANCELLED for $maskedUid")
+            throw ce
+        } catch (e: Exception) {
+            Log.e(TAG, "SYNC INIT UNEXPECTED ERROR for $maskedUid: ${e.message}", e)
+            if (activeUserId == uid) {
+                _syncState.value = SyncState.Offline
             }
         }
     }
 
     /**
-     * Cancels all active Firestore listeners and clears registered state.
+     * Cancels all active Firestore listeners, active sync jobs, and clears registered state.
      */
     @Synchronized
     fun stopSync() {
+        Log.d(TAG, "stopSync() called. Cancelling jobs and removing ${listenerRegistrations.size} listeners.")
         unregisterNetworkCallback()
+        initialSyncJob?.cancel()
+        initialSyncJob = null
+        recoveryJob?.cancel()
+        recoveryJob = null
         for (listener in listenerRegistrations) {
             try {
                 listener.remove()
@@ -282,74 +360,140 @@ class FirestoreSyncManager(
     // INITIAL MERGE ENGINE (FIRST LOGIN / FIRST SYNC)
     // =========================================================================
 
-    suspend fun performInitialMerge(uid: String) = withContext(Dispatchers.IO) {
-        isSyncingFromRemote.set(true)
-        try {
-            try { mergePrayerLogs(uid) } catch (e: Exception) { Log.w(TAG, "Prayer logs merge error: ${e.message}") }
-            try { mergeBookmarks(uid) } catch (e: Exception) { Log.w(TAG, "Bookmarks merge error: ${e.message}") }
-            try { mergeDhikrHistory(uid) } catch (e: Exception) { Log.w(TAG, "Dhikr history merge error: ${e.message}") }
-            try { mergeQada(uid) } catch (e: Exception) { Log.w(TAG, "Qada merge error: ${e.message}") }
-            try { mergeQuranProgress(uid) } catch (e: Exception) { Log.w(TAG, "Quran progress merge error: ${e.message}") }
-            try { mergeTasbeehState(uid) } catch (e: Exception) { Log.w(TAG, "Tasbeeh state merge error: ${e.message}") }
-            try { mergePreferences(uid) } catch (e: Exception) { Log.w(TAG, "Preferences merge error: ${e.message}") }
+    sealed class MergeResult {
+        object Success : MergeResult()
+        data class PartialFailure(val failedSteps: List<String>, val errors: List<String>) : MergeResult()
+        data class Failure(val cause: Throwable) : MergeResult()
+    }
 
-            Log.d(TAG, "Initial bidirectional merge completed for $uid")
-        } finally {
-            isSyncingFromRemote.set(false)
+    private suspend fun <T> runStepWithTimeout(
+        stepName: String,
+        timeoutMs: Long = 12_000L,
+        block: suspend () -> T
+    ): Result<T> {
+        Log.d(TAG, "SYNC STEP START: $stepName")
+        return try {
+            val result = withTimeout(timeoutMs) {
+                block()
+            }
+            Log.d(TAG, "SYNC STEP SUCCESS: $stepName")
+            Result.success(result)
+        } catch (te: TimeoutCancellationException) {
+            Log.w(TAG, "SYNC STEP TIMEOUT: $stepName (${timeoutMs}ms exceeded)")
+            Result.failure(te)
+        } catch (ce: CancellationException) {
+            Log.d(TAG, "SYNC STEP CANCELLED: $stepName")
+            throw ce
+        } catch (e: Exception) {
+            Log.w(TAG, "SYNC STEP FAILURE: $stepName - ${e.javaClass.simpleName}: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun performInitialMerge(uid: String): MergeResult = withContext(Dispatchers.IO) {
+        val maskedUid = if (uid.length > 8) "${uid.take(4)}...${uid.takeLast(4)}" else uid
+        Log.i(TAG, "Starting performInitialMerge for $maskedUid")
+        runRemoteSyncSuspend {
+            val failedSteps = mutableListOf<String>()
+            val errors = mutableListOf<String>()
+
+            val pRes = runStepWithTimeout("mergePrayerLogs") { mergePrayerLogs(uid) }
+            if (pRes.isFailure) {
+                failedSteps.add("mergePrayerLogs")
+                errors.add(pRes.exceptionOrNull()?.message ?: "Timeout/Failure")
+            }
+
+            val bRes = runStepWithTimeout("mergeBookmarks") { mergeBookmarks(uid) }
+            if (bRes.isFailure) {
+                failedSteps.add("mergeBookmarks")
+                errors.add(bRes.exceptionOrNull()?.message ?: "Timeout/Failure")
+            }
+
+            val dRes = runStepWithTimeout("mergeDhikrHistory") { mergeDhikrHistory(uid) }
+            if (dRes.isFailure) {
+                failedSteps.add("mergeDhikrHistory")
+                errors.add(dRes.exceptionOrNull()?.message ?: "Timeout/Failure")
+            }
+
+            val qRes = runStepWithTimeout("mergeQada") { mergeQada(uid) }
+            if (qRes.isFailure) {
+                failedSteps.add("mergeQada")
+                errors.add(qRes.exceptionOrNull()?.message ?: "Timeout/Failure")
+            }
+
+            val qpRes = runStepWithTimeout("mergeQuranProgress") { mergeQuranProgress(uid) }
+            if (qpRes.isFailure) {
+                failedSteps.add("mergeQuranProgress")
+                errors.add(qpRes.exceptionOrNull()?.message ?: "Timeout/Failure")
+            }
+
+            val tRes = runStepWithTimeout("mergeTasbeehState") { mergeTasbeehState(uid) }
+            if (tRes.isFailure) {
+                failedSteps.add("mergeTasbeehState")
+                errors.add(tRes.exceptionOrNull()?.message ?: "Timeout/Failure")
+            }
+
+            val prRes = runStepWithTimeout("mergePreferences") { mergePreferences(uid) }
+            if (prRes.isFailure) {
+                failedSteps.add("mergePreferences")
+                errors.add(prRes.exceptionOrNull()?.message ?: "Timeout/Failure")
+            }
+
+            if (failedSteps.isEmpty()) {
+                Log.i(TAG, "performInitialMerge finished with SUCCESS for all 7 sections")
+                MergeResult.Success
+            } else {
+                Log.w(TAG, "performInitialMerge finished with partial failures: $failedSteps")
+                MergeResult.PartialFailure(failedSteps, errors)
+            }
         }
     }
 
     private suspend fun mergePrayerLogs(uid: String) {
         val col = firestore.collection("users").document(uid).collection("prayer_logs")
-        val remoteDocs = try {
-            col.get().await().documents
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not fetch remote prayer logs", e)
-            emptyList()
-        }
-
+        val remoteDocs = col.get().await().documents
         val remoteMap = remoteDocs.associateBy { it.id }
         val localLogs = repository.getAllRawPrayerLogsDirect().associateBy { it.date }
 
-        // Process all dates found either locally or remotely
         val allDates = localLogs.keys + remoteMap.keys
+        val toUpload = mutableListOf<PrayerLogEntity>()
         for (date in allDates) {
             val local = localLogs[date]
             val remoteDoc = remoteMap[date]
 
             if (local == null && remoteDoc != null) {
-                // Exists only in cloud -> Apply to local
                 val remoteEntity = docToPrayerLog(remoteDoc)
                 repository.applyPrayerLogFromRemote(remoteEntity)
             } else if (local != null && remoteDoc == null) {
-                // Exists only locally -> Upload to cloud
-                col.document(date).set(prayerLogToMap(local)).await()
+                toUpload.add(local)
             } else if (local != null && remoteDoc != null) {
-                // Exists in both -> Conflict resolution by updatedAt (LWW)
                 val remoteUpdatedAt = remoteDoc.getLong("updatedAt") ?: 0L
                 if (remoteUpdatedAt > local.updatedAt) {
                     val remoteEntity = docToPrayerLog(remoteDoc)
                     repository.applyPrayerLogFromRemote(remoteEntity)
                 } else if (local.updatedAt > remoteUpdatedAt) {
-                    col.document(date).set(prayerLogToMap(local)).await()
+                    toUpload.add(local)
                 }
             }
+        }
+
+        if (toUpload.isNotEmpty()) {
+            val batch = firestore.batch()
+            for (item in toUpload) {
+                batch.set(col.document(item.date), prayerLogToMap(item))
+            }
+            batch.commit().await()
         }
     }
 
     private suspend fun mergeBookmarks(uid: String) {
         val col = firestore.collection("users").document(uid).collection("bookmarks")
-        val remoteDocs = try {
-            col.get().await().documents
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not fetch remote bookmarks", e)
-            emptyList()
-        }
-
+        val remoteDocs = col.get().await().documents
         val remoteMap = remoteDocs.associateBy { it.id }
         val localBookmarks = repository.getAllRawBookmarksDirect().associateBy { "${it.surahNumber}_${it.verseNumber}" }
 
         val allKeys = localBookmarks.keys + remoteMap.keys
+        val toUpload = mutableListOf<BookmarkEntity>()
         for (key in allKeys) {
             val local = localBookmarks[key]
             val remoteDoc = remoteMap[key]
@@ -358,33 +502,35 @@ class FirestoreSyncManager(
                 val entity = docToBookmark(remoteDoc)
                 repository.applyBookmarkFromRemote(entity)
             } else if (local != null && remoteDoc == null) {
-                col.document(key).set(bookmarkToMap(local)).await()
+                toUpload.add(local)
             } else if (local != null && remoteDoc != null) {
                 val remoteUpdatedAt = remoteDoc.getLong("updatedAt") ?: 0L
                 if (remoteUpdatedAt > local.updatedAt) {
                     val entity = docToBookmark(remoteDoc)
                     repository.applyBookmarkFromRemote(entity)
                 } else if (local.updatedAt > remoteUpdatedAt) {
-                    col.document(key).set(bookmarkToMap(local)).await()
+                    toUpload.add(local)
                 }
             }
+        }
+
+        if (toUpload.isNotEmpty()) {
+            val batch = firestore.batch()
+            for (item in toUpload) {
+                val key = "${item.surahNumber}_${item.verseNumber}"
+                batch.set(col.document(key), bookmarkToMap(item))
+            }
+            batch.commit().await()
         }
     }
 
     private suspend fun mergeDhikrHistory(uid: String) {
         val col = firestore.collection("users").document(uid).collection("dhikr_history")
-        val remoteDocs = try {
-            col.get().await().documents
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not fetch remote dhikr history", e)
-            emptyList()
-        }
-
+        val remoteDocs = col.get().await().documents
         val remoteMap = remoteDocs.associateBy { it.id }
         val localList = repository.getAllDhikrHistoryDirect()
         val localMap = localList.associateBy { it.syncId }
 
-        // Insert remote entries missing locally
         for (remoteDoc in remoteDocs) {
             val syncId = remoteDoc.getString("syncId") ?: remoteDoc.id
             if (!localMap.containsKey(syncId)) {
@@ -393,21 +539,19 @@ class FirestoreSyncManager(
             }
         }
 
-        // Upload local entries missing remotely
-        for (local in localList) {
-            if (!remoteMap.containsKey(local.syncId)) {
-                col.document(local.syncId).set(dhikrHistoryToMap(local)).await()
+        val toUpload = localList.filter { !remoteMap.containsKey(it.syncId) }
+        if (toUpload.isNotEmpty()) {
+            val batch = firestore.batch()
+            for (local in toUpload) {
+                batch.set(col.document(local.syncId), dhikrHistoryToMap(local))
             }
+            batch.commit().await()
         }
     }
 
     private suspend fun mergeQada(uid: String) {
         val docRef = firestore.collection("users").document(uid).collection("data").document("qada")
-        val snapshot = try {
-            docRef.get().await()
-        } catch (e: Exception) {
-            null
-        }
+        val snapshot = docRef.get().await()
 
         val prayers = listOf(PrayerName.FAJR, PrayerName.DHUHR, PrayerName.ASR, PrayerName.MAGHRIB, PrayerName.ISHA)
         val cloudData = snapshot?.data ?: emptyMap<String, Any?>()
@@ -419,7 +563,6 @@ class FirestoreSyncManager(
             val cloudTs = (cloudData["${pName}UpdatedAt"] as? Number)?.toLong() ?: 0L
 
             if (cloudTs > localTs) {
-                // Cloud wins for this prayer
                 val count = (cloudData["${pName}Count"] as? Number)?.toInt() ?: 0
                 val ever = (cloudData["${pName}EverAdded"] as? Boolean) ?: (count > 0)
                 repository.applyQadaFromRemote(prayer, count, ever, cloudTs)
@@ -429,7 +572,6 @@ class FirestoreSyncManager(
         }
 
         if (hasLocalWin || snapshot?.exists() != true) {
-            // Push merged state to cloud
             val map = buildQadaMap()
             docRef.set(map, SetOptions.merge()).await()
         }
@@ -437,41 +579,30 @@ class FirestoreSyncManager(
 
     private suspend fun mergeQuranProgress(uid: String) {
         val docRef = firestore.collection("users").document(uid).collection("data").document("quran_progress")
-        val snapshot = try {
-            docRef.get().await()
-        } catch (e: Exception) {
-            null
-        }
+        val snapshot = docRef.get().await()
 
         val localTs = repository.getQuranProgressTimestamp()
         val cloudTs = snapshot?.getLong("updatedAt") ?: 0L
 
         if (snapshot != null && snapshot.exists() && cloudTs > localTs) {
-            // Apply cloud to local
             val lastRead = parseLastReadFromDoc(snapshot)
             val recentlyRead = parseRecentlyReadFromDoc(snapshot)
             val goal = snapshot.getLong("dailyGoal")?.toInt() ?: 0
             repository.applyQuranProgressFromRemote(lastRead, recentlyRead, goal, cloudTs)
         } else {
-            // Upload local to cloud
             docRef.set(buildQuranProgressMap(), SetOptions.merge()).await()
         }
     }
 
     private suspend fun mergeTasbeehState(uid: String) {
         val docRef = firestore.collection("users").document(uid).collection("data").document("tasbeeh_state")
-        val snapshot = try {
-            docRef.get().await()
-        } catch (e: Exception) {
-            null
-        }
+        val snapshot = docRef.get().await()
 
         val localTs = repository.getTasbeehStateTimestamp()
         val cloudTs = snapshot?.getLong("updatedAt") ?: 0L
 
         if (snapshot != null && snapshot.exists()) {
             if (cloudTs > localTs) {
-                // Remote is newer: apply remote custom presets and targets
                 val presets = parseCustomPresets(snapshot.getString("customPresetsJson"))
                 val targets = parseCustomTargets(snapshot.getString("customTargetsJson"))
                 val counts = parseStringIntMap(snapshot.get("activeCounts"))
@@ -487,11 +618,7 @@ class FirestoreSyncManager(
 
     private suspend fun mergePreferences(uid: String) {
         val docRef = firestore.collection("users").document(uid).collection("data").document("preferences")
-        val snapshot = try {
-            docRef.get().await()
-        } catch (e: Exception) {
-            null
-        }
+        val snapshot = docRef.get().await()
 
         val localTs = repository.getPreferencesTimestamp()
         val cloudTs = snapshot?.getLong("updatedAt") ?: 0L
@@ -517,8 +644,8 @@ class FirestoreSyncManager(
             if (activeUserId != uid || isSyncingFromRemote.get()) return@addSnapshotListener
 
             scope.launch {
-                isSyncingFromRemote.set(true)
-                try {
+                if (activeUserId != uid) return@launch
+                runRemoteSyncSuspend {
                     for (docChange in snapshot.documentChanges) {
                         val doc = docChange.document
                         val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
@@ -528,8 +655,6 @@ class FirestoreSyncManager(
                             repository.applyPrayerLogFromRemote(entity)
                         }
                     }
-                } finally {
-                    isSyncingFromRemote.set(false)
                 }
             }
         }
@@ -541,8 +666,8 @@ class FirestoreSyncManager(
             if (activeUserId != uid || isSyncingFromRemote.get()) return@addSnapshotListener
 
             scope.launch {
-                isSyncingFromRemote.set(true)
-                try {
+                if (activeUserId != uid) return@launch
+                runRemoteSyncSuspend {
                     for (docChange in snapshot.documentChanges) {
                         val doc = docChange.document
                         val remoteUpdatedAt = doc.getLong("updatedAt") ?: 0L
@@ -556,8 +681,6 @@ class FirestoreSyncManager(
                             }
                         }
                     }
-                } finally {
-                    isSyncingFromRemote.set(false)
                 }
             }
         }
@@ -569,8 +692,8 @@ class FirestoreSyncManager(
             if (activeUserId != uid || isSyncingFromRemote.get()) return@addSnapshotListener
 
             scope.launch {
-                isSyncingFromRemote.set(true)
-                try {
+                if (activeUserId != uid) return@launch
+                runRemoteSyncSuspend {
                     for (docChange in snapshot.documentChanges) {
                         val doc = docChange.document
                         val syncId = doc.getString("syncId") ?: doc.id
@@ -580,8 +703,6 @@ class FirestoreSyncManager(
                             repository.applyDhikrHistoryFromRemote(entity)
                         }
                     }
-                } finally {
-                    isSyncingFromRemote.set(false)
                 }
             }
         }
@@ -593,9 +714,9 @@ class FirestoreSyncManager(
             if (activeUserId != uid || isSyncingFromRemote.get()) return@addSnapshotListener
 
             scope.launch {
-                isSyncingFromRemote.set(true)
-                try {
-                    val data = snapshot.data ?: return@launch
+                if (activeUserId != uid) return@launch
+                runRemoteSyncSuspend {
+                    val data = snapshot.data ?: return@runRemoteSyncSuspend
                     val prayers = listOf(PrayerName.FAJR, PrayerName.DHUHR, PrayerName.ASR, PrayerName.MAGHRIB, PrayerName.ISHA)
                     for (prayer in prayers) {
                         val pName = prayer.name.lowercase()
@@ -607,8 +728,6 @@ class FirestoreSyncManager(
                             repository.applyQadaFromRemote(prayer, count, ever, remoteTs)
                         }
                     }
-                } finally {
-                    isSyncingFromRemote.set(false)
                 }
             }
         }
@@ -620,8 +739,8 @@ class FirestoreSyncManager(
             if (activeUserId != uid || isSyncingFromRemote.get()) return@addSnapshotListener
 
             scope.launch {
-                isSyncingFromRemote.set(true)
-                try {
+                if (activeUserId != uid) return@launch
+                runRemoteSyncSuspend {
                     val remoteUpdatedAt = snapshot.getLong("updatedAt") ?: 0L
                     val localTs = repository.getQuranProgressTimestamp()
                     if (remoteUpdatedAt > localTs) {
@@ -630,8 +749,6 @@ class FirestoreSyncManager(
                         val goal = snapshot.getLong("dailyGoal")?.toInt() ?: 0
                         repository.applyQuranProgressFromRemote(lastRead, recentlyRead, goal, remoteUpdatedAt)
                     }
-                } finally {
-                    isSyncingFromRemote.set(false)
                 }
             }
         }
@@ -643,15 +760,13 @@ class FirestoreSyncManager(
             if (activeUserId != uid || isSyncingFromRemote.get()) return@addSnapshotListener
 
             scope.launch {
-                isSyncingFromRemote.set(true)
-                try {
+                if (activeUserId != uid) return@launch
+                runRemoteSyncSuspend {
                     val remoteUpdatedAt = snapshot.getLong("updatedAt") ?: 0L
                     val localTs = repository.getPreferencesTimestamp()
                     if (remoteUpdatedAt > localTs) {
                         repository.applyPreferencesFromRemote(snapshot.data ?: emptyMap(), remoteUpdatedAt)
                     }
-                } finally {
-                    isSyncingFromRemote.set(false)
                 }
             }
         }
@@ -663,8 +778,8 @@ class FirestoreSyncManager(
             if (activeUserId != uid || isSyncingFromRemote.get()) return@addSnapshotListener
 
             scope.launch {
-                isSyncingFromRemote.set(true)
-                try {
+                if (activeUserId != uid) return@launch
+                runRemoteSyncSuspend {
                     val remoteUpdatedAt = snapshot.getLong("updatedAt") ?: 0L
                     val localTs = repository.getTasbeehStateTimestamp()
                     if (remoteUpdatedAt > localTs) {
@@ -674,8 +789,6 @@ class FirestoreSyncManager(
                         val targetMap = parseStringIntMap(snapshot.get("activeTargets"))
                         repository.applyTasbeehStateFromRemote(presets, targets, counts, targetMap, remoteUpdatedAt)
                     }
-                } finally {
-                    isSyncingFromRemote.set(false)
                 }
             }
         }

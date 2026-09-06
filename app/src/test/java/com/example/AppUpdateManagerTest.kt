@@ -35,8 +35,8 @@ class AppUpdateManagerTest {
 
     @Test
     fun testCurrentVersionProperties() {
-        assertEquals("1.7", updateManager.currentVersionName)
-        assertEquals(5L, updateManager.currentVersionCode)
+        assertEquals(BuildConfig.VERSION_NAME, updateManager.currentVersionName)
+        assertEquals(BuildConfig.VERSION_CODE.toLong(), updateManager.currentVersionCode)
     }
 
     @Test
