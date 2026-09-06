@@ -293,7 +293,7 @@ object BackupManager {
                 val existingFileId = searchResult.getOrNull()
                 GoogleDriveService.appendTrace("BackupManager receives fileId: ${existingFileId ?: "NULL"}")
 
-                GoogleDriveService.uploadBackupFile(token, encryptedBytes, existingFileId)
+                GoogleDriveService.uploadBackupFile(context, token, encryptedBytes, existingFileId)
             }
             if (uploadFlowResult.isFailure) {
                 return@withContext Result.failure(

@@ -831,6 +831,7 @@ fun ProfileSubScreen(
                                                     com.example.data.backup.GoogleDriveService.diagnosticTraceLog = ""
                                                     com.example.data.backup.GoogleDriveService.lastFoundFileMetadata = null
                                                     com.example.data.backup.GoogleDriveService.lastSearchFileId = "NOT_RUN_YET"
+                                                    com.example.data.backup.GoogleDriveService.lastCreateDiagnosticReport = null
 
                                                     val repo = com.example.data.repository.AppRepository.getInstance(context)
                                                     val res = com.example.data.backup.BackupManager.performBackup(context, repo, authRepository)
@@ -852,12 +853,18 @@ fun ProfileSubScreen(
                                                             lastSearchId
                                                         }
                                                         val traceLog = com.example.data.backup.GoogleDriveService.diagnosticTraceLog
+                                                        val diagReport = com.example.data.backup.GoogleDriveService.lastCreateDiagnosticReport?.formatReport()
+
                                                         debugErrorTitle = "Backup Diagnostic Info"
                                                         
                                                         val cleanMessage = rawMessage.substringBefore("\n\n--- EXISTING FILE METADATA ---")
-                                                        debugErrorMessage = "--- ERROR DETAILS ---\n$cleanMessage\n\nFound file ID: $fileIdDisplay\n\n--- EXISTING FILE METADATA ---\n$metadataText\n\n--- DIAGNOSTIC TRACE LOG ---\n$traceLog\n\n--- GRANTED OAUTH SCOPES ---\n$scopeList"
+                                                        if (diagReport != null) {
+                                                            debugErrorMessage = "$diagReport\n\n--- GRANTED OAUTH SCOPES ---\n$scopeList\n\n--- DIAGNOSTIC TRACE LOG ---\n$traceLog"
+                                                        } else {
+                                                            debugErrorMessage = "--- ERROR DETAILS ---\n$cleanMessage\n\nFound file ID: $fileIdDisplay\n\n--- EXISTING FILE METADATA ---\n$metadataText\n\n--- DIAGNOSTIC TRACE LOG ---\n$traceLog\n\n--- GRANTED OAUTH SCOPES ---\n$scopeList"
+                                                        }
                                                         showDebugErrorDialog = true
-                                                        Toast.makeText(context, "Backup failed! Detailed diagnostic info shown on screen.", Toast.LENGTH_LONG).show()
+                                                        Toast.makeText(context, "Backup diagnostic test finished! Results shown on screen.", Toast.LENGTH_LONG).show()
                                                     }
                                                 } finally {
                                                     isBackingUp = false
