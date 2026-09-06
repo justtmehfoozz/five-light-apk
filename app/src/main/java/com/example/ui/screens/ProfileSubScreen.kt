@@ -838,8 +838,11 @@ fun ProfileSubScreen(
                                                         val rawMessage = exception?.message ?: "Unknown backup error"
                                                         val account = com.example.data.backup.GoogleDriveService.getAuthorizedAccount(context)
                                                         val scopeList = account?.grantedScopes?.map { it.scopeUri }?.joinToString("\n") ?: "No active account or no scopes found"
+                                                        val metadataText = com.example.data.backup.GoogleDriveService.lastFoundFileMetadata ?: "NOT AVAILABLE — metadata retrieval/cache failed\nReason: lastFoundFileMetadata was null"
                                                         debugErrorTitle = "Backup Diagnostic Info"
-                                                        debugErrorMessage = "--- ERROR DETAILS ---\n$rawMessage\n\n--- GRANTED OAUTH SCOPES ---\n$scopeList"
+                                                        
+                                                        val cleanMessage = rawMessage.substringBefore("\n\n--- EXISTING FILE METADATA ---")
+                                                        debugErrorMessage = "--- ERROR DETAILS ---\n$cleanMessage\n\n--- EXISTING FILE METADATA ---\n$metadataText\n\n--- GRANTED OAUTH SCOPES ---\n$scopeList"
                                                         showDebugErrorDialog = true
                                                         Toast.makeText(context, "Backup failed! Detailed diagnostic info shown on screen.", Toast.LENGTH_LONG).show()
                                                     }
@@ -905,8 +908,11 @@ fun ProfileSubScreen(
                                                         val rawMessage = exception?.message ?: "Unknown restore error"
                                                         val account = com.example.data.backup.GoogleDriveService.getAuthorizedAccount(context)
                                                         val scopeList = account?.grantedScopes?.map { it.scopeUri }?.joinToString("\n") ?: "No active account or no scopes found"
+                                                        val metadataText = com.example.data.backup.GoogleDriveService.lastFoundFileMetadata ?: "NOT AVAILABLE — metadata retrieval/cache failed\nReason: lastFoundFileMetadata was null"
                                                         debugErrorTitle = "Restore Diagnostic Info"
-                                                        debugErrorMessage = "--- ERROR DETAILS ---\n$rawMessage\n\n--- GRANTED OAUTH SCOPES ---\n$scopeList"
+                                                        
+                                                        val cleanMessage = rawMessage.substringBefore("\n\n--- EXISTING FILE METADATA ---")
+                                                        debugErrorMessage = "--- ERROR DETAILS ---\n$cleanMessage\n\n--- EXISTING FILE METADATA ---\n$metadataText\n\n--- GRANTED OAUTH SCOPES ---\n$scopeList"
                                                         showDebugErrorDialog = true
                                                         Toast.makeText(context, "Restore failed! Detailed diagnostic info shown on screen.", Toast.LENGTH_LONG).show()
                                                     }
