@@ -15,6 +15,7 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
@@ -517,11 +518,15 @@ object GoogleDriveService {
 
         try {
             val createUrl = "https://www.googleapis.com/drive/v3/files"
+            val parentsArray = JSONArray().apply { put("appDataFolder") }
             val createJson = JSONObject().apply {
                 put("name", BACKUP_FILENAME)
-                put("parents", listOf("appDataFolder"))
+                put("parents", parentsArray)
                 put("mimeType", "application/octet-stream")
             }.toString()
+
+            appendTrace("Metadata-only POST /drive/v3/files request body: $createJson")
+            appendTrace("Explicitly using literal parent keyword: appDataFolder (NOT resolved ID ${appDataFolderId ?: "NONE"})")
 
             val createReq = Request.Builder()
                 .url(createUrl)
@@ -766,60 +771,66 @@ object GoogleDriveService {
             } else {
                 appendTrace("UPLOAD PATH = CREATE NEW FILE")
 
-                // Diagnostic test: Metadata-only creation in appDataFolder
-                val diagResult = runCreateDiagnosticTest(context, accessToken, fileBytes, googleAccount)
+                // Standard multipart creation with literal "appDataFolder" parent
+                val parentsArray = JSONArray().apply { put("appDataFolder") }
+                val metadataJson = JSONObject().apply {
+                    put("name", BACKUP_FILENAME)
+                    put("parents", parentsArray)
+                    put("mimeType", "application/octet-stream")
+                }.toString()
 
-                if (diagResult.createStatus == 200 || diagResult.createStatus == 201) {
-                    appendTrace("Diagnostic: Metadata-only creation SUCCEEDED with ID: ${diagResult.createdFileId}")
-                    val exceptionToReturn = Exception(diagResult.formatReport())
-                    return@withContext Result.failure(exceptionToReturn)
-                } else {
-                    appendTrace("Diagnostic: Metadata-only creation FAILED with HTTP ${diagResult.createStatus}")
-                    // Execute existing multipart creation request as well to verify whether it also fails with identical error
-                    appendTrace("Executing existing multipart/related POST to compare...")
-                    val url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
-                    val metadataJson = JSONObject().apply {
-                        put("name", BACKUP_FILENAME)
-                        put("parents", listOf("appDataFolder"))
-                    }.toString()
+                appendTrace("Multipart create metadata JSON: $metadataJson")
+                appendTrace("Literal parents keyword: appDataFolder (NOT resolved folder ID)")
 
-                    val multipartBody = MultipartBody.Builder()
-                        .setType("multipart/related".toMediaType())
-                        .addPart(
-                            metadataJson.toRequestBody("application/json; charset=UTF-8".toMediaType())
-                        )
-                        .addPart(
-                            fileBytes.toRequestBody("application/octet-stream".toMediaType())
-                        )
-                        .build()
+                val url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
+                val multipartBody = MultipartBody.Builder()
+                    .setType("multipart/related".toMediaType())
+                    .addPart(
+                        metadataJson.toRequestBody("application/json; charset=UTF-8".toMediaType())
+                    )
+                    .addPart(
+                        fileBytes.toRequestBody("application/octet-stream".toMediaType())
+                    )
+                    .build()
 
-                    val request = Request.Builder()
-                        .url(url)
-                        .addHeader("Authorization", "Bearer $accessToken")
-                        .post(multipartBody)
-                        .build()
+                val request = Request.Builder()
+                    .url(url)
+                    .addHeader("Authorization", "Bearer $accessToken")
+                    .post(multipartBody)
+                    .build()
 
-                    httpClient.newCall(request).execute().use { response ->
-                        appendTrace("POST multipart response status: ${response.code}")
-                        if (!response.isSuccessful) {
-                            val errBody = response.body?.string() ?: ""
-                            if (response.code == 403) {
-                                Log.d(TAG, "Stage D: Inside HTTP 403 branch for create upload")
-                                appendTrace("POST multipart failed with HTTP 403. Body: $errBody")
-                            } else {
-                                appendTrace("POST multipart failed with HTTP ${response.code}. Body: $errBody")
-                            }
-                            val mainErr = parseGoogleError(response.code, errBody)
-                            val exceptionToReturn = Exception("${diagResult.formatReport()}\n\n--- MULTIPART POST ATTEMPT ---\n$mainErr")
-                            Log.d(TAG, "Stage E (Create): Returning upload exception: ${exceptionToReturn.message}")
-                            return@withContext Result.failure(exceptionToReturn)
-                        }
+                httpClient.newCall(request).execute().use { response ->
+                    appendTrace("POST multipart response status: ${response.code}")
+                    if (response.isSuccessful) {
                         val bodyStr = response.body?.string() ?: ""
                         val json = JSONObject(bodyStr)
                         val newFileId = json.getString("id")
                         appendTrace("POST create succeeded! New file ID: $newFileId")
-                        Result.success(newFileId)
+                        return@withContext Result.success(newFileId)
                     }
+
+                    val errBody = response.body?.string() ?: ""
+                    if (response.code == 403) {
+                        Log.d(TAG, "Stage D: Inside HTTP 403 branch for create upload")
+                        appendTrace("POST multipart failed with HTTP 403. Body: $errBody")
+                    } else {
+                        appendTrace("POST multipart failed with HTTP ${response.code}. Body: $errBody")
+                    }
+                    val mainErr = parseGoogleError(response.code, errBody)
+
+                    // Run diagnostic test as fallback investigation
+                    val diagResult = runCreateDiagnosticTest(context, accessToken, fileBytes, googleAccount)
+                    if ((diagResult.createStatus == 200 || diagResult.createStatus == 201) &&
+                        diagResult.createdFileId != null &&
+                        diagResult.patchStatus in 200..299
+                    ) {
+                        appendTrace("Fallback diagnostic create + PATCH succeeded with ID: ${diagResult.createdFileId}")
+                        return@withContext Result.success(diagResult.createdFileId)
+                    }
+
+                    val exceptionToReturn = Exception("${diagResult.formatReport()}\n\n--- MULTIPART POST ATTEMPT ---\n$mainErr")
+                    Log.d(TAG, "Stage E (Create): Returning upload exception: ${exceptionToReturn.message}")
+                    return@withContext Result.failure(exceptionToReturn)
                 }
             }
         } catch (e: Exception) {
