@@ -828,6 +828,10 @@ fun ProfileSubScreen(
                                             isBackingUp = true
                                             coroutineScope.launch {
                                                 try {
+                                                    com.example.data.backup.GoogleDriveService.diagnosticTraceLog = ""
+                                                    com.example.data.backup.GoogleDriveService.lastFoundFileMetadata = null
+                                                    com.example.data.backup.GoogleDriveService.lastSearchFileId = "NOT_RUN_YET"
+
                                                     val repo = com.example.data.repository.AppRepository.getInstance(context)
                                                     val res = com.example.data.backup.BackupManager.performBackup(context, repo, authRepository)
                                                     if (res.isSuccess) {
@@ -839,10 +843,19 @@ fun ProfileSubScreen(
                                                         val account = com.example.data.backup.GoogleDriveService.getAuthorizedAccount(context)
                                                         val scopeList = account?.grantedScopes?.map { it.scopeUri }?.joinToString("\n") ?: "No active account or no scopes found"
                                                         val metadataText = com.example.data.backup.GoogleDriveService.lastFoundFileMetadata ?: "NOT AVAILABLE — metadata retrieval/cache failed\nReason: lastFoundFileMetadata was null"
+                                                        val lastSearchId = com.example.data.backup.GoogleDriveService.lastSearchFileId
+                                                        val fileIdDisplay = if (lastSearchId == "NOT_RUN_YET") {
+                                                            "NOT RETRIEVED (Search was not completed or bypassed)"
+                                                        } else if (lastSearchId == null) {
+                                                            "NULL"
+                                                        } else {
+                                                            lastSearchId
+                                                        }
+                                                        val traceLog = com.example.data.backup.GoogleDriveService.diagnosticTraceLog
                                                         debugErrorTitle = "Backup Diagnostic Info"
                                                         
                                                         val cleanMessage = rawMessage.substringBefore("\n\n--- EXISTING FILE METADATA ---")
-                                                        debugErrorMessage = "--- ERROR DETAILS ---\n$cleanMessage\n\n--- EXISTING FILE METADATA ---\n$metadataText\n\n--- GRANTED OAUTH SCOPES ---\n$scopeList"
+                                                        debugErrorMessage = "--- ERROR DETAILS ---\n$cleanMessage\n\nFound file ID: $fileIdDisplay\n\n--- EXISTING FILE METADATA ---\n$metadataText\n\n--- DIAGNOSTIC TRACE LOG ---\n$traceLog\n\n--- GRANTED OAUTH SCOPES ---\n$scopeList"
                                                         showDebugErrorDialog = true
                                                         Toast.makeText(context, "Backup failed! Detailed diagnostic info shown on screen.", Toast.LENGTH_LONG).show()
                                                     }
@@ -898,6 +911,10 @@ fun ProfileSubScreen(
                                             isRestoring = true
                                             coroutineScope.launch {
                                                 try {
+                                                    com.example.data.backup.GoogleDriveService.diagnosticTraceLog = ""
+                                                    com.example.data.backup.GoogleDriveService.lastFoundFileMetadata = null
+                                                    com.example.data.backup.GoogleDriveService.lastSearchFileId = "NOT_RUN_YET"
+
                                                     val repo = com.example.data.repository.AppRepository.getInstance(context)
                                                     val syncManager = com.example.data.sync.FirestoreSyncManager.getInstance(context, repo, authRepository)
                                                     val res = com.example.data.backup.BackupManager.performRestore(context, repo, authRepository, syncManager)
@@ -909,10 +926,19 @@ fun ProfileSubScreen(
                                                         val account = com.example.data.backup.GoogleDriveService.getAuthorizedAccount(context)
                                                         val scopeList = account?.grantedScopes?.map { it.scopeUri }?.joinToString("\n") ?: "No active account or no scopes found"
                                                         val metadataText = com.example.data.backup.GoogleDriveService.lastFoundFileMetadata ?: "NOT AVAILABLE — metadata retrieval/cache failed\nReason: lastFoundFileMetadata was null"
+                                                        val lastSearchId = com.example.data.backup.GoogleDriveService.lastSearchFileId
+                                                        val fileIdDisplay = if (lastSearchId == "NOT_RUN_YET") {
+                                                            "NOT RETRIEVED (Search was not completed or bypassed)"
+                                                        } else if (lastSearchId == null) {
+                                                            "NULL"
+                                                        } else {
+                                                            lastSearchId
+                                                        }
+                                                        val traceLog = com.example.data.backup.GoogleDriveService.diagnosticTraceLog
                                                         debugErrorTitle = "Restore Diagnostic Info"
                                                         
                                                         val cleanMessage = rawMessage.substringBefore("\n\n--- EXISTING FILE METADATA ---")
-                                                        debugErrorMessage = "--- ERROR DETAILS ---\n$cleanMessage\n\n--- EXISTING FILE METADATA ---\n$metadataText\n\n--- GRANTED OAUTH SCOPES ---\n$scopeList"
+                                                        debugErrorMessage = "--- ERROR DETAILS ---\n$cleanMessage\n\nFound file ID: $fileIdDisplay\n\n--- EXISTING FILE METADATA ---\n$metadataText\n\n--- DIAGNOSTIC TRACE LOG ---\n$traceLog\n\n--- GRANTED OAUTH SCOPES ---\n$scopeList"
                                                         showDebugErrorDialog = true
                                                         Toast.makeText(context, "Restore failed! Detailed diagnostic info shown on screen.", Toast.LENGTH_LONG).show()
                                                     }

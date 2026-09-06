@@ -26,6 +26,18 @@ object GoogleDriveService {
     @Volatile
     var lastFoundFileMetadata: String? = null
 
+    @Volatile
+    var lastSearchFileId: String? = "NOT_RUN_YET"
+
+    @Volatile
+    var diagnosticTraceLog: String = ""
+
+    fun appendTrace(message: String) {
+        val current = diagnosticTraceLog
+        diagnosticTraceLog = if (current.isEmpty()) message else "$current\n$message"
+        Log.d(TAG, "TRACE: $message")
+    }
+
     private val httpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -119,7 +131,10 @@ object GoogleDriveService {
      */
     suspend fun findBackupFileId(accessToken: String): Result<String?> = withContext(Dispatchers.IO) {
         try {
-            lastFoundFileMetadata = "NOT AVAILABLE — metadata retrieval/cache failed\nReason: findBackupFileId started but did not complete parsing"
+            lastFoundFileMetadata = null
+            lastSearchFileId = null
+            appendTrace("--- START findBackupFileId ---")
+
             val url = "https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D%27$BACKUP_FILENAME%27+and+trashed%3Dfalse&fields=files(id%2Cname%2Cparents%2CmimeType%2CmodifiedTime%2Ccapabilities%2Ctrashed)"
             val request = Request.Builder()
                 .url(url)
@@ -128,20 +143,25 @@ object GoogleDriveService {
                 .build()
 
             httpClient.newCall(request).execute().use { response ->
+                appendTrace("findBackupFileId HTTP status: ${response.code}")
                 if (!response.isSuccessful) {
                     val errBody = response.body?.string() ?: ""
                     val errParsed = parseGoogleError(response.code, errBody)
                     lastFoundFileMetadata = "NOT AVAILABLE — metadata retrieval/cache failed\nReason: Search query (files.list) failed with $errParsed"
                     Log.d(TAG, "Stage D/A (Search): Search query failed: $lastFoundFileMetadata")
+                    appendTrace("findBackupFileId failed: $errParsed")
                     return@withContext Result.failure(Exception(errParsed))
                 }
                 val bodyStr = response.body?.string() ?: ""
                 Log.d(TAG, "Stage A: Search files.list response body: $bodyStr")
                 val json = JSONObject(bodyStr)
                 val files = json.optJSONArray("files")
-                if (files != null && files.length() > 0) {
+                val size = files?.length() ?: 0
+                appendTrace("findBackupFileId files array size: $size")
+                if (files != null && size > 0) {
                     val fileObj = files.getJSONObject(0)
                     val fileId = fileObj.getString("id")
+                    lastSearchFileId = fileId
                     
                     val name = fileObj.optString("name", "N/A")
                     val parents = fileObj.optJSONArray("parents")?.let { arr ->
@@ -171,15 +191,21 @@ object GoogleDriveService {
                             $capabilities
                     """.trimIndent()
                     Log.d(TAG, "Stage B: lastFoundFileMetadata assigned:\n$lastFoundFileMetadata")
+                    appendTrace("findBackupFileId returned: $fileId")
+                    appendTrace("File Metadata: Name=$name, Parents=[$parents], MimeType=$mimeType, ModifiedTime=$modifiedTime, Trashed=$trashed")
                     Result.success(fileId)
                 } else {
+                    lastSearchFileId = null
                     lastFoundFileMetadata = "No existing backup file found in Drive appDataFolder."
+                    appendTrace("Drive search returned 0 matching files.")
+                    appendTrace("findBackupFileId returned: NULL")
                     Log.d(TAG, "findBackupFileId: No file found")
                     Result.success(null)
                 }
             }
         } catch (e: Exception) {
             lastFoundFileMetadata = "NOT AVAILABLE — metadata retrieval/cache failed\nReason: Search query failed with exception: ${e.message}"
+            appendTrace("findBackupFileId exception: ${e.message}")
             Log.e(TAG, "Error finding backup file in Drive: ${e.message}", e)
             Result.failure(e)
         }
@@ -190,8 +216,13 @@ object GoogleDriveService {
      */
     suspend fun uploadBackupFile(accessToken: String, fileBytes: ByteArray, existingFileId: String?): Result<String> = withContext(Dispatchers.IO) {
         try {
+            appendTrace("uploadBackupFile received existingFileId: ${existingFileId ?: "NULL"}")
             if (existingFileId != null) {
-                // Update existing file
+                appendTrace("UPLOAD PATH = UPDATE EXISTING FILE")
+                appendTrace("UPDATE FILE ID = $existingFileId")
+                appendTrace("HTTP Method: PATCH")
+                appendTrace("Request URL Path: /upload/drive/v3/files/$existingFileId?uploadType=media")
+
                 Log.d(TAG, "Stage C: Executing PATCH update for file ID: $existingFileId")
                 val url = "https://www.googleapis.com/upload/drive/v3/files/$existingFileId?uploadType=media"
                 val mediaType = "application/octet-stream".toMediaType()
@@ -204,10 +235,14 @@ object GoogleDriveService {
                     .build()
 
                 httpClient.newCall(request).execute().use { response ->
+                    appendTrace("PATCH response status: ${response.code}")
                     if (!response.isSuccessful) {
                         val errBody = response.body?.string() ?: ""
                         if (response.code == 403) {
                             Log.d(TAG, "Stage D: Inside HTTP 403 branch for update upload")
+                            appendTrace("PATCH failed with HTTP 403. Body: $errBody")
+                        } else {
+                            appendTrace("PATCH failed with HTTP ${response.code}. Body: $errBody")
                         }
                         val mainErr = parseGoogleError(response.code, errBody)
                         val metadataText = lastFoundFileMetadata ?: "NOT AVAILABLE — metadata retrieval/cache failed\nReason: lastFoundFileMetadata was null at update upload"
@@ -215,10 +250,14 @@ object GoogleDriveService {
                         Log.d(TAG, "Stage E: Returning upload exception: ${exceptionToReturn.message}")
                         return@withContext Result.failure(exceptionToReturn)
                     }
+                    appendTrace("PATCH update succeeded!")
                     Result.success(existingFileId)
                 }
             } else {
-                // Create new file via multipart/related
+                appendTrace("UPLOAD PATH = CREATE NEW FILE")
+                appendTrace("HTTP Method: POST")
+                appendTrace("Request URL Path: /upload/drive/v3/files?uploadType=multipart")
+
                 Log.d(TAG, "Stage C: Executing POST create new file")
                 val url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart"
                 val metadataJson = JSONObject().apply {
@@ -243,10 +282,14 @@ object GoogleDriveService {
                     .build()
 
                 httpClient.newCall(request).execute().use { response ->
+                    appendTrace("POST response status: ${response.code}")
                     if (!response.isSuccessful) {
                         val errBody = response.body?.string() ?: ""
                         if (response.code == 403) {
                             Log.d(TAG, "Stage D: Inside HTTP 403 branch for create upload")
+                            appendTrace("POST failed with HTTP 403. Body: $errBody")
+                        } else {
+                            appendTrace("POST failed with HTTP ${response.code}. Body: $errBody")
                         }
                         val mainErr = parseGoogleError(response.code, errBody)
                         val metadataText = lastFoundFileMetadata ?: "NOT AVAILABLE — metadata retrieval/cache failed\nReason: lastFoundFileMetadata was null at create upload"
@@ -257,10 +300,12 @@ object GoogleDriveService {
                     val bodyStr = response.body?.string() ?: ""
                     val json = JSONObject(bodyStr)
                     val newFileId = json.getString("id")
+                    appendTrace("POST create succeeded! New file ID: $newFileId")
                     Result.success(newFileId)
                 }
             }
         } catch (e: Exception) {
+            appendTrace("uploadBackupFile exception: ${e.message}")
             Log.e(TAG, "Error uploading backup file to Drive: ${e.message}", e)
             Result.failure(e)
         }

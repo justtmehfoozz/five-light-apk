@@ -25,31 +25,42 @@ object BackupManager {
         googleAccount: com.google.android.gms.auth.api.signin.GoogleSignInAccount,
         block: suspend (accessToken: String) -> Result<T>
     ): Result<T> {
+        GoogleDriveService.appendTrace("runWithDriveRetry: Beginning execution")
         var tokenResult = GoogleDriveService.getAccessToken(context, googleAccount)
         if (tokenResult.isFailure) {
+            GoogleDriveService.appendTrace("runWithDriveRetry: Failed to obtain token")
             return Result.failure(Exception("Failed to obtain Drive OAuth token: " + tokenResult.exceptionOrNull()?.message))
         }
         var accessToken = tokenResult.getOrThrow()
 
+        GoogleDriveService.appendTrace("runWithDriveRetry Attempt 1: Executing block")
         var result = block(accessToken)
         
         val exception = result.exceptionOrNull()
         if (exception != null && (exception.message?.contains("HTTP 403") == true || exception.message?.contains("HTTP 401") == true)) {
+            GoogleDriveService.appendTrace("runWithDriveRetry Attempt 1 FAILED with HTTP 403/401. Invalidating token and retrying...")
             Log.w(TAG, "Drive request failed with HTTP 403/401, invalidating token and retrying...", exception)
             GoogleDriveService.invalidateToken(context, accessToken)
             
             tokenResult = GoogleDriveService.getAccessToken(context, googleAccount)
             if (tokenResult.isSuccess) {
                 accessToken = tokenResult.getOrThrow()
+                GoogleDriveService.appendTrace("runWithDriveRetry Attempt 2 (Retry): Executing block")
                 result = block(accessToken)
+            } else {
+                GoogleDriveService.appendTrace("runWithDriveRetry: Failed to re-obtain token on retry")
             }
+        } else {
+            GoogleDriveService.appendTrace("runWithDriveRetry Attempt 1 Result success or not 403/401")
         }
         
         val finalException = result.exceptionOrNull()
         if (finalException != null && finalException.message?.contains("HTTP 403") == true) {
+            GoogleDriveService.appendTrace("runWithDriveRetry finishing with HTTP 403 exception")
             return Result.failure(Exception("Google Drive access was denied (HTTP 403): ${finalException.message}. Please ensure you have granted FiveLight permission to access Google Drive during sign-in, or try disconnecting and reconnecting your Google account."))
         }
         
+        GoogleDriveService.appendTrace("runWithDriveRetry completed successfully")
         return result
     }
 
@@ -273,9 +284,14 @@ object BackupManager {
 
             // 5. Upload/update backup in Google Drive appDataFolder
             val uploadFlowResult = runWithDriveRetry(context, googleAccount) { token ->
+                GoogleDriveService.appendTrace("BackupManager block execution starts")
                 val searchResult = GoogleDriveService.findBackupFileId(token)
-                if (searchResult.isFailure) return@runWithDriveRetry Result.failure(searchResult.exceptionOrNull()!!)
+                if (searchResult.isFailure) {
+                    GoogleDriveService.appendTrace("BackupManager: findBackupFileId returned FAILURE")
+                    return@runWithDriveRetry Result.failure(searchResult.exceptionOrNull()!!)
+                }
                 val existingFileId = searchResult.getOrNull()
+                GoogleDriveService.appendTrace("BackupManager receives fileId: ${existingFileId ?: "NULL"}")
 
                 GoogleDriveService.uploadBackupFile(token, encryptedBytes, existingFileId)
             }
