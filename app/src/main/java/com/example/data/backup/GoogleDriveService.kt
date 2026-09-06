@@ -35,6 +35,14 @@ object GoogleDriveService {
     @Volatile
     var diagnosticTraceLog: String = ""
 
+    data class DriveBackupInfo(
+        val fileId: String,
+        val name: String,
+        val modifiedTime: String,
+        val sizeBytes: Long,
+        val accountEmail: String
+    )
+
     data class CreateDiagnosticReport(
         // 1. Google Account Identity
         val googleSignInEmail: String?,
@@ -716,6 +724,44 @@ object GoogleDriveService {
             lastFoundFileMetadata = "NOT AVAILABLE — metadata retrieval/cache failed\nReason: Search query failed with exception: ${e.message}"
             appendTrace("findBackupFileId exception: ${e.message}")
             Log.e(TAG, "Error finding backup file in Drive: ${e.message}", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Searches appDataFolder for existing FiveLight backup file and returns metadata.
+     */
+    suspend fun findBackupFileInfo(accessToken: String, accountEmail: String): Result<DriveBackupInfo?> = withContext(Dispatchers.IO) {
+        try {
+            val url = "https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&q=name%3D%27$BACKUP_FILENAME%27+and+trashed%3Dfalse&fields=files(id%2Cname%2Cparents%2CmimeType%2CmodifiedTime%2Csize%2Ccapabilities%2Ctrashed)"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("Authorization", "Bearer $accessToken")
+                .get()
+                .build()
+
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val errBody = response.body?.string() ?: ""
+                    val errParsed = parseGoogleError(response.code, errBody)
+                    return@withContext Result.failure(Exception(errParsed))
+                }
+                val bodyStr = response.body?.string() ?: ""
+                val json = JSONObject(bodyStr)
+                val files = json.optJSONArray("files")
+                val size = files?.length() ?: 0
+                if (files != null && size > 0) {
+                    val fileObj = files.getJSONObject(0)
+                    val fileId = fileObj.getString("id")
+                    val name = fileObj.optString("name", BACKUP_FILENAME)
+                    val modifiedTime = fileObj.optString("modifiedTime", "")
+                    val sizeBytes = fileObj.optLong("size", 0L)
+                    Result.success(DriveBackupInfo(fileId, name, modifiedTime, sizeBytes, accountEmail))
+                } else {
+                    Result.success(null)
+                }
+            }
+        } catch (e: Exception) {
             Result.failure(e)
         }
     }

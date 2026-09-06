@@ -77,6 +77,21 @@ class AuthRepository(private val context: Context) {
         prefs.edit().putBoolean("has_seen_account_prompt", seen).apply()
     }
 
+    private val _setupCompletedEvent = MutableStateFlow(0)
+    val setupCompletedEvent: StateFlow<Int> = _setupCompletedEvent.asStateFlow()
+
+    fun isSetupCompleted(uid: String): Boolean {
+        if (uid.isBlank()) return false
+        return prefs.getBoolean("setup_completed_$uid", false)
+    }
+
+    fun setSetupCompleted(uid: String, completed: Boolean = true) {
+        if (uid.isNotBlank()) {
+            prefs.edit().putBoolean("setup_completed_$uid", completed).apply()
+            _setupCompletedEvent.value += 1
+        }
+    }
+
     suspend fun signInWithEmail(email: String, password: String): Result<FirebaseUser> = withContext(Dispatchers.IO) {
         val tag = "AuthRepository"
         try {

@@ -95,6 +95,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         authRepository.setHasSeenAccountPrompt(seen)
     }
 
+    val setupCompletedEvent: StateFlow<Int> = authRepository.setupCompletedEvent
+
+    fun isSetupCompleted(uid: String): Boolean {
+        return authRepository.isSetupCompleted(uid)
+    }
+
+    fun setSetupCompleted(uid: String, completed: Boolean = true) {
+        authRepository.setSetupCompleted(uid, completed)
+    }
+
     fun signOut() {
         authRepository.signOut()
     }

@@ -104,6 +104,27 @@ class SmartPrayerNotificationManager(private val context: Context) {
         return true
     }
 
+    fun canScheduleExactAlarms(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return alarmManager.canScheduleExactAlarms()
+        }
+        return true
+    }
+
+    fun openExactAlarmSettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val intent = Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                data = Uri.parse("package:${context.packageName}")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            try {
+                context.startActivity(intent)
+            } catch (_: Exception) {
+                openAppNotificationSettings()
+            }
+        }
+    }
+
     fun openBatteryOptimizationSettings() {
         val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {

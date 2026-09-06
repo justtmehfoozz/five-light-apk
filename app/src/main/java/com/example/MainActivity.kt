@@ -45,6 +45,7 @@ import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.RegisterScreen
 import com.example.ui.screens.EmailVerificationScreen
 import com.example.ui.screens.PreLoginPromptScreen
+import com.example.ui.screens.SetUpFiveLightScreen
 import com.example.ui.screens.SplashScreen
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -163,6 +164,14 @@ class MainActivity : ComponentActivity() {
 
                 val hasSeenAccountPrompt by viewModel.hasSeenAccountPrompt.collectAsStateWithLifecycle()
                 val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+                val setupCompletedEvent by viewModel.setupCompletedEvent.collectAsStateWithLifecycle()
+                val isSetupRequired = currentUser != null && !viewModel.isSetupCompleted(currentUser?.uid.orEmpty())
+
+                androidx.compose.runtime.LaunchedEffect(isSetupRequired) {
+                    if (isSetupRequired) {
+                        showSettingsSheet = false
+                    }
+                }
                 val hazeState = remember { HazeState() }
 
                 androidx.compose.runtime.LaunchedEffect(currentUser) {
@@ -257,7 +266,7 @@ class MainActivity : ComponentActivity() {
                         .fillMaxSize()
                         .background(MaterialTheme.colorScheme.background)
                 ) {
-                    if (hasSeenAccountPrompt) {
+                    if (hasSeenAccountPrompt && !isSetupRequired) {
                         val appContentAlpha = if (isSplashFinished) 1f else splashExitProgress
                         val appContentScale = if (isSplashFinished) 1f else (0.98f + 0.02f * splashExitProgress)
 
@@ -822,8 +831,8 @@ class MainActivity : ComponentActivity() {
                     } // end inner Box
                     } // end if (hasSeenAccountPrompt)
 
-                    if (isSplashFinished && (!hasSeenAccountPrompt || authRouteState != "NONE")) {
-                        if (authRouteState == "NONE") {
+                    if (isSplashFinished && (!hasSeenAccountPrompt || authRouteState != "NONE" || isSetupRequired)) {
+                        if (!hasSeenAccountPrompt && authRouteState == "NONE" && currentUser == null) {
                             PreLoginPromptScreen(
                                 onLoginOrRegister = {
                                     showLoginBottomSheet = true
@@ -887,6 +896,23 @@ class MainActivity : ComponentActivity() {
                                         .zIndex(10f)
                                 )
                             }
+                        }
+
+                        if (authRouteState == "NONE" && isSetupRequired && !showLoginBottomSheet) {
+                            SetUpFiveLightScreen(
+                                viewModel = viewModel,
+                                currentUser = currentUser,
+                                onSetupComplete = {
+                                    val uid = currentUser?.uid.orEmpty()
+                                    if (uid.isNotBlank()) {
+                                        viewModel.setSetupCompleted(uid, true)
+                                    }
+                                    viewModel.setHasSeenAccountPrompt(true)
+                                },
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .zIndex(10f)
+                            )
                         }
                     }
 

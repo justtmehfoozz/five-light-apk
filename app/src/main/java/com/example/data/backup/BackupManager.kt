@@ -344,15 +344,29 @@ object BackupManager {
     }
 
     /**
+     * Checks if an existing backup file exists in Google Drive appDataFolder and returns its metadata.
+     */
+    suspend fun checkExistingBackup(
+        context: Context,
+        googleAccount: com.google.android.gms.auth.api.signin.GoogleSignInAccount
+    ): Result<GoogleDriveService.DriveBackupInfo?> {
+        return runWithDriveRetry(context, googleAccount) { token ->
+            GoogleDriveService.findBackupFileInfo(token, googleAccount.email ?: "")
+        }
+    }
+
+    /**
      * Downloads and restores user data directly from Google Drive appDataFolder.
      */
     suspend fun performRestore(
         context: Context,
         repository: AppRepository,
         authRepository: AuthRepository,
-        syncManager: FirestoreSyncManager?
+        syncManager: FirestoreSyncManager?,
+        onProgress: ((String) -> Unit)? = null
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
+            onProgress?.invoke("Preparing backup")
             val user = authRepository.currentUser.value
                 ?: return@withContext Result.failure(Exception("Please sign in to restore from Google Drive."))
             val uid = user.uid
@@ -388,6 +402,7 @@ object BackupManager {
             val encryptedBytes = downloadFlowResult.getOrThrow()
 
             // 4. Decrypt payload
+            onProgress?.invoke("Decrypting")
             val decryptedJsonStr = try {
                 decryptData(encryptedBytes, uid)
             } catch (e: Exception) {
@@ -396,6 +411,8 @@ object BackupManager {
                 )
             }
 
+            // 5. Verify metadata
+            onProgress?.invoke("Verifying")
             val root = JSONObject(decryptedJsonStr)
             val meta = root.optJSONObject("metadata")
                 ?: return@withContext Result.failure(Exception("Corrupted backup: Missing metadata."))
@@ -409,6 +426,9 @@ object BackupManager {
             if (accountUid.isNotEmpty() && accountUid != uid && uid != "guest") {
                 return@withContext Result.failure(Exception("Backup belongs to a different user account UID ($accountUid)."))
             }
+
+            // 6. Restore data components
+            onProgress?.invoke("Restoring data")
 
             // Restore Prayer Logs
             val prayerLogsArr = root.optJSONArray("prayerLogs")
@@ -608,6 +628,7 @@ object BackupManager {
             }
 
             // Update local file cache
+            onProgress?.invoke("Finishing")
             try {
                 val backupFile = File(context.filesDir, BACKUP_FILE_NAME)
                 backupFile.writeBytes(encryptedBytes)

@@ -39,62 +39,66 @@ class GoogleDriveBackupWorker(
          * Schedules or cancels periodic auto-backup work based on the user's chosen frequency.
          */
         fun schedule(context: Context, frequency: BackupManager.AutoBackupFrequency) {
-            val workManager = WorkManager.getInstance(context)
-            when (frequency) {
-                BackupManager.AutoBackupFrequency.OFF -> {
-                    workManager.cancelUniqueWork(UNIQUE_PERIODIC_WORK_NAME)
-                    Log.d(TAG, "Cancelled periodic Google Drive auto-backup work.")
-                }
-                BackupManager.AutoBackupFrequency.DAILY -> {
-                    val constraints = Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .setRequiresBatteryNotLow(true)
-                        .build()
+            try {
+                val workManager = WorkManager.getInstance(context)
+                when (frequency) {
+                    BackupManager.AutoBackupFrequency.OFF -> {
+                        workManager.cancelUniqueWork(UNIQUE_PERIODIC_WORK_NAME)
+                        Log.d(TAG, "Cancelled periodic Google Drive auto-backup work.")
+                    }
+                    BackupManager.AutoBackupFrequency.DAILY -> {
+                        val constraints = Constraints.Builder()
+                            .setRequiredNetworkType(NetworkType.CONNECTED)
+                            .setRequiresBatteryNotLow(true)
+                            .build()
 
-                    val periodicRequest = PeriodicWorkRequestBuilder<GoogleDriveBackupWorker>(
-                        24, TimeUnit.HOURS,
-                        4, TimeUnit.HOURS
-                    )
-                        .setConstraints(constraints)
-                        .setBackoffCriteria(
-                            BackoffPolicy.EXPONENTIAL,
-                            15,
-                            TimeUnit.MINUTES
+                        val periodicRequest = PeriodicWorkRequestBuilder<GoogleDriveBackupWorker>(
+                            24, TimeUnit.HOURS,
+                            4, TimeUnit.HOURS
                         )
-                        .build()
+                            .setConstraints(constraints)
+                            .setBackoffCriteria(
+                                BackoffPolicy.EXPONENTIAL,
+                                15,
+                                TimeUnit.MINUTES
+                            )
+                            .build()
 
-                    workManager.enqueueUniquePeriodicWork(
-                        UNIQUE_PERIODIC_WORK_NAME,
-                        ExistingPeriodicWorkPolicy.UPDATE,
-                        periodicRequest
-                    )
-                    Log.d(TAG, "Enqueued DAILY periodic Google Drive auto-backup work.")
-                }
-                BackupManager.AutoBackupFrequency.WEEKLY -> {
-                    val constraints = Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .setRequiresBatteryNotLow(true)
-                        .build()
-
-                    val periodicRequest = PeriodicWorkRequestBuilder<GoogleDriveBackupWorker>(
-                        7, TimeUnit.DAYS,
-                        12, TimeUnit.HOURS
-                    )
-                        .setConstraints(constraints)
-                        .setBackoffCriteria(
-                            BackoffPolicy.EXPONENTIAL,
-                            30,
-                            TimeUnit.MINUTES
+                        workManager.enqueueUniquePeriodicWork(
+                            UNIQUE_PERIODIC_WORK_NAME,
+                            ExistingPeriodicWorkPolicy.UPDATE,
+                            periodicRequest
                         )
-                        .build()
+                        Log.d(TAG, "Enqueued DAILY periodic Google Drive auto-backup work.")
+                    }
+                    BackupManager.AutoBackupFrequency.WEEKLY -> {
+                        val constraints = Constraints.Builder()
+                            .setRequiredNetworkType(NetworkType.CONNECTED)
+                            .setRequiresBatteryNotLow(true)
+                            .build()
 
-                    workManager.enqueueUniquePeriodicWork(
-                        UNIQUE_PERIODIC_WORK_NAME,
-                        ExistingPeriodicWorkPolicy.UPDATE,
-                        periodicRequest
-                    )
-                    Log.d(TAG, "Enqueued WEEKLY periodic Google Drive auto-backup work.")
+                        val periodicRequest = PeriodicWorkRequestBuilder<GoogleDriveBackupWorker>(
+                            7, TimeUnit.DAYS,
+                            12, TimeUnit.HOURS
+                        )
+                            .setConstraints(constraints)
+                            .setBackoffCriteria(
+                                BackoffPolicy.EXPONENTIAL,
+                                30,
+                                TimeUnit.MINUTES
+                            )
+                            .build()
+
+                        workManager.enqueueUniquePeriodicWork(
+                            UNIQUE_PERIODIC_WORK_NAME,
+                            ExistingPeriodicWorkPolicy.UPDATE,
+                            periodicRequest
+                        )
+                        Log.d(TAG, "Enqueued WEEKLY periodic Google Drive auto-backup work.")
+                    }
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "WorkManager scheduling skipped: ${e.message}")
             }
         }
     }
