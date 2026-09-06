@@ -299,7 +299,7 @@ fun ProfileSubScreen(
             is com.example.data.sync.SyncState.Syncing -> "Syncing..."
             is com.example.data.sync.SyncState.Synced -> "Synced"
             is com.example.data.sync.SyncState.Offline -> "Offline / Waiting for connection"
-            is com.example.data.sync.SyncState.Error -> "Offline / Waiting for connection"
+            is com.example.data.sync.SyncState.Error -> "Error: ${(syncState as com.example.data.sync.SyncState.Error).message}"
             is com.example.data.sync.SyncState.Idle -> if (lastSyncedTime != null && lastSyncedTime > 0) "Synced" else "Idle"
         }
     }
@@ -311,7 +311,7 @@ fun ProfileSubScreen(
             is com.example.data.sync.SyncState.Syncing -> Color.semanticPrimaryAccent
             is com.example.data.sync.SyncState.Synced -> Color.semanticSuccess
             is com.example.data.sync.SyncState.Offline -> Color.semanticWarning
-            is com.example.data.sync.SyncState.Error -> Color.semanticWarning
+            is com.example.data.sync.SyncState.Error -> Color.semanticError
             is com.example.data.sync.SyncState.Idle -> if (lastSyncedTime != null && lastSyncedTime > 0) Color.semanticSuccess else MaterialTheme.colorScheme.onSurfaceVariant
         }
     }
@@ -786,7 +786,7 @@ fun ProfileSubScreen(
                                     Toast.makeText(context, "Retrying sync...", Toast.LENGTH_SHORT).show()
                                     val repo = com.example.data.repository.AppRepository.getInstance(context)
                                     val syncMgr = com.example.data.sync.FirestoreSyncManager.getInstance(context, repo, authRepository)
-                                    syncMgr.triggerNetworkRecovery()
+                                    syncMgr.triggerManualSync()
                                 }
                             } else null,
                             testTag = "profile_cloud_sync_row"

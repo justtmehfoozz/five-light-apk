@@ -58,6 +58,7 @@ class FirestoreSyncManager(
 ) {
     companion object {
         private const val TAG = "FirestoreSyncManager"
+        const val DIAGNOSTIC_BUILD_VERSION = "2026.09.06-v2"
         @Volatile
         private var INSTANCE: FirestoreSyncManager? = null
 
@@ -185,6 +186,52 @@ class FirestoreSyncManager(
     }
 
     /**
+     * Manual sync action triggered directly by user tapping Cloud Sync on the Profile screen.
+     */
+    fun triggerManualSync() {
+        Log.i(TAG, "FIRESYNC_DIAGNOSTIC_BUILD=$DIAGNOSTIC_BUILD_VERSION")
+        Log.i(TAG, "MANUAL SYNC START")
+
+        val fbApp = try { com.google.firebase.FirebaseApp.getInstance() } catch (_: Exception) { null }
+        val fbProjectId = fbApp?.options?.projectId ?: "unknown"
+        val pkgName = context.packageName
+        val dbId = "(default)"
+        Log.i(
+            TAG,
+            "FIREBASE CONFIG RUNTIME:\n" +
+            "- projectId: $fbProjectId\n" +
+            "- package: $pkgName\n" +
+            "- database: $dbId"
+        )
+
+        val authUser = authRepository.currentUser.value
+        val hasUser = (authUser != null)
+        val hasUid = (authUser?.uid?.isNotBlank() == true)
+        val uid = activeUserId ?: authUser?.uid
+        val uidMatches = (authUser?.uid != null && authUser.uid == uid)
+
+        Log.i(
+            TAG,
+            "FIREBASE AUTH:\n" +
+            "- currentUser exists: $hasUser\n" +
+            "- UID exists: $hasUid\n" +
+            "- UID matches activeUserId: $uidMatches"
+        )
+
+        if (uid == null) {
+            Log.w(TAG, "MANUAL SYNC ABORTED: No authenticated user present.")
+            _syncState.value = SyncState.Offline
+            return
+        }
+
+        activeUserId = uid
+        recoveryJob?.cancel()
+        recoveryJob = scope.launch {
+            runInitialSyncForUser(uid, isManual = true)
+        }
+    }
+
+    /**
      * Coalesces rapid network callbacks and automatically retries synchronization when network returns.
      */
     fun triggerNetworkRecovery() {
@@ -204,7 +251,7 @@ class FirestoreSyncManager(
 
             val maskedUid = if (currentUid.length > 8) "${currentUid.take(4)}...${currentUid.takeLast(4)}" else currentUid
             Log.d(TAG, "Executing automatic sync recovery for $maskedUid")
-            runInitialSyncForUser(currentUid)
+            runInitialSyncForUser(currentUid, isManual = false)
         }
     }
 
@@ -254,8 +301,11 @@ class FirestoreSyncManager(
         }
     }
 
-    private suspend fun runInitialSyncForUser(uid: String) {
+    private suspend fun runInitialSyncForUser(uid: String, isManual: Boolean = false) {
         val maskedUid = if (uid.length > 8) "${uid.take(4)}...${uid.takeLast(4)}" else uid
+        if (isManual) {
+            Log.i(TAG, "MANUAL SYNC START")
+        }
         Log.i(TAG, "SYNC INIT START [uid: $maskedUid]")
 
         if (activeUserId != uid) {
@@ -277,8 +327,22 @@ class FirestoreSyncManager(
             return
         }
 
+        // Firebase Auth Verification Log
+        val authUser = authRepository.currentUser.value
+        val hasUser = (authUser != null)
+        val hasUid = (authUser?.uid?.isNotBlank() == true)
+        val uidMatches = (authUser?.uid == uid)
+        Log.i(
+            TAG,
+            "FIREBASE AUTH:\n" +
+            "- currentUser exists: $hasUser\n" +
+            "- UID exists: $hasUid\n" +
+            "- UID matches activeUserId: $uidMatches"
+        )
+
         // 2. Direct Firestore Connectivity Server Probe
-        Log.i(TAG, "FIRESTORE PROBE START [uid: $maskedUid]")
+        Log.i(TAG, "FIRESTORE PROBE START")
+        var lastProbeErrorCode: String? = null
         val probeSuccess = try {
             val probeDoc = withTimeout(10_000L) {
                 firestore.collection("users")
@@ -290,45 +354,39 @@ class FirestoreSyncManager(
             true
         } catch (ce: CancellationException) {
             if (ce is TimeoutCancellationException) {
-                val authUser = authRepository.currentUser.value
-                val authUidMatches = (authUser?.uid == uid)
+                lastProbeErrorCode = "DEADLINE_EXCEEDED"
                 Log.e(
                     TAG,
                     "FIRESTORE PROBE FAILURE:\n" +
-                    "- Exception Class: ${ce.javaClass.name}\n" +
-                    "- Exception Message: ${ce.message ?: "Request timed out after 10000ms"}\n" +
-                    "- Firestore Error Code: DEADLINE_EXCEEDED\n" +
-                    "- FirebaseAuth currentUser is non-null: ${authUser != null}\n" +
-                    "- currentUser.uid matches requested UID: $authUidMatches"
+                    "- Exception class: ${ce.javaClass.name}\n" +
+                    "- Exception message: ${ce.message ?: "Request timed out after 10000ms"}\n" +
+                    "- Firebase/Firestore error code: DEADLINE_EXCEEDED"
                 )
             } else {
                 throw ce
             }
             false
         } catch (e: Exception) {
-            val authUser = authRepository.currentUser.value
-            val authUidMatches = (authUser?.uid == uid)
             val fsCode = when (e) {
                 is FirebaseFirestoreException -> e.code.name
                 else -> (e.cause as? FirebaseFirestoreException)?.code?.name ?: "UNKNOWN"
             }
+            lastProbeErrorCode = fsCode
             Log.e(
                 TAG,
                 "FIRESTORE PROBE FAILURE:\n" +
-                "- Exception Class: ${e.javaClass.name}\n" +
-                "- Exception Message: ${e.message ?: "Unknown error"}\n" +
-                "- Firestore Error Code: $fsCode\n" +
-                "- FirebaseAuth currentUser is non-null: ${authUser != null}\n" +
-                "- currentUser.uid matches requested UID: $authUidMatches",
+                "- Exception class: ${e.javaClass.name}\n" +
+                "- Exception message: ${e.message ?: "Unknown error"}\n" +
+                "- Firebase/Firestore error code: $fsCode",
                 e
             )
             false
         }
 
         if (!probeSuccess) {
-            Log.w(TAG, "DIRECT FIRESTORE PROBE FAILED for $maskedUid. Skipping performInitialMerge.")
+            Log.w(TAG, "DIRECT FIRESTORE PROBE FAILED for $maskedUid (code: $lastProbeErrorCode). Skipping performInitialMerge.")
             if (activeUserId == uid) {
-                _syncState.value = SyncState.Error("Firestore direct probe failed")
+                _syncState.value = SyncState.Error(lastProbeErrorCode ?: "Firestore direct probe failed")
             }
             return
         }

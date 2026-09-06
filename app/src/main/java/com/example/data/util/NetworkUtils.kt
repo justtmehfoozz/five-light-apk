@@ -17,16 +17,15 @@ object NetworkUtils {
         val hasVpn: Boolean
     ) {
         fun toFormattedLog(): String {
-            return "NETWORK CHECK:\n" +
-                   "- NetworkUtils result: $isAvailable\n" +
-                   "- activeNetwork exists: $activeNetworkExists\n" +
-                   "- activeNetwork capabilities:\n" +
-                   "  INTERNET: $hasInternet\n" +
-                   "  VALIDATED: $hasValidated\n" +
-                   "  WIFI: $hasWifi\n" +
-                   "  CELLULAR: $hasCellular\n" +
-                   "  ETHERNET: $hasEthernet\n" +
-                   "  VPN: $hasVpn"
+            return "NETWORK RESULT:\n" +
+                   "- isAvailable: $isAvailable\n" +
+                   "- activeNetworkExists: $activeNetworkExists\n" +
+                   "- INTERNET: $hasInternet\n" +
+                   "- VALIDATED: $hasValidated\n" +
+                   "- WIFI: $hasWifi\n" +
+                   "- CELLULAR: $hasCellular\n" +
+                   "- ETHERNET: $hasEthernet\n" +
+                   "- VPN: $hasVpn"
         }
     }
 
