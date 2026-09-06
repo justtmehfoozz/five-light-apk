@@ -368,9 +368,9 @@ class SetUpFiveLightFlowTest {
     // ---------------------------------------------------------------------------------------------
 
     @Test
-    fun testAutoBackupFrequency_defaultIsOff() {
+    fun testAutoBackupFrequency_defaultIsWeekly() {
         val defaultFreq = com.example.data.backup.BackupManager.getAutoBackupFrequency(context)
-        assertEquals(com.example.data.backup.BackupManager.AutoBackupFrequency.OFF, defaultFreq)
+        assertEquals(com.example.data.backup.BackupManager.AutoBackupFrequency.WEEKLY, defaultFreq)
     }
 
     @Test

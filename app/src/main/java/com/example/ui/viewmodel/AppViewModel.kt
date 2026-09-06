@@ -137,13 +137,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         return result
     }
 
-    suspend fun performDriveRestore(): Result<Unit> {
+    suspend fun performDriveRestore(onProgress: ((String) -> Unit)? = null): Result<Unit> {
         return com.example.data.backup.BackupManager.performRestore(
-            getApplication(),
-            repository,
-            authRepository,
-            syncManager
+            context = getApplication(),
+            repository = repository,
+            authRepository = authRepository,
+            syncManager = syncManager,
+            onProgress = onProgress
         )
+    }
+
+    suspend fun checkRemoteBackup(): Result<com.example.data.backup.GoogleDriveService.DriveBackupInfo?> {
+        val googleAccount = com.example.data.backup.GoogleDriveService.getAuthorizedAccount(getApplication())
+            ?: return Result.success(null)
+        return com.example.data.backup.BackupManager.checkExistingBackup(getApplication(), googleAccount)
     }
 
     suspend fun deleteAccount(passwordForReauth: String? = null, activityContext: android.content.Context? = null): Result<Unit> {
@@ -686,6 +693,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
 
     fun setCity(city: CityLocation) {
         repository.setCity(city)
+        refreshPrayerTimes()
+    }
+
+    fun autoConfigureFromLocation(city: CityLocation) {
+        repository.autoConfigureFromLocation(city)
         refreshPrayerTimes()
     }
 

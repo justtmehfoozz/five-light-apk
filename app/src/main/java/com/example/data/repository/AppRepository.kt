@@ -411,6 +411,14 @@ class AppRepository(
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 
+    fun autoConfigureFromLocation(city: CityLocation) {
+        setCity(city)
+        val regionalDefaults = com.example.data.util.LocationHelper.determineRegionalPrayerSettings(city)
+        setCalcMethod(regionalDefaults.calcMethod)
+        setHijriDateMethod(regionalDefaults.hijriDateMethod)
+        setMadhab(regionalDefaults.madhab)
+    }
+
     fun setCalcMethod(method: CalcMethod) {
         _calcMethod.value = method
         prefs?.edit()?.putString("calc_method", method.name)

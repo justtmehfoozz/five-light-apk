@@ -6,11 +6,14 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -20,6 +23,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,40 +47,29 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.outlined.AccountCircle
-import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.BatteryAlert
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.CloudOff
-import androidx.compose.material.icons.outlined.CloudSync
-import androidx.compose.material.icons.outlined.DarkMode
-import androidx.compose.material.icons.outlined.EditLocationAlt
-import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.LightMode
 import androidx.compose.material.icons.outlined.MyLocation
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsActive
-import androidx.compose.material.icons.outlined.NotificationsOff
-import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Place
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Security
-import androidx.compose.material.icons.outlined.Storage
-import androidx.compose.material.icons.outlined.Vibration
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
@@ -83,6 +77,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -97,9 +92,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
@@ -112,7 +107,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.auth.AuthRepository
 import com.example.data.backup.BackupManager
-import com.example.data.backup.GoogleDriveBackupWorker
 import com.example.data.backup.GoogleDriveService
 import com.example.data.model.AppearanceMode
 import com.example.data.model.CalcMethod
@@ -122,31 +116,26 @@ import com.example.data.model.Madhab
 import com.example.data.model.TasbeehSound
 import com.example.data.reminder.PrePrayerReminderOffset
 import com.example.data.reminder.SmartPrayerNotificationManager
-import com.example.data.sync.FirestoreSyncManager
 import com.example.data.util.LocationHelper
 import com.example.ui.theme.InstrumentSerifItalic
 import com.example.ui.theme.semanticBackground
 import com.example.ui.theme.semanticBorder
-import com.example.ui.theme.semanticControl
 import com.example.ui.theme.semanticError
 import com.example.ui.theme.semanticMutedText
 import com.example.ui.theme.semanticPrimaryAccent
 import com.example.ui.theme.semanticPrimaryText
 import com.example.ui.theme.semanticSecondaryText
-import com.example.ui.theme.semanticStrongBorder
 import com.example.ui.theme.semanticSuccess
 import com.example.ui.theme.semanticSurfaceElevated
 import com.example.ui.theme.semanticWarning
 import com.example.ui.viewmodel.AppViewModel
 import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.gms.common.api.ApiException
 import com.google.firebase.auth.FirebaseUser
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
-import java.util.Locale
-
-private const val TOTAL_STEPS = 10
 
 /**
  * Top-level capability checks exposed for tests and components.
@@ -156,168 +145,526 @@ fun checkNotificationPermission(context: Context): Boolean = SmartPrayerNotifica
 fun checkBackgroundOptimization(context: Context): Boolean = SmartPrayerNotificationManager(context).isIgnoringBatteryOptimizations()
 
 /**
- * Phase 4 — Google Drive Restore + Backup Onboarding & Background Reliability.
- *
- * Configures the user's existing FiveLight preferences and genuine Android capabilities:
- * STEP 1: Set Up FiveLight (Introduction & Overview)
- * STEP 2: Restore your FiveLight data (Google Drive restore detection, confirmation, progress & skip)
- * STEP 3: Your Location (Runtime location permission, manual search fallback, real Android check)
- * STEP 4: Prayer Calculation Method (CalcMethod)
- * STEP 5: Asr Calculation / Madhab (Madhab)
- * STEP 6: Hijri Date Convention (HijriDateMethod & Custom Offset)
- * STEP 7: Prayer Notifications & Background Reliability (POST_NOTIFICATIONS, Battery exemption, Exact alarms)
- * STEP 8: Automatic Backup (Off / Daily / Weekly default, Google Drive authorization, Back Up Now)
- * STEP 9: Tasbeeh & Haptics (TasbeehSound & Vibration)
- * STEP 10: Appearance & Completion (Theme selection & real capability status summary)
+ * Adaptive Onboarding Step definitions for FiveLight.
  */
+enum class AdaptiveOnboardingStep(
+    val sectionLabel: String,
+    val title: String,
+    val subtitle: String
+) {
+    WELCOME(
+        sectionLabel = "WELCOME",
+        title = "Make FiveLight yours.",
+        subtitle = "A few calm choices and FiveLight will be ready for your daily rhythm."
+    ),
+    DATA_RESTORE(
+        sectionLabel = "WELCOME BACK",
+        title = "Welcome back",
+        subtitle = "We found a FiveLight backup associated with your account."
+    ),
+    WHERE_ARE_YOU(
+        sectionLabel = "WHERE ARE YOU?",
+        title = "Your Location",
+        subtitle = "FiveLight uses your location to calculate accurate prayer times and Qibla direction."
+    ),
+    PRAYER_TIMES(
+        sectionLabel = "PRAYER TIMES",
+        title = "Prayer Times",
+        subtitle = "Configured automatically for your region."
+    ),
+    STAY_ON_TIME(
+        sectionLabel = "STAY ON TIME",
+        title = "Prayer Notifications",
+        subtitle = "Allow FiveLight to notify you when prayer times arrive."
+    ),
+    KEEP_RELIABLE(
+        sectionLabel = "KEEP REMINDERS RELIABLE",
+        title = "Background Delivery",
+        subtitle = "FiveLight needs to run reliably in the background so scheduled prayer reminders can arrive on time."
+    ),
+    AUTOMATIC_BACKUP(
+        sectionLabel = "AUTOMATIC BACKUP",
+        title = "Automatic Backup",
+        subtitle = "Keep an encrypted backup of your FiveLight data in your private Google Drive."
+    ),
+    TASBEEH_HAPTICS(
+        sectionLabel = "DHIKR & HAPTICS",
+        title = "Dhikr & Haptics",
+        subtitle = "Customize audio taps and tactile feedback during daily dhikr recitation."
+    ),
+    APPEARANCE_AND_READY(
+        sectionLabel = "YOU'RE READY",
+        title = "FiveLight is ready for you.",
+        subtitle = "A calm companion for your daily prayer rhythm."
+    )
+}
+
 @Composable
 fun SetUpFiveLightScreen(
     viewModel: AppViewModel,
-    currentUser: FirebaseUser?,
-    onSetupComplete: () -> Unit,
-    modifier: Modifier = Modifier
+    currentUser: FirebaseUser? = null,
+    onSetupComplete: () -> Unit = {},
+    modifier: Modifier = Modifier,
+    authRepository: AuthRepository = AuthRepository.getInstance(LocalContext.current),
+    onSetupFinished: () -> Unit = onSetupComplete
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val coroutineScope = rememberCoroutineScope()
-    var currentStep by rememberSaveable { mutableIntStateOf(0) }
+    val notificationManager = remember { SmartPrayerNotificationManager(context) }
 
-    // Intercept back presses: step back within setup, protect against accidental exit on step 0
-    BackHandler(enabled = true) {
-        if (currentStep > 0) {
-            currentStep -= 1
-        }
-    }
-
-    // Existing Single Source of Truth
+    val activeUser by viewModel.currentUser.collectAsStateWithLifecycle(initialValue = currentUser)
+    val effectiveUser = currentUser ?: activeUser
     val selectedCity by viewModel.selectedCity.collectAsStateWithLifecycle()
     val calcMethod by viewModel.calcMethod.collectAsStateWithLifecycle()
     val madhab by viewModel.madhab.collectAsStateWithLifecycle()
-    val hijriDateMethod by viewModel.hijriDateMethod.collectAsStateWithLifecycle()
-    val customHijriOffset by viewModel.customHijriOffset.collectAsStateWithLifecycle()
     val appearanceMode by viewModel.appearanceMode.collectAsStateWithLifecycle()
+    val hijriDateMethod by viewModel.hijriDateMethod.collectAsStateWithLifecycle()
     val tasbeehSound by viewModel.tasbeehSound.collectAsStateWithLifecycle()
     val vibrationEnabled by viewModel.vibrationEnabled.collectAsStateWithLifecycle()
 
-    val notificationManager = remember(context) { SmartPrayerNotificationManager(context) }
-    var isNotificationsEnabledPref by remember {
-        mutableStateOf(notificationManager.isSmartNotificationsEnabled)
-    }
-    var preReminderOffset by remember {
-        mutableStateOf(notificationManager.preReminderOffset)
-    }
+    // Dynamic Permission & Capability States
+    var hasLocationPermission by remember { mutableStateOf(checkLocationPermission(context)) }
+    var hasNotificationPermission by remember { mutableStateOf(checkNotificationPermission(context)) }
+    var isBackgroundExempt by remember { mutableStateOf(checkBackgroundOptimization(context)) }
 
-    // REAL Android Capability States (Inspected from system)
-    var isLocationPermissionGranted by remember {
-        mutableStateOf(LocationHelper.hasLocationPermission(context))
-    }
-    var locationPermissionAttempted by remember { mutableStateOf(false) }
+    // Track restore outcome for summary on final screen
+    var restoreCompletedSuccessfully by rememberSaveable { mutableStateOf(false) }
 
-    var isNotificationPermissionGranted by remember {
-        mutableStateOf(notificationManager.isNotificationPermissionGranted())
-    }
-    var notificationPermissionAttempted by remember { mutableStateOf(false) }
-
-    var isBatteryOptimizationIgnored by remember {
-        mutableStateOf(notificationManager.isIgnoringBatteryOptimizations())
-    }
-    var isExactAlarmPermitted by remember {
-        mutableStateOf(notificationManager.canScheduleExactAlarms())
-    }
-
-    // Google Drive & Backup States
-    var driveAccount by remember {
-        mutableStateOf(GoogleDriveService.getAuthorizedAccount(context))
-    }
-    var isSearchingBackup by remember { mutableStateOf(false) }
-    var detectedBackupInfo by remember { mutableStateOf<GoogleDriveService.DriveBackupInfo?>(null) }
-    var backupSearchAttempted by remember { mutableStateOf(false) }
-    var searchBackupError by remember { mutableStateOf<String?>(null) }
-
-    var isRestoring by remember { mutableStateOf(false) }
-    var restoreProgressStage by remember { mutableStateOf<String?>(null) }
-    var restoreError by remember { mutableStateOf<String?>(null) }
-    var isRestoreCompleted by remember { mutableStateOf(false) }
-
-    var autoBackupFrequency by remember {
-        mutableStateOf(BackupManager.AutoBackupFrequency.WEEKLY)
-    }
-    var lastBackupTime by remember {
-        mutableLongStateOf(BackupManager.getLastBackupTime(context))
-    }
-    var isManualBackingUp by remember { mutableStateOf(false) }
-    var manualBackupMessage by remember { mutableStateOf<String?>(null) }
-
-    // Check for existing backup whenever Drive account is authorized on restore step
-    LaunchedEffect(driveAccount, currentStep) {
-        if (currentStep == 1 && driveAccount != null && !backupSearchAttempted && !isRestoring && !isRestoreCompleted) {
-            isSearchingBackup = true
-            searchBackupError = null
-            val res = BackupManager.checkExistingBackup(context, driveAccount!!)
-            isSearchingBackup = false
-            backupSearchAttempted = true
-            if (res.isSuccess) {
-                detectedBackupInfo = res.getOrNull()
-            } else {
-                searchBackupError = res.exceptionOrNull()?.message
-            }
-        }
-    }
-
-    // Lifecycle observer to re-inspect actual system state on resume after visiting Android Settings
+    val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                isLocationPermissionGranted = LocationHelper.hasLocationPermission(context)
-                isNotificationPermissionGranted = notificationManager.isNotificationPermissionGranted()
-                isBatteryOptimizationIgnored = notificationManager.isIgnoringBatteryOptimizations()
-                isExactAlarmPermitted = notificationManager.canScheduleExactAlarms()
-                driveAccount = GoogleDriveService.getAuthorizedAccount(context)
+                hasLocationPermission = checkLocationPermission(context)
+                hasNotificationPermission = checkNotificationPermission(context)
+                isBackgroundExempt = checkBackgroundOptimization(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
-                // If location was granted while in settings, attempt to fetch location if available
-                if (isLocationPermissionGranted) {
-                    val loc = LocationHelper.getLastKnownLocation(context)
-                    if (loc != null) {
-                        viewModel.setCity(LocationHelper.resolveCityLocation(context, loc))
+    // Compute Active Onboarding Sequence
+    val activeSteps = remember(effectiveUser) {
+        buildList {
+            add(AdaptiveOnboardingStep.WELCOME)
+            if (effectiveUser != null) {
+                add(AdaptiveOnboardingStep.DATA_RESTORE)
+            }
+            add(AdaptiveOnboardingStep.WHERE_ARE_YOU)
+            add(AdaptiveOnboardingStep.PRAYER_TIMES)
+            add(AdaptiveOnboardingStep.STAY_ON_TIME)
+            add(AdaptiveOnboardingStep.KEEP_RELIABLE)
+            if (effectiveUser != null) {
+                add(AdaptiveOnboardingStep.AUTOMATIC_BACKUP)
+            }
+            add(AdaptiveOnboardingStep.TASBEEH_HAPTICS)
+            add(AdaptiveOnboardingStep.APPEARANCE_AND_READY)
+        }
+    }
+
+    var stepIndex by rememberSaveable { mutableIntStateOf(0) }
+    val currentStep = activeSteps.getOrElse(stepIndex) { AdaptiveOnboardingStep.WELCOME }
+
+    // Navigation Handlers
+    val canGoBack = stepIndex > 0
+    val goBack: () -> Unit = {
+        if (canGoBack) {
+            stepIndex--
+        }
+    }
+
+    val goNext: () -> Unit = {
+        if (stepIndex < activeSteps.lastIndex) {
+            stepIndex++
+        } else {
+            val uid = effectiveUser?.uid ?: "anonymous_user"
+            authRepository.setSetupCompleted(uid, true)
+            viewModel.syncManager.notifyPreferencesChanged()
+            onSetupFinished()
+        }
+    }
+
+    BackHandler(enabled = canGoBack) {
+        goBack()
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Color.semanticBackground)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .testTag("setup_fivelight_screen")
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // Header Bar
+            OnboardingHeaderBar(
+                currentStep = currentStep,
+                stepIndex = stepIndex,
+                totalSteps = activeSteps.size,
+                canGoBack = canGoBack,
+                onBackClicked = goBack
+            )
+
+            // Animated Screen Container
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+                AnimatedContent(
+                    targetState = currentStep,
+                    transitionSpec = {
+                        slideInHorizontally(
+                            animationSpec = tween(280, easing = FastOutSlowInEasing),
+                            initialOffsetX = { fullWidth -> fullWidth }
+                        ) + fadeIn(animationSpec = tween(220)) togetherWith
+                                slideOutHorizontally(
+                                    animationSpec = tween(280, easing = FastOutSlowInEasing),
+                                    targetOffsetX = { fullWidth -> -fullWidth }
+                                ) + fadeOut(animationSpec = tween(180))
+                    },
+                    label = "OnboardingStepTransition"
+                ) { step ->
+                    when (step) {
+                        AdaptiveOnboardingStep.WELCOME -> {
+                            WelcomeStep(
+                                currentUser = effectiveUser,
+                                onContinue = goNext
+                            )
+                        }
+
+                        AdaptiveOnboardingStep.DATA_RESTORE -> {
+                            WelcomeBackRestoreStep(
+                                viewModel = viewModel,
+                                currentUser = effectiveUser,
+                                onRestoreSuccess = { restoreCompletedSuccessfully = true },
+                                onContinue = goNext
+                            )
+                        }
+
+                        AdaptiveOnboardingStep.WHERE_ARE_YOU -> {
+                            WhereAreYouStep(
+                                viewModel = viewModel,
+                                selectedCity = selectedCity,
+                                hasLocationPermission = hasLocationPermission,
+                                onPermissionUpdated = { hasLocationPermission = it },
+                                onContinue = goNext
+                            )
+                        }
+
+                        AdaptiveOnboardingStep.PRAYER_TIMES -> {
+                            CombinedPrayerScreen(
+                                viewModel = viewModel,
+                                selectedCity = selectedCity,
+                                calcMethod = calcMethod,
+                                madhab = madhab,
+                                hijriDateMethod = hijriDateMethod,
+                                onContinue = goNext
+                            )
+                        }
+
+                        AdaptiveOnboardingStep.STAY_ON_TIME -> {
+                            StayOnTimeStep(
+                                notificationManager = notificationManager,
+                                hasNotificationPermission = hasNotificationPermission,
+                                onPermissionUpdated = { hasNotificationPermission = it },
+                                onContinue = goNext
+                            )
+                        }
+
+                        AdaptiveOnboardingStep.KEEP_RELIABLE -> {
+                            KeepReliableStep(
+                                isBackgroundExempt = isBackgroundExempt,
+                                onStateUpdated = { isBackgroundExempt = it },
+                                onContinue = goNext
+                            )
+                        }
+
+                        AdaptiveOnboardingStep.AUTOMATIC_BACKUP -> {
+                            AutomaticBackupStep(
+                                viewModel = viewModel,
+                                currentUser = effectiveUser,
+                                onContinue = goNext
+                            )
+                        }
+
+                        AdaptiveOnboardingStep.TASBEEH_HAPTICS -> {
+                            TasbeehHapticsStep(
+                                viewModel = viewModel,
+                                tasbeehSound = tasbeehSound,
+                                vibrationEnabled = vibrationEnabled,
+                                onContinue = goNext
+                            )
+                        }
+
+                        AdaptiveOnboardingStep.APPEARANCE_AND_READY -> {
+                            AppearanceAndReadyStep(
+                                viewModel = viewModel,
+                                appearanceMode = appearanceMode,
+                                selectedCity = selectedCity,
+                                calcMethod = calcMethod,
+                                hasLocationPermission = hasLocationPermission,
+                                hasNotificationPermission = hasNotificationPermission,
+                                isBackgroundExempt = isBackgroundExempt,
+                                isRestoreRestored = restoreCompletedSuccessfully,
+                                effectiveUser = effectiveUser,
+                                onFinish = {
+                                    val uid = effectiveUser?.uid ?: "anonymous_user"
+                                    authRepository.setSetupCompleted(uid, true)
+                                    viewModel.syncManager.notifyPreferencesChanged()
+                                    onSetupFinished()
+                                }
+                            )
+                        }
                     }
                 }
             }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
+    }
+}
+
+/**
+ * Top bar with gentle progress indicator and back navigation.
+ */
+@Composable
+private fun OnboardingHeaderBar(
+    currentStep: AdaptiveOnboardingStep,
+    stepIndex: Int,
+    totalSteps: Int,
+    canGoBack: Boolean,
+    onBackClicked: () -> Unit
+) {
+    val progress by animateFloatAsState(
+        targetValue = ((stepIndex + 1).toFloat() / totalSteps.toFloat()).coerceIn(0f, 1f),
+        animationSpec = tween(300, easing = FastOutSlowInEasing),
+        label = "ProgressAnimation"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (canGoBack) {
+                IconButton(
+                    onClick = onBackClicked,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .testTag("onboarding_back_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.semanticPrimaryText
+                    )
+                }
+            } else {
+                Spacer(modifier = Modifier.size(40.dp))
+            }
+
+            Text(
+                text = currentStep.sectionLabel,
+                style = TextStyle(
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp,
+                    color = Color.semanticMutedText
+                )
+            )
+
+            Text(
+                text = "${stepIndex + 1}/$totalSteps",
+                style = TextStyle(
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.semanticMutedText
+                )
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Progress line
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(2.dp)
+                .clip(CircleShape)
+                .background(Color.semanticBorder)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress)
+                    .height(2.dp)
+                    .clip(CircleShape)
+                    .background(Color.semanticPrimaryAccent)
+            )
         }
     }
+}
 
-    // Runtime Permission Launchers
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        locationPermissionAttempted = true
-        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
-        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        val granted = fineGranted || coarseGranted
-        isLocationPermissionGranted = granted
+/**
+ * Standard Primary CTA Button with calm subtle press animation.
+ */
+@Composable
+private fun PrimaryOnboardingButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    testTag: String = ""
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.985f else 1f,
+        animationSpec = tween(120),
+        label = "ButtonPressScale"
+    )
 
-        if (granted) {
-            val loc = LocationHelper.getLastKnownLocation(context)
-            if (loc != null) {
-                val resolved = LocationHelper.resolveCityLocation(context, loc)
-                viewModel.setCity(resolved)
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        interactionSource = interactionSource,
+        modifier = modifier
+            .fillMaxWidth()
+            .height(52.dp)
+            .scale(scale)
+            .testTag(testTag),
+        shape = RoundedCornerShape(14.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color.semanticPrimaryAccent,
+            contentColor = Color.White
+        )
+    ) {
+        Text(
+            text = text,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+/**
+ * Step 1: Welcome Step.
+ */
+@Composable
+private fun WelcomeStep(
+    currentUser: FirebaseUser?,
+    onContinue: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "FiveLight",
+                fontFamily = InstrumentSerifItalic,
+                fontSize = 42.sp,
+                color = Color.semanticPrimaryText,
+                lineHeight = 46.sp
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "A calm, privacy-first companion designed around the five daily prayers.",
+                fontSize = 15.sp,
+                color = Color.semanticSecondaryText,
+                lineHeight = 23.sp
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Account status badge
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.semanticSurfaceElevated)
+                    .border(1.dp, Color.semanticBorder, RoundedCornerShape(16.dp))
+                    .padding(20.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(Color.semanticPrimaryAccent.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (currentUser != null) Icons.Outlined.CloudDone else Icons.Outlined.CloudOff,
+                            contentDescription = null,
+                            tint = Color.semanticPrimaryAccent,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column {
+                        Text(
+                            text = if (currentUser != null) "Signed in" else "Local mode",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.semanticPrimaryText
+                        )
+                        Text(
+                            text = currentUser?.email ?: "Zero trackers · strictly private",
+                            fontSize = 13.sp,
+                            color = Color.semanticMutedText
+                        )
+                    }
+                }
             }
         }
-    }
 
-    val notificationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        notificationPermissionAttempted = true
-        isNotificationPermissionGranted = granted
-        if (granted) {
-            isNotificationsEnabledPref = true
-            notificationManager.isSmartNotificationsEnabled = true
-            notificationManager.isPrayerTimeNotificationsEnabled = true
-        }
+        PrimaryOnboardingButton(
+            text = "Begin Setup",
+            onClick = onContinue,
+            testTag = "welcome_get_started_button"
+        )
+    }
+}
+
+/**
+ * Step 2: Welcome Back & Data Restore Step.
+ */
+@Composable
+private fun WelcomeBackRestoreStep(
+    viewModel: AppViewModel,
+    currentUser: FirebaseUser?,
+    onRestoreSuccess: () -> Unit,
+    onContinue: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var driveAccount by remember { mutableStateOf(GoogleDriveService.getAuthorizedAccount(context)) }
+    var isCheckingBackup by remember { mutableStateOf(true) }
+    var backupFound by remember { mutableStateOf(false) }
+    var formattedBackupDate by remember { mutableStateOf("") }
+
+    var restoreState by remember { mutableStateOf("IDLE") } // IDLE, RESTORING, SUCCESS, FAILURE
+    var restoreErrorMessage by remember { mutableStateOf<String?>(null) }
+    var currentRestoreStage by remember { mutableStateOf("Preparing") }
+
+    val userEmail = currentUser?.email ?: ""
+    val driveEmail = driveAccount?.email ?: ""
+    val isAccountMismatch = remember(userEmail, driveEmail, driveAccount) {
+        driveAccount != null && userEmail.isNotBlank() && driveEmail.isNotBlank() && !driveEmail.equals(userEmail, ignoreCase = true)
     }
 
     val driveAuthLauncher = rememberLauncherForActivityResult(
@@ -325,2870 +672,579 @@ fun SetUpFiveLightScreen(
     ) { result ->
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
         try {
-            val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+            val account = task.getResult(ApiException::class.java)
             if (account != null && GoogleSignIn.hasPermissions(account, GoogleDriveService.DRIVE_APPDATA_SCOPE)) {
                 driveAccount = account
-                backupSearchAttempted = false
+                Toast.makeText(context, "Google Drive connected: ${account.email}", Toast.LENGTH_SHORT).show()
+                isCheckingBackup = true
             }
-        } catch (_: Exception) {}
-    }
-
-    val requestDriveAuth: () -> Unit = {
-        val signInClient = GoogleDriveService.getGoogleSignInClient(context)
-        signInClient.signOut().addOnCompleteListener {
-            driveAuthLauncher.launch(signInClient.signInIntent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Google Drive authorization was not granted", Toast.LENGTH_SHORT).show()
         }
     }
 
-    val onRestoreBackup: () -> Unit = {
-        coroutineScope.launch {
-            isRestoring = true
-            restoreError = null
-            restoreProgressStage = "Preparing backup"
-            val authRepo = AuthRepository.getInstance(context)
-            val syncMgr = FirestoreSyncManager.getInstance(context, viewModel.repository, authRepo)
-            val res = BackupManager.performRestore(
-                context = context,
-                repository = viewModel.repository,
-                authRepository = authRepo,
-                syncManager = syncMgr,
+    LaunchedEffect(driveAccount, isCheckingBackup) {
+        if (isCheckingBackup) {
+            val lastLocalTime = BackupManager.getLastBackupTime(context)
+            if (lastLocalTime > 0) {
+                backupFound = true
+                formattedBackupDate = try {
+                    DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(lastLocalTime))
+                } catch (_: Exception) { "Recent" }
+            }
+
+            try {
+                val remoteRes = viewModel.checkRemoteBackup()
+                val remoteInfo = remoteRes.getOrNull()
+                if (remoteInfo != null) {
+                    backupFound = true
+                    if (formattedBackupDate.isBlank()) {
+                        formattedBackupDate = try {
+                            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.US)
+                            val parsed = sdf.parse(remoteInfo.modifiedTime.substringBefore("."))
+                            if (parsed != null) DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(parsed)
+                            else remoteInfo.modifiedTime
+                        } catch (_: Exception) {
+                            "Recent"
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                // Ignore silent network check errors
+            } finally {
+                isCheckingBackup = false
+            }
+        }
+    }
+
+    fun startRestore() {
+        restoreState = "RESTORING"
+        restoreErrorMessage = null
+        scope.launch {
+            val result = viewModel.performDriveRestore(
                 onProgress = { stage ->
-                    restoreProgressStage = stage
+                    currentRestoreStage = stage
                 }
             )
-            isRestoring = false
-            if (res.isSuccess) {
-                isRestoreCompleted = true
-                restoreProgressStage = null
+            if (result.isSuccess) {
+                restoreState = "SUCCESS"
+                onRestoreSuccess()
             } else {
-                restoreError = res.exceptionOrNull()?.message ?: "Restore failed"
-            }
-        }
-    }
-
-    val onManualBackup: () -> Unit = {
-        coroutineScope.launch {
-            isManualBackingUp = true
-            manualBackupMessage = null
-            val authRepo = AuthRepository.getInstance(context)
-            val res = BackupManager.performBackup(context, viewModel.repository, authRepo)
-            isManualBackingUp = false
-            if (res.isSuccess) {
-                lastBackupTime = res.getOrNull() ?: System.currentTimeMillis()
-                manualBackupMessage = "Backup created successfully"
-            } else {
-                manualBackupMessage = res.exceptionOrNull()?.message ?: "Backup failed"
-            }
-        }
-    }
-
-    val stepTitles = remember {
-        listOf(
-            "Set Up FiveLight",
-            "Restore your FiveLight data",
-            "Your Location",
-            "Prayer Calculation Method",
-            "Asr Calculation",
-            "Hijri Date Convention",
-            "Prayer Reminders & Reliability",
-            "Automatic Backup",
-            "Tasbeeh & Haptics",
-            "Appearance"
-        )
-    }
-
-    val stepSubtitles = remember {
-        listOf(
-            "Configure your prayer schedule, calculation standards, and reminders for a disciplined daily rhythm.",
-            "Restore your prayer logs, dhikr history, bookmarks, and preferences from your encrypted Google Drive backup.",
-            "Use your location to calculate accurate prayer times and Qibla orientation.",
-            "Select the calculation authority and astronomical convention recognized by your local community.",
-            "Choose the juristic convention for determining the start of Asr prayer.",
-            "Select your regional moon-sighting convention or astronomical calendar.",
-            "Enable timely notifications and background reliability for scheduled prayer times.",
-            "Keep a secure, encrypted backup of your FiveLight data in your private Google Drive.",
-            "Customize audio taps and tactile feedback during daily dhikr and tasbeeh recitation.",
-            "Review your system capabilities and personalize your appearance.",
-        )
-    }
-
-    val primaryBg = Color.semanticBackground
-    val primaryText = Color.semanticPrimaryText
-    val secondaryText = Color.semanticSecondaryText
-    val mutedText = Color.semanticMutedText
-    val borderColor = Color.semanticBorder.copy(alpha = 0.5f)
-
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(primaryBg)
-            .testTag("setup_five_light_container")
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-        ) {
-            // Top Navigation & Progress Bar
-            SetupTopBar(
-                currentStep = currentStep,
-                totalSteps = TOTAL_STEPS,
-                onBack = {
-                    if (currentStep > 0) currentStep -= 1
-                }
-            )
-
-            // Step Content Area (Animated horizontally between steps)
-            AnimatedContent(
-                targetState = currentStep,
-                transitionSpec = {
-                    if (targetState > initialState) {
-                        (slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { it / 3 } + fadeIn(tween(280)))
-                            .togetherWith(slideOutHorizontally(tween(200, easing = FastOutSlowInEasing)) { -it / 4 } + fadeOut(tween(200)))
-                    } else {
-                        (slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { -it / 3 } + fadeIn(tween(280)))
-                            .togetherWith(slideOutHorizontally(tween(200, easing = FastOutSlowInEasing)) { it / 4 } + fadeOut(tween(200)))
-                    }
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                label = "setupStepTransition"
-            ) { step ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 24.dp)
-                ) {
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(
-                        text = "STEP ${step + 1} OF $TOTAL_STEPS",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 1.2.sp
-                        ),
-                        color = Color.semanticPrimaryAccent,
-                        modifier = Modifier.testTag("setup_step_badge")
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Text(
-                        text = stepTitles[step],
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 26.sp,
-                            letterSpacing = (-0.5).sp
-                        ),
-                        color = primaryText,
-                        modifier = Modifier.testTag("setup_step_title")
-                    )
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Text(
-                        text = stepSubtitles[step],
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontSize = 14.sp,
-                            lineHeight = 20.sp
-                        ),
-                        color = secondaryText,
-                        modifier = Modifier.testTag("setup_step_subtitle")
-                    )
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // Step Body
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                    ) {
-                        when (step) {
-                            0 -> StepWelcome(
-                                currentUser = currentUser,
-                                primaryText = primaryText,
-                                secondaryText = secondaryText,
-                                mutedText = mutedText,
-                                borderColor = borderColor
-                            )
-                            1 -> StepRestoreData(
-                                currentUser = currentUser,
-                                driveAccount = driveAccount,
-                                isSearchingBackup = isSearchingBackup,
-                                detectedBackupInfo = detectedBackupInfo,
-                                searchBackupError = searchBackupError,
-                                isRestoring = isRestoring,
-                                restoreProgressStage = restoreProgressStage,
-                                restoreError = restoreError,
-                                isRestoreCompleted = isRestoreCompleted,
-                                onRequestDriveAuth = requestDriveAuth,
-                                onRestoreBackup = onRestoreBackup,
-                                onContinue = {
-                                    if (currentStep < TOTAL_STEPS - 1) currentStep += 1
-                                },
-                                primaryText = primaryText,
-                                secondaryText = secondaryText,
-                                mutedText = mutedText,
-                                borderColor = borderColor
-                            )
-                            2 -> StepLocationWithPermissions(
-                                context = context,
-                                selectedCity = selectedCity,
-                                isLocationGranted = isLocationPermissionGranted,
-                                permissionAttempted = locationPermissionAttempted,
-                                onRequestPermission = {
-                                    locationPermissionLauncher.launch(
-                                        arrayOf(
-                                            Manifest.permission.ACCESS_FINE_LOCATION,
-                                            Manifest.permission.ACCESS_COARSE_LOCATION
-                                        )
-                                    )
-                                },
-                                predefinedCities = viewModel.repository.PREDEFINED_CITIES,
-                                onSelectCity = { city ->
-                                    viewModel.setCity(city)
-                                },
-                                primaryText = primaryText,
-                                secondaryText = secondaryText,
-                                mutedText = mutedText,
-                                borderColor = borderColor
-                            )
-                            3 -> StepCalcMethod(
-                                selectedMethod = calcMethod,
-                                onSelectMethod = { method ->
-                                    viewModel.setCalcMethod(method)
-                                },
-                                primaryText = primaryText,
-                                secondaryText = secondaryText,
-                                borderColor = borderColor
-                            )
-                            4 -> StepMadhab(
-                                selectedMadhab = madhab,
-                                onSelectMadhab = { m ->
-                                    viewModel.setMadhab(m)
-                                },
-                                primaryText = primaryText,
-                                secondaryText = secondaryText,
-                                borderColor = borderColor
-                            )
-                            5 -> StepHijriConvention(
-                                selectedMethod = hijriDateMethod,
-                                onSelectMethod = { method ->
-                                    viewModel.setHijriDateMethod(method)
-                                },
-                                customOffset = customHijriOffset,
-                                onSetCustomOffset = { offset ->
-                                    viewModel.setCustomHijriOffset(offset)
-                                },
-                                primaryText = primaryText,
-                                secondaryText = secondaryText,
-                                mutedText = mutedText,
-                                borderColor = borderColor
-                            )
-                            6 -> StepNotificationsAndReliability(
-                                context = context,
-                                isNotificationsPrefEnabled = isNotificationsEnabledPref,
-                                onToggleNotificationsPref = { enabled ->
-                                    isNotificationsEnabledPref = enabled
-                                    notificationManager.isSmartNotificationsEnabled = enabled
-                                    notificationManager.isPrayerTimeNotificationsEnabled = enabled
-                                },
-                                isNotificationPermissionGranted = isNotificationPermissionGranted,
-                                notificationPermissionAttempted = notificationPermissionAttempted,
-                                onRequestNotificationPermission = {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                    } else {
-                                        notificationManager.openAppNotificationSettings()
-                                    }
-                                },
-                                onOpenNotificationSettings = {
-                                    notificationManager.openAppNotificationSettings()
-                                },
-                                isBatteryOptimizationIgnored = isBatteryOptimizationIgnored,
-                                onOpenBatterySettings = {
-                                    notificationManager.openBatteryOptimizationSettings()
-                                },
-                                isExactAlarmPermitted = isExactAlarmPermitted,
-                                onOpenExactAlarmSettings = {
-                                    notificationManager.openExactAlarmSettings()
-                                },
-                                preReminderOffset = preReminderOffset,
-                                onSelectPreReminder = { offset ->
-                                    preReminderOffset = offset
-                                    notificationManager.preReminderOffset = offset
-                                },
-                                primaryText = primaryText,
-                                secondaryText = secondaryText,
-                                mutedText = mutedText,
-                                borderColor = borderColor
-                            )
-                            7 -> StepAutomaticBackup(
-                                currentFrequency = autoBackupFrequency,
-                                onSelectFrequency = { freq ->
-                                    autoBackupFrequency = freq
-                                    BackupManager.setAutoBackupFrequency(context, freq)
-                                    if (driveAccount != null) {
-                                        GoogleDriveBackupWorker.schedule(context, freq)
-                                    }
-                                },
-                                driveAccount = driveAccount,
-                                onRequestDriveAuth = requestDriveAuth,
-                                isBackingUp = isManualBackingUp,
-                                lastBackupTime = lastBackupTime,
-                                manualBackupMessage = manualBackupMessage,
-                                onManualBackup = onManualBackup,
-                                primaryText = primaryText,
-                                secondaryText = secondaryText,
-                                mutedText = mutedText,
-                                borderColor = borderColor
-                            )
-                            8 -> StepTasbeehHaptics(
-                                selectedSound = tasbeehSound,
-                                onSelectSound = { sound ->
-                                    viewModel.setTasbeehSound(sound)
-                                },
-                                vibrationEnabled = vibrationEnabled,
-                                onToggleVibration = { enabled ->
-                                    viewModel.setVibrationEnabled(enabled)
-                                },
-                                primaryText = primaryText,
-                                secondaryText = secondaryText,
-                                mutedText = mutedText,
-                                borderColor = borderColor
-                            )
-                            9 -> StepAppearanceAndCapabilities(
-                                selectedMode = appearanceMode,
-                                onSelectMode = { mode ->
-                                    viewModel.setAppearanceMode(mode)
-                                },
-                                selectedCity = selectedCity,
-                                calcMethod = calcMethod,
-                                madhab = madhab,
-                                isLocationPermissionGranted = isLocationPermissionGranted,
-                                isNotificationPermissionGranted = isNotificationPermissionGranted,
-                                isBatteryOptimizationIgnored = isBatteryOptimizationIgnored,
-                                driveAccount = driveAccount,
-                                autoBackupFrequency = autoBackupFrequency,
-                                primaryText = primaryText,
-                                secondaryText = secondaryText,
-                                mutedText = mutedText,
-                                borderColor = borderColor
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Bottom Navigation Actions
-            SetupBottomActions(
-                currentStep = currentStep,
-                totalSteps = TOTAL_STEPS,
-                onBack = {
-                    if (currentStep > 0) currentStep -= 1
-                },
-                onNext = {
-                    if (currentStep < TOTAL_STEPS - 1) {
-                        currentStep += 1
-                    } else {
-                        BackupManager.setAutoBackupFrequency(context, autoBackupFrequency)
-                        if (driveAccount != null) {
-                            GoogleDriveBackupWorker.schedule(context, autoBackupFrequency)
-                        }
-                        onSetupComplete()
-                    }
-                }
-            )
-        }
-    }
-}
-
-// -------------------------------------------------------------------------------------------------
-// Top Bar with Segmented Progress Indicator
-// -------------------------------------------------------------------------------------------------
-
-@Composable
-private fun SetupTopBar(
-    currentStep: Int,
-    totalSteps: Int,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val borderColor = Color.semanticBorder.copy(alpha = 0.5f)
-    val accentColor = Color.semanticPrimaryAccent
-
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 12.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            if (currentStep > 0) {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(Color.semanticSurfaceElevated)
-                        .border(1.dp, borderColor, CircleShape)
-                        .testTag("setup_back_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.semanticPrimaryText,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            } else {
-                Spacer(modifier = Modifier.size(38.dp))
-            }
-
-            Text(
-                text = "FiveLight",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.8.sp
-                ),
-                color = Color.semanticPrimaryText
-            )
-
-            Spacer(modifier = Modifier.size(38.dp))
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Segmented Progress Bar
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            for (i in 0 until totalSteps) {
-                val isCompletedOrCurrent = i <= currentStep
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(2.dp))
-                        .background(
-                            if (isCompletedOrCurrent) accentColor else borderColor.copy(alpha = 0.35f)
-                        )
-                )
-            }
-        }
-    }
-}
-
-// -------------------------------------------------------------------------------------------------
-// Step 1: Welcome & Overview
-// -------------------------------------------------------------------------------------------------
-
-@Composable
-private fun StepWelcome(
-    currentUser: FirebaseUser?,
-    primaryText: Color,
-    secondaryText: Color,
-    mutedText: Color,
-    borderColor: Color
-) {
-    val scrollState = rememberScrollState()
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        val email = currentUser?.email ?: "Account"
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.semanticSurfaceElevated)
-                .border(1.dp, borderColor, RoundedCornerShape(16.dp))
-                .padding(20.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(Color.semanticSuccess)
-                    )
-                    Text(
-                        text = "Signed in as $email",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-                        color = Color.semanticSuccess
-                    )
-                }
-                Text(
-                    text = "Welcome to FiveLight",
-                    style = MaterialTheme.typography.headlineSmall.copy(
-                        fontFamily = InstrumentSerifItalic,
-                        fontSize = 24.sp
-                    ),
-                    color = primaryText
-                )
-                Text(
-                    text = "In the next quick steps, we will configure your location, prayer calculations, notification permissions, and appearance. You can change these anytime in Preferences.",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, lineHeight = 19.sp),
-                    color = secondaryText
-                )
-            }
-        }
-
-        // Overview Highlights
-        OverviewFeatureRow(
-            icon = Icons.Outlined.Place,
-            title = "Geographic Location",
-            description = "Calculates accurate local prayer times and Qibla angle.",
-            primaryText = primaryText,
-            secondaryText = secondaryText,
-            borderColor = borderColor
-        )
-
-        OverviewFeatureRow(
-            icon = Icons.Outlined.CheckCircle,
-            title = "Calculation & Madhab",
-            description = "Conventions for Fajr, Isha, and Asr shadow timings.",
-            primaryText = primaryText,
-            secondaryText = secondaryText,
-            borderColor = borderColor
-        )
-
-        OverviewFeatureRow(
-            icon = Icons.Outlined.Notifications,
-            title = "Prayer Reminders & Reliability",
-            description = "Quiet, dependable alerts when prayer times enter.",
-            primaryText = primaryText,
-            secondaryText = secondaryText,
-            borderColor = borderColor
-        )
-
-        OverviewFeatureRow(
-            icon = Icons.Outlined.LightMode,
-            title = "Appearance & Audio",
-            description = "Theme aesthetic, tasbeeh sound, and tactile feedback.",
-            primaryText = primaryText,
-            secondaryText = secondaryText,
-            borderColor = borderColor
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-    }
-}
-
-@Composable
-private fun OverviewFeatureRow(
-    icon: ImageVector,
-    title: String,
-    description: String,
-    primaryText: Color,
-    secondaryText: Color,
-    borderColor: Color
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color.semanticSurfaceElevated.copy(alpha = 0.5f))
-            .border(1.dp, borderColor.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(Color.semanticPrimaryAccent.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = Color.semanticPrimaryAccent,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = primaryText
-            )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                color = secondaryText
-            )
-        }
-    }
-}
-
-private fun formatDriveBackupSize(bytes: Long): String {
-    if (bytes <= 0) return "0 B"
-    val kb = bytes / 1024.0
-    return if (kb < 1024.0) {
-        String.format(Locale.US, "%.1f KB", kb)
-    } else {
-        String.format(Locale.US, "%.1f MB", kb / 1024.0)
-    }
-}
-
-private fun formatBackupTimestamp(modifiedTimeStr: String?, defaultEpoch: Long = 0L): String {
-    if (!modifiedTimeStr.isNullOrBlank()) {
-        try {
-            val instant = java.time.Instant.parse(modifiedTimeStr)
-            val zone = java.time.ZoneId.systemDefault()
-            val formatter = java.time.format.DateTimeFormatter.ofLocalizedDateTime(
-                java.time.format.FormatStyle.MEDIUM,
-                java.time.format.FormatStyle.SHORT
-            )
-            return formatter.format(instant.atZone(zone))
-        } catch (_: Exception) {}
-    }
-    if (defaultEpoch > 0) {
-        try {
-            return DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(defaultEpoch))
-        } catch (_: Exception) {}
-    }
-    return "Not available"
-}
-
-// -------------------------------------------------------------------------------------------------
-// Step 2: Restore your FiveLight data
-// -------------------------------------------------------------------------------------------------
-
-@Composable
-private fun StepRestoreData(
-    currentUser: FirebaseUser?,
-    driveAccount: GoogleSignInAccount?,
-    isSearchingBackup: Boolean,
-    detectedBackupInfo: GoogleDriveService.DriveBackupInfo?,
-    searchBackupError: String?,
-    isRestoring: Boolean,
-    restoreProgressStage: String?,
-    restoreError: String?,
-    isRestoreCompleted: Boolean,
-    onRequestDriveAuth: () -> Unit,
-    onRestoreBackup: () -> Unit,
-    onContinue: () -> Unit,
-    primaryText: Color,
-    secondaryText: Color,
-    mutedText: Color,
-    borderColor: Color
-) {
-    val scrollState = rememberScrollState()
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .testTag("restore_data_container"),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        // Account Context Header
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(14.dp))
-                .background(Color.semanticSurfaceElevated.copy(alpha = 0.6f))
-                .border(1.dp, borderColor, RoundedCornerShape(14.dp))
-                .padding(14.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.AccountCircle,
-                            contentDescription = null,
-                            tint = Color.semanticPrimaryAccent,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "FiveLight Account",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
-                            color = secondaryText
-                        )
-                    }
-                    Text(
-                        text = currentUser?.email ?: "Guest",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.Medium),
-                        color = primaryText
-                    )
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Cloud,
-                            contentDescription = null,
-                            tint = if (driveAccount != null) Color.semanticSuccess else mutedText,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "Google Drive",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
-                            color = secondaryText
-                        )
-                    }
-                    Text(
-                        text = driveAccount?.email ?: "Not connected",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = if (driveAccount != null) Color.semanticSuccess else Color.semanticWarning
-                        )
-                    )
+                restoreState = "FAILURE"
+                val rawMsg = result.exceptionOrNull()?.message ?: "Unknown error"
+                restoreErrorMessage = when {
+                    rawMsg.contains("permission", ignoreCase = true) || rawMsg.contains("drive.appdata", ignoreCase = true) ->
+                        "Drive permission is required to access your backup. Please check your Google account connection."
+                    rawMsg.contains("Decryption", ignoreCase = true) || rawMsg.contains("different user", ignoreCase = true) ->
+                        "The backup is encrypted with a different account key. Please ensure you are signed into the correct FiveLight account."
+                    rawMsg.contains("No FiveLight backup", ignoreCase = true) ->
+                        "No backup file was found in Google Drive."
+                    else -> "We were unable to restore your backup due to a network interruption. Please try again."
                 }
             }
         }
-
-        // Main Dynamic State Card
-        when {
-            isRestoring -> {
-                // Restore in progress with staged feedback
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.semanticSurfaceElevated)
-                        .border(1.5.dp, Color.semanticPrimaryAccent, RoundedCornerShape(16.dp))
-                        .padding(20.dp)
-                        .testTag("restore_in_progress_card")
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            color = Color.semanticPrimaryAccent,
-                            modifier = Modifier.size(36.dp)
-                        )
-
-                        Text(
-                            text = "Restoring FiveLight Data",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = primaryText
-                        )
-
-                        val currentStageText = restoreProgressStage ?: "Preparing backup"
-                        Text(
-                            text = "$currentStageText...",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
-                            color = Color.semanticPrimaryAccent
-                        )
-
-                        // Visual Stages
-                        val stages = listOf("Preparing backup", "Decrypting", "Verifying", "Restoring data", "Finishing")
-                        val activeIndex = stages.indexOfFirst { it.equals(restoreProgressStage, ignoreCase = true) }.coerceAtLeast(0)
-
-                        Column(
-                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            stages.forEachIndexed { index, stageName ->
-                                val isDone = index < activeIndex
-                                val isCurrent = index == activeIndex
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (isDone) Icons.Outlined.CheckCircle else if (isCurrent) Icons.Outlined.Refresh else Icons.Outlined.CloudSync,
-                                        contentDescription = null,
-                                        tint = if (isDone) Color.semanticSuccess else if (isCurrent) Color.semanticPrimaryAccent else mutedText.copy(alpha = 0.4f),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text(
-                                        text = stageName,
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontSize = 12.sp,
-                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
-                                        ),
-                                        color = if (isDone) primaryText else if (isCurrent) Color.semanticPrimaryAccent else secondaryText.copy(alpha = 0.6f)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            isRestoreCompleted -> {
-                // Success banner
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.semanticSurfaceElevated)
-                        .border(1.5.dp, Color.semanticSuccess, RoundedCornerShape(16.dp))
-                        .padding(20.dp)
-                        .testTag("restore_success_card")
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(CircleShape)
-                                .background(Color.semanticSuccess.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.CheckCircle,
-                                contentDescription = null,
-                                tint = Color.semanticSuccess,
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
-
-                        Text(
-                            text = "Your Data is Restored",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = primaryText
-                        )
-
-                        Text(
-                            text = "All your prayer logs, dhikr counters, Quran bookmarks, and preferences have been successfully restored and verified from Google Drive.",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                            color = secondaryText
-                        )
-
-                        Button(
-                            onClick = onContinue,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(46.dp)
-                                .testTag("continue_after_restore_button"),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.semanticSuccess,
-                                contentColor = Color.White
-                            )
-                        ) {
-                            Text(
-                                text = "Continue Setup",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
-                    }
-                }
-            }
-
-            restoreError != null -> {
-                // Error card with retry
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.semanticSurfaceElevated)
-                        .border(1.5.dp, Color.semanticError, RoundedCornerShape(16.dp))
-                        .padding(18.dp)
-                        .testTag("restore_error_card")
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Warning,
-                                contentDescription = null,
-                                tint = Color.semanticError,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Text(
-                                text = "Restore Error",
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                color = Color.semanticError
-                            )
-                        }
-
-                        Text(
-                            text = restoreError,
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                            color = secondaryText
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = onContinue,
-                                modifier = Modifier.weight(1f).height(42.dp),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Text("Skip", color = secondaryText)
-                            }
-                            Button(
-                                onClick = onRestoreBackup,
-                                modifier = Modifier.weight(1f).height(42.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.semanticPrimaryAccent,
-                                    contentColor = Color.White
-                                )
-                            ) {
-                                Text("Retry Restore")
-                            }
-                        }
-                    }
-                }
-            }
-
-            isSearchingBackup -> {
-                // Searching indicator
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.semanticSurfaceElevated)
-                        .border(1.dp, borderColor, RoundedCornerShape(16.dp))
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            color = Color.semanticPrimaryAccent,
-                            modifier = Modifier.size(28.dp)
-                        )
-                        Text(
-                            text = "Checking Google Drive for existing backups...",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp),
-                            color = secondaryText
-                        )
-                    }
-                }
-            }
-
-            driveAccount == null -> {
-                // Not connected to Drive
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.semanticSurfaceElevated)
-                        .border(1.dp, borderColor, RoundedCornerShape(16.dp))
-                        .padding(18.dp)
-                        .testTag("drive_not_connected_card")
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.semanticPrimaryAccent.copy(alpha = 0.12f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.CloudSync,
-                                    contentDescription = null,
-                                    tint = Color.semanticPrimaryAccent,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = "Connect Google Drive",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = primaryText
-                                )
-                                Text(
-                                    text = "Restore previous backups from your cloud drive",
-                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                    color = secondaryText
-                                )
-                            }
-                        }
-
-                        Text(
-                            text = "If you previously created an encrypted backup of your prayer logs, dhikr history, or preferences, connect your Google Drive account to restore them.",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                            color = secondaryText
-                        )
-
-                        Text(
-                            text = "FiveLight uses your private Google Drive app storage (drive.appdata). It never accesses your personal files.",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, color = mutedText)
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = onContinue,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp)
-                                    .testTag("skip_restore_button"),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Text("Skip for Now", color = secondaryText)
-                            }
-
-                            Button(
-                                onClick = onRequestDriveAuth,
-                                modifier = Modifier
-                                    .weight(1.3f)
-                                    .height(44.dp)
-                                    .testTag("connect_drive_button"),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.semanticPrimaryAccent,
-                                    contentColor = Color.White
-                                )
-                            ) {
-                                Text("Connect Drive", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-                            }
-                        }
-                    }
-                }
-            }
-
-            detectedBackupInfo != null -> {
-                // Backup found!
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.semanticSurfaceElevated)
-                        .border(1.5.dp, Color.semanticSuccess, RoundedCornerShape(16.dp))
-                        .padding(18.dp)
-                        .testTag("backup_found_card")
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.Backup,
-                                    contentDescription = null,
-                                    tint = Color.semanticSuccess,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Text(
-                                    text = "BACKUP FOUND",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 1.sp
-                                    ),
-                                    color = Color.semanticSuccess
-                                )
-                            }
-                        }
-
-                        // Backup Metadata Rows
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color.semanticBackground.copy(alpha = 0.5f))
-                                .padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Account", style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp), color = secondaryText)
-                                Text(detectedBackupInfo.accountEmail, style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold), color = primaryText)
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Backup Date", style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp), color = secondaryText)
-                                Text(formatBackupTimestamp(detectedBackupInfo.modifiedTime), style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold), color = primaryText)
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Size", style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp), color = secondaryText)
-                                Text(formatDriveBackupSize(detectedBackupInfo.sizeBytes), style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold), color = primaryText)
-                            }
-                        }
-
-                        Text(
-                            text = "What will be restored:",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
-                            color = primaryText
-                        )
-
-                        // Data list
-                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            listOf(
-                                "Prayer logs and completion records",
-                                "Missed prayer (Qada) tracking and progress",
-                                "Dhikr history, counts, and active sessions",
-                                "Quran bookmarks and reading positions",
-                                "Custom Tasbeeh presets, counts, and targets",
-                                "Calculation methods, madhab, and display preferences"
-                            ).forEach { item ->
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Check,
-                                        contentDescription = null,
-                                        tint = Color.semanticPrimaryAccent,
-                                        modifier = Modifier.size(12.dp)
-                                    )
-                                    Text(
-                                        text = item,
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                        color = secondaryText
-                                    )
-                                }
-                            }
-                        }
-
-                        Text(
-                            text = "Restoring will update your local database with your encrypted cloud backup.",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                            color = mutedText
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = onContinue,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp)
-                                    .testTag("skip_restore_button"),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Text("Skip", color = secondaryText)
-                            }
-
-                            Button(
-                                onClick = onRestoreBackup,
-                                modifier = Modifier
-                                    .weight(1.4f)
-                                    .height(44.dp)
-                                    .testTag("restore_backup_button"),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.semanticPrimaryAccent,
-                                    contentColor = Color.White
-                                )
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Restore,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text(
-                                        text = "Restore",
-                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                                    )
-                                }
-                            }
-                        }
-
-                        TextButton(
-                            onClick = onRequestDriveAuth,
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
-                        ) {
-                            Text(
-                                text = "Switch Google Account",
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                color = secondaryText
-                            )
-                        }
-                    }
-                }
-            }
-
-            else -> {
-                // Drive connected, but no backup found
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.semanticSurfaceElevated)
-                        .border(1.dp, borderColor, RoundedCornerShape(16.dp))
-                        .padding(18.dp)
-                        .testTag("no_backup_found_card")
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Info,
-                                contentDescription = null,
-                                tint = Color.semanticSecondaryText,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = "NO BACKUP FOUND",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp
-                                ),
-                                color = secondaryText
-                            )
-                        }
-
-                        Text(
-                            text = "No existing FiveLight backup was found in this Google Drive account (${driveAccount?.email}). You can create your first backup in the Automatic Backup step or from your Profile anytime.",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                            color = secondaryText
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = onRequestDriveAuth,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Text("Switch Account", color = secondaryText, fontSize = 12.sp)
-                            }
-
-                            Button(
-                                onClick = onContinue,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(44.dp)
-                                    .testTag("skip_restore_button"),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.semanticPrimaryAccent,
-                                    contentColor = Color.White
-                                )
-                            ) {
-                                Text("Continue", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// -------------------------------------------------------------------------------------------------
-// Step 3: Location With Real Android Permission Handling
-// -------------------------------------------------------------------------------------------------
-
-@Composable
-private fun StepLocationWithPermissions(
-    context: Context,
-    selectedCity: CityLocation,
-    isLocationGranted: Boolean,
-    permissionAttempted: Boolean,
-    onRequestPermission: () -> Unit,
-    predefinedCities: List<CityLocation>,
-    onSelectCity: (CityLocation) -> Unit,
-    primaryText: Color,
-    secondaryText: Color,
-    mutedText: Color,
-    borderColor: Color
-) {
-    var searchQuery by remember { mutableStateOf("") }
-    var isManualPickerOpen by remember { mutableStateOf(!isLocationGranted) }
-
-    val filteredCities = remember(searchQuery, predefinedCities) {
-        if (searchQuery.isBlank()) {
-            predefinedCities
-        } else {
-            predefinedCities.filter {
-                it.cityName.contains(searchQuery, ignoreCase = true) ||
-                        it.countryName.contains(searchQuery, ignoreCase = true)
-            }
-        }
-    }
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // Status Card: Real Android state inspection
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.semanticSurfaceElevated)
-                .border(
-                    1.5.dp,
-                    if (isLocationGranted) Color.semanticSuccess else borderColor,
-                    RoundedCornerShape(16.dp)
-                )
-                .padding(16.dp)
-                .testTag("location_status_card")
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isLocationGranted) Icons.Outlined.CheckCircle else Icons.Outlined.Place,
-                            contentDescription = null,
-                            tint = if (isLocationGranted) Color.semanticSuccess else Color.semanticPrimaryAccent,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = if (isLocationGranted) "LOCATION ENABLED" else "LOCATION NOT ENABLED",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp
-                            ),
-                            color = if (isLocationGranted) Color.semanticSuccess else Color.semanticWarning
-                        )
-                    }
-
-                    if (isLocationGranted) {
-                        Box(
-                            modifier = Modifier
-                                .size(22.dp)
-                                .clip(CircleShape)
-                                .background(Color.semanticSuccess),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Check,
-                                contentDescription = "Granted",
-                                tint = Color.White,
-                                modifier = Modifier.size(13.dp)
-                            )
-                        }
-                    }
-                }
-
-                Text(
-                    text = "${selectedCity.cityName}, ${selectedCity.countryName}",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    ),
-                    color = primaryText,
-                    modifier = Modifier.testTag("location_current_name")
-                )
-
-                Text(
-                    text = String.format(
-                        java.util.Locale.US,
-                        "Coordinates: %.4f° N, %.4f° E",
-                        selectedCity.latitude,
-                        selectedCity.longitude
-                    ),
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                    color = mutedText
-                )
-            }
-        }
-
-        // Action / Permission Prompt Card
-        if (!isLocationGranted) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color.semanticSurfaceElevated.copy(alpha = 0.6f))
-                    .border(1.dp, borderColor, RoundedCornerShape(14.dp))
-                    .padding(14.dp)
-                    .testTag("location_permission_action_card")
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = "Use your location for accurate prayer times.",
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
-                        ),
-                        color = primaryText
-                    )
-                    Text(
-                        text = "Allowing location grants FiveLight access to calculate exact solar angles and Kaaba orientation wherever you travel.",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                        color = secondaryText
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = onRequestPermission,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                                .testTag("allow_location_button"),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.semanticPrimaryAccent,
-                                contentColor = Color.White
-                            )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.MyLocation,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Allow Location",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
-
-                        OutlinedButton(
-                            onClick = { isManualPickerOpen = !isManualPickerOpen },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                                .testTag("choose_city_manually_button"),
-                            shape = RoundedCornerShape(10.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.EditLocationAlt,
-                                contentDescription = null,
-                                tint = primaryText,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = if (isManualPickerOpen) "Close Directory" else "Choose Manually",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                                color = primaryText
-                            )
-                        }
-                    }
-                }
-            }
-        } else {
-            // Location is granted: provide quick manual override toggle if needed
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { isManualPickerOpen = !isManualPickerOpen }
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = if (isManualPickerOpen) "Hide manual cities" else "Want to choose a different city manually?",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                    color = Color.semanticPrimaryAccent
-                )
-                Text(
-                    text = if (isManualPickerOpen) "Done" else "Change",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = Color.semanticPrimaryAccent
-                )
-            }
-        }
-
-        // Manual City Search & Directory Picker
-        if (isManualPickerOpen) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.semanticSurfaceElevated)
-                    .border(1.dp, borderColor, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Search,
-                        contentDescription = "Search",
-                        tint = mutedText,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    BasicTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("location_search_input"),
-                        textStyle = TextStyle(
-                            fontSize = 14.sp,
-                            color = primaryText
-                        ),
-                        cursorBrush = SolidColor(Color.semanticPrimaryAccent),
-                        singleLine = true,
-                        decorationBox = { innerTextField ->
-                            if (searchQuery.isEmpty()) {
-                                Text(
-                                    text = "Search city (e.g., London, Cairo, Dubai)",
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
-                                    color = mutedText
-                                )
-                            }
-                            innerTextField()
-                        }
-                    )
-                }
-            }
-
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .testTag("location_city_list"),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                items(filteredCities, key = { "${it.cityName}_${it.countryName}" }) { city ->
-                    val isCurrent = city.cityName.equals(selectedCity.cityName, ignoreCase = true) &&
-                            city.countryName.equals(selectedCity.countryName, ignoreCase = true)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                if (isCurrent) Color.semanticPrimaryAccent.copy(alpha = 0.1f) else Color.semanticSurfaceElevated
-                            )
-                            .border(
-                                1.dp,
-                                if (isCurrent) Color.semanticPrimaryAccent else borderColor.copy(alpha = 0.4f),
-                                RoundedCornerShape(10.dp)
-                            )
-                            .clickable {
-                                onSelectCity(city)
-                            }
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
-                            .testTag("city_item_${city.cityName.lowercase()}"),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column {
-                            Text(
-                                text = "${city.cityName}, ${city.countryName}",
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium
-                                ),
-                                color = if (isCurrent) Color.semanticPrimaryAccent else primaryText
-                            )
-                            Text(
-                                text = String.format(java.util.Locale.US, "%.2f° N, %.2f° E", city.latitude, city.longitude),
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                color = mutedText
-                            )
-                        }
-
-                        if (isCurrent) {
-                            Icon(
-                                imageVector = Icons.Outlined.CheckCircle,
-                                contentDescription = "Active",
-                                tint = Color.semanticPrimaryAccent,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// -------------------------------------------------------------------------------------------------
-// Step 3: Prayer Calculation Method
-// -------------------------------------------------------------------------------------------------
-
-@Composable
-private fun StepCalcMethod(
-    selectedMethod: CalcMethod,
-    onSelectMethod: (CalcMethod) -> Unit,
-    primaryText: Color,
-    secondaryText: Color,
-    borderColor: Color
-) {
-    val methods = remember { CalcMethod.entries }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("calc_method_list"),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        items(methods, key = { it.name }) { method ->
-            val isSelected = method == selectedMethod
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(
-                        if (isSelected) Color.semanticSurfaceElevated else Color.semanticSurfaceElevated.copy(alpha = 0.5f)
-                    )
-                    .border(
-                        1.5.dp,
-                        if (isSelected) Color.semanticPrimaryAccent else borderColor,
-                        RoundedCornerShape(14.dp)
-                    )
-                    .clickable { onSelectMethod(method) }
-                    .padding(16.dp)
-                    .testTag("calc_method_${method.name.lowercase()}")
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = method.displayName,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                fontSize = 15.sp
-                            ),
-                            color = primaryText
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = if (method == CalcMethod.UMM_AL_QURA) {
-                                "Fajr angle: ${method.fajrAngle}°, Isha: 90 min after Maghrib"
-                            } else {
-                                "Fajr angle: ${method.fajrAngle}°, Isha angle: ${method.ishaAngle}°"
-                            },
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                            color = secondaryText
-                        )
-                    }
-
-                    RadioButton(
-                        selected = isSelected,
-                        onClick = { onSelectMethod(method) },
-                        colors = RadioButtonDefaults.colors(
-                            selectedColor = Color.semanticPrimaryAccent,
-                            unselectedColor = Color.semanticStrongBorder
-                        )
-                    )
-                }
-            }
-        }
-    }
-}
-
-// -------------------------------------------------------------------------------------------------
-// Step 4: Asr Calculation / Madhab
-// -------------------------------------------------------------------------------------------------
-
-@Composable
-private fun StepMadhab(
-    selectedMadhab: Madhab,
-    onSelectMadhab: (Madhab) -> Unit,
-    primaryText: Color,
-    secondaryText: Color,
-    borderColor: Color
-) {
-    val madhabs = remember { Madhab.entries }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("madhab_list"),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        madhabs.forEach { m ->
-            val isSelected = m == selectedMadhab
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(
-                        if (isSelected) Color.semanticSurfaceElevated else Color.semanticSurfaceElevated.copy(alpha = 0.5f)
-                    )
-                    .border(
-                        1.5.dp,
-                        if (isSelected) Color.semanticPrimaryAccent else borderColor,
-                        RoundedCornerShape(16.dp)
-                    )
-                    .clickable { onSelectMadhab(m) }
-                    .padding(20.dp)
-                    .testTag("madhab_card_${m.name.lowercase()}")
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = m.displayName,
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                                fontSize = 17.sp
-                            ),
-                            color = primaryText
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = when (m) {
-                                Madhab.STANDARD -> "Shadow length 1x object height (standard majority consensus)."
-                                Madhab.HANAFI -> "Shadow length 2x object height (later Asr start time)."
-                            },
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                            color = secondaryText
-                        )
-                    }
-
-                    RadioButton(
-                        selected = isSelected,
-                        onClick = { onSelectMadhab(m) },
-                        colors = RadioButtonDefaults.colors(
-                            selectedColor = Color.semanticPrimaryAccent,
-                            unselectedColor = Color.semanticStrongBorder
-                        )
-                    )
-                }
-            }
-        }
-    }
-}
-
-// -------------------------------------------------------------------------------------------------
-// Step 5: Hijri Date Convention
-// -------------------------------------------------------------------------------------------------
-
-@Composable
-private fun StepHijriConvention(
-    selectedMethod: HijriDateMethod,
-    onSelectMethod: (HijriDateMethod) -> Unit,
-    customOffset: Int,
-    onSetCustomOffset: (Int) -> Unit,
-    primaryText: Color,
-    secondaryText: Color,
-    mutedText: Color,
-    borderColor: Color
-) {
-    val methods = remember { HijriDateMethod.entries }
-
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("hijri_convention_list"),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        items(methods, key = { it.name }) { method ->
-            val isSelected = method == selectedMethod
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(
-                        if (isSelected) Color.semanticSurfaceElevated else Color.semanticSurfaceElevated.copy(alpha = 0.5f)
-                    )
-                    .border(
-                        1.5.dp,
-                        if (isSelected) Color.semanticPrimaryAccent else borderColor,
-                        RoundedCornerShape(14.dp)
-                    )
-                    .clickable { onSelectMethod(method) }
-                    .padding(16.dp)
-                    .testTag("hijri_method_${method.name.lowercase()}")
-            ) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = method.displayName,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 15.sp
-                                ),
-                                color = primaryText
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = method.description,
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                color = secondaryText
-                            )
-                        }
-
-                        RadioButton(
-                            selected = isSelected,
-                            onClick = { onSelectMethod(method) },
-                            colors = RadioButtonDefaults.colors(
-                                selectedColor = Color.semanticPrimaryAccent,
-                                unselectedColor = Color.semanticStrongBorder
-                            )
-                        )
-                    }
-
-                    // Custom Offset Stepper if CUSTOM_OFFSET is selected
-                    if (method == HijriDateMethod.CUSTOM_OFFSET && isSelected) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color.semanticSurfaceElevated.copy(alpha = 0.6f))
-                                .border(1.dp, borderColor.copy(alpha = 0.5f), RoundedCornerShape(10.dp))
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Adjust Days Offset:",
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                                color = secondaryText
-                            )
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                listOf(-2, -1, 0, 1, 2).forEach { offset ->
-                                    val isOffsetSelected = customOffset == offset
-                                    Box(
-                                        modifier = Modifier
-                                            .size(32.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                if (isOffsetSelected) Color.semanticPrimaryAccent else Color.Transparent
-                                            )
-                                            .border(
-                                                1.dp,
-                                                if (isOffsetSelected) Color.semanticPrimaryAccent else borderColor,
-                                                CircleShape
-                                            )
-                                            .clickable { onSetCustomOffset(offset) },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = if (offset > 0) "+$offset" else "$offset",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontWeight = if (isOffsetSelected) FontWeight.Bold else FontWeight.Normal,
-                                                fontSize = 11.sp
-                                            ),
-                                            color = if (isOffsetSelected) Color.White else primaryText
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// -------------------------------------------------------------------------------------------------
-// Step 6: Prayer Notifications & Background Reliability
-// -------------------------------------------------------------------------------------------------
-
-@Composable
-private fun StepNotificationsAndReliability(
-    context: Context,
-    isNotificationsPrefEnabled: Boolean,
-    onToggleNotificationsPref: (Boolean) -> Unit,
-    isNotificationPermissionGranted: Boolean,
-    notificationPermissionAttempted: Boolean,
-    onRequestNotificationPermission: () -> Unit,
-    onOpenNotificationSettings: () -> Unit,
-    isBatteryOptimizationIgnored: Boolean,
-    onOpenBatterySettings: () -> Unit,
-    isExactAlarmPermitted: Boolean,
-    onOpenExactAlarmSettings: () -> Unit,
-    preReminderOffset: PrePrayerReminderOffset,
-    onSelectPreReminder: (PrePrayerReminderOffset) -> Unit,
-    primaryText: Color,
-    secondaryText: Color,
-    mutedText: Color,
-    borderColor: Color
-) {
-    val scrollState = rememberScrollState()
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .testTag("step_notifications_container"),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        // SECTION 1: NOTIFICATION PERMISSION
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.semanticSurfaceElevated)
-                .border(
-                    1.5.dp,
-                    if (isNotificationPermissionGranted) Color.semanticSuccess else borderColor,
-                    RoundedCornerShape(16.dp)
-                )
-                .padding(16.dp)
-                .testTag("notification_runtime_card")
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isNotificationPermissionGranted) Icons.Outlined.NotificationsActive else Icons.Outlined.NotificationsOff,
-                            contentDescription = null,
-                            tint = if (isNotificationPermissionGranted) Color.semanticSuccess else Color.semanticWarning,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = if (isNotificationPermissionGranted) "NOTIFICATIONS ENABLED" else "NOTIFICATIONS NOT ENABLED",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp
-                            ),
-                            color = if (isNotificationPermissionGranted) Color.semanticSuccess else Color.semanticWarning
-                        )
-                    }
-
-                    if (isNotificationPermissionGranted) {
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .clip(CircleShape)
-                                .background(Color.semanticSuccess),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Check,
-                                contentDescription = "Enabled",
-                                tint = Color.White,
-                                modifier = Modifier.size(12.dp)
-                            )
-                        }
-                    }
-                }
-
-                Text(
-                    text = "Receive notifications for your prayer times.",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = primaryText
-                )
-
-                Text(
-                    text = if (isNotificationPermissionGranted) {
-                        "FiveLight has system permission to post notifications at Fajr, Dhuhr, Asr, Maghrib, and Isha."
-                    } else {
-                        "Without notification permission, prayer times can still be viewed in the app, but timely reminders cannot be delivered to your device."
-                    },
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = secondaryText
-                )
-
-                if (!isNotificationPermissionGranted) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = onRequestNotificationPermission,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                                .testTag("allow_notifications_button"),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.semanticPrimaryAccent,
-                                contentColor = Color.White
-                            )
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Notifications,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Allow Notifications",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
-
-                        if (notificationPermissionAttempted) {
-                            OutlinedButton(
-                                onClick = onOpenNotificationSettings,
-                                modifier = Modifier
-                                    .height(44.dp)
-                                    .testTag("open_notification_settings_button"),
-                                shape = RoundedCornerShape(10.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Outlined.OpenInNew,
-                                    contentDescription = null,
-                                    tint = primaryText,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Settings",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    color = primaryText
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    // Pre-Prayer Preparation offset when notifications are active
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "Pre-Prayer Reminder:",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = secondaryText
-                            )
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            PrePrayerReminderOffset.entries.forEach { offset ->
-                                val isActive = preReminderOffset == offset
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(
-                                            if (isActive) Color.semanticPrimaryAccent else Color.Transparent
-                                        )
-                                        .border(
-                                            1.dp,
-                                            if (isActive) Color.semanticPrimaryAccent else borderColor,
-                                            RoundedCornerShape(8.dp)
-                                        )
-                                        .clickable { onSelectPreReminder(offset) }
-                                        .padding(vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = offset.label,
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-                                            fontSize = 11.sp
-                                        ),
-                                        color = if (isActive) Color.White else primaryText
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // SECTION 2: BACKGROUND RELIABILITY / BATTERY OPTIMIZATIONS
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.semanticSurfaceElevated)
-                .border(
-                    1.5.dp,
-                    if (isBatteryOptimizationIgnored) Color.semanticSuccess else borderColor,
-                    RoundedCornerShape(16.dp)
-                )
-                .padding(16.dp)
-                .testTag("battery_reliability_card")
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isBatteryOptimizationIgnored) Icons.Outlined.CheckCircle else Icons.Outlined.BatteryAlert,
-                            contentDescription = null,
-                            tint = if (isBatteryOptimizationIgnored) Color.semanticSuccess else Color.semanticWarning,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = if (isBatteryOptimizationIgnored) "BACKGROUND ACTIVITY: ENABLED" else "BACKGROUND ACTIVITY: NOT ENABLED",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp
-                            ),
-                            color = if (isBatteryOptimizationIgnored) Color.semanticSuccess else Color.semanticWarning
-                        )
-                    }
-
-                    if (isBatteryOptimizationIgnored) {
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .clip(CircleShape)
-                                .background(Color.semanticSuccess),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Check,
-                                contentDescription = "Enabled",
-                                tint = Color.White,
-                                modifier = Modifier.size(12.dp)
-                            )
-                        }
-                    }
-                }
-
-                Text(
-                    text = "Allow FiveLight to run reliably in the background.",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                    color = primaryText
-                )
-
-                Text(
-                    text = if (isBatteryOptimizationIgnored) {
-                        "FiveLight is exempt from aggressive battery restrictions, allowing scheduled alarms to ring punctually."
-                    } else {
-                        "Modern Android power-saving optimizations may defer background timers when the device is locked. Exempting FiveLight ensures prayers ring precisely on time."
-                    },
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = secondaryText
-                )
-
-                if (!isBatteryOptimizationIgnored) {
-                    Button(
-                        onClick = onOpenBatterySettings,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .testTag("configure_battery_settings_button"),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.semanticSurfaceElevated,
-                            contentColor = primaryText
-                        ),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.OpenInNew,
-                            contentDescription = null,
-                            tint = Color.semanticPrimaryAccent,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Configure in Settings",
-                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                    }
-                }
-            }
-        }
-
-        // SECTION 3: EXACT ALARM CAPABILITY (On Android 12+)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !isExactAlarmPermitted) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color.semanticSurfaceElevated.copy(alpha = 0.6f))
-                    .border(1.dp, borderColor, RoundedCornerShape(14.dp))
-                    .padding(14.dp)
-                    .testTag("exact_alarm_card")
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Info,
-                            contentDescription = null,
-                            tint = Color.semanticWarning,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Text(
-                            text = "EXACT ALARMS RESTRICTED",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = Color.semanticWarning
-                            )
-                        )
-                    }
-                    Text(
-                        text = "Android 12+ requires permission for precise minute-by-minute prayer alarms.",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                        color = secondaryText
-                    )
-                    OutlinedButton(
-                        onClick = onOpenExactAlarmSettings,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(40.dp)
-                            .testTag("allow_exact_alarms_button"),
-                        shape = RoundedCornerShape(8.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
-                    ) {
-                        Text(
-                            text = "Allow Exact Alarms in Settings",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = primaryText
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-    }
-}
-
-// -------------------------------------------------------------------------------------------------
-// Step 7: Tasbeeh Sound & Haptics
-// -------------------------------------------------------------------------------------------------
-
-@Composable
-private fun StepTasbeehHaptics(
-    selectedSound: TasbeehSound,
-    onSelectSound: (TasbeehSound) -> Unit,
-    vibrationEnabled: Boolean,
-    onToggleVibration: (Boolean) -> Unit,
-    primaryText: Color,
-    secondaryText: Color,
-    mutedText: Color,
-    borderColor: Color
-) {
-    val sounds = remember { TasbeehSound.entries }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .testTag("step_tasbeeh_haptics_container"),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        // Vibration Feedback Switch Card
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.semanticSurfaceElevated)
-                .border(1.5.dp, borderColor, RoundedCornerShape(16.dp))
-                .padding(16.dp)
-                .testTag("tasbeeh_vibration_card")
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(Color.semanticPrimaryAccent.copy(alpha = 0.12f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Vibration,
-                            contentDescription = null,
-                            tint = Color.semanticPrimaryAccent,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    Column {
-                        Text(
-                            text = "Vibration Feedback",
-                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                            color = primaryText
-                        )
-                        Text(
-                            text = "Gentle tactile pulse on each dhikr count.",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                            color = secondaryText
-                        )
-                    }
-                }
-
-                Switch(
-                    checked = vibrationEnabled,
-                    onCheckedChange = onToggleVibration,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = Color.semanticPrimaryAccent,
-                        uncheckedTrackColor = Color.semanticControl
-                    ),
-                    modifier = Modifier.testTag("tasbeeh_vibration_switch")
-                )
-            }
-        }
-
-        // Tap Sound Selector
-        Text(
-            text = "TAP SOUND",
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
-            ),
-            color = Color.semanticPrimaryAccent
-        )
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .testTag("tasbeeh_sound_list"),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(sounds, key = { it.name }) { sound ->
-                val isSelected = sound == selectedSound
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            if (isSelected) Color.semanticSurfaceElevated else Color.semanticSurfaceElevated.copy(alpha = 0.5f)
-                        )
-                        .border(
-                            1.dp,
-                            if (isSelected) Color.semanticPrimaryAccent else borderColor,
-                            RoundedCornerShape(12.dp)
-                        )
-                        .clickable { onSelectSound(sound) }
-                        .padding(14.dp)
-                        .testTag("tasbeeh_sound_${sound.name.lowercase()}")
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = sound.displayName,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                ),
-                                color = primaryText
-                            )
-                            Text(
-                                text = sound.description,
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                                color = secondaryText
-                            )
-                        }
-
-                        RadioButton(
-                            selected = isSelected,
-                            onClick = { onSelectSound(sound) },
-                            colors = RadioButtonDefaults.colors(
-                                selectedColor = Color.semanticPrimaryAccent,
-                                unselectedColor = Color.semanticStrongBorder
-                            )
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-// -------------------------------------------------------------------------------------------------
-// Step 8: Automatic Backup
-// -------------------------------------------------------------------------------------------------
-
-@Composable
-private fun StepAutomaticBackup(
-    currentFrequency: BackupManager.AutoBackupFrequency,
-    onSelectFrequency: (BackupManager.AutoBackupFrequency) -> Unit,
-    driveAccount: GoogleSignInAccount?,
-    onRequestDriveAuth: () -> Unit,
-    isBackingUp: Boolean,
-    lastBackupTime: Long,
-    manualBackupMessage: String?,
-    onManualBackup: () -> Unit,
-    primaryText: Color,
-    secondaryText: Color,
-    mutedText: Color,
-    borderColor: Color
-) {
-    val frequencies = remember {
-        listOf(
-            Triple(
-                BackupManager.AutoBackupFrequency.WEEKLY,
-                "Weekly (Recommended)",
-                "Creates an encrypted backup every 7 days when connected to Wi-Fi/data."
-            ),
-            Triple(
-                BackupManager.AutoBackupFrequency.DAILY,
-                "Daily",
-                "Creates an encrypted backup every 24 hours."
-            ),
-            Triple(
-                BackupManager.AutoBackupFrequency.OFF,
-                "Off",
-                "Do not back up automatically."
-            )
-        )
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .testTag("automatic_backup_container"),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(24.dp),
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        // Frequency Options
-        frequencies.forEach { (freq, title, desc) ->
-            val isSelected = freq == currentFrequency
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(
-                        if (isSelected) Color.semanticSurfaceElevated else Color.semanticSurfaceElevated.copy(alpha = 0.5f)
-                    )
-                    .border(
-                        1.5.dp,
-                        if (isSelected) Color.semanticPrimaryAccent else borderColor,
-                        RoundedCornerShape(14.dp)
-                    )
-                    .clickable { onSelectFrequency(freq) }
-                    .padding(16.dp)
-                    .testTag("auto_backup_freq_${freq.name.lowercase()}")
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                            ),
-                            color = primaryText
-                        )
-                        Text(
-                            text = desc,
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                            color = secondaryText
-                        )
-                    }
-
-                    RadioButton(
-                        selected = isSelected,
-                        onClick = { onSelectFrequency(freq) },
-                        colors = RadioButtonDefaults.colors(
-                            selectedColor = Color.semanticPrimaryAccent,
-                            unselectedColor = Color.semanticStrongBorder
-                        )
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(2.dp))
-
-        // Google Drive Status Card
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.semanticSurfaceElevated.copy(alpha = 0.6f))
-                .border(
-                    1.5.dp,
-                    if (driveAccount != null) Color.semanticSuccess else borderColor,
-                    RoundedCornerShape(16.dp)
+        Column {
+            if (isAccountMismatch) {
+                Text(
+                    text = "Account Mismatch",
+                    fontFamily = InstrumentSerifItalic,
+                    fontSize = 32.sp,
+                    color = Color.semanticPrimaryText
                 )
-                .padding(16.dp)
-                .testTag("auto_backup_drive_status_card")
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (driveAccount != null) Icons.Outlined.CloudDone else Icons.Outlined.CloudOff,
-                            contentDescription = null,
-                            tint = if (driveAccount != null) Color.semanticSuccess else Color.semanticWarning,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = if (driveAccount != null) "GOOGLE DRIVE CONNECTED" else "GOOGLE DRIVE REQUIRED",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 1.sp
-                            ),
-                            color = if (driveAccount != null) Color.semanticSuccess else Color.semanticWarning
-                        )
-                    }
-                }
-
-                if (driveAccount != null) {
-                    Text(
-                        text = "Connected Account: ${driveAccount.email}",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
-                        color = primaryText
-                    )
-                    Text(
-                        text = "Backups are encrypted using AES-256-GCM before being stored in your private Google Drive app storage (drive.appdata).",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                        color = secondaryText
-                    )
-                    if (lastBackupTime > 0) {
-                        Text(
-                            text = "Last backed up: ${formatBackupTimestamp(null, lastBackupTime)}",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                            color = mutedText
-                        )
-                    }
-
-                    if (manualBackupMessage != null) {
-                        Text(
-                            text = manualBackupMessage,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 12.sp,
-                                color = if (manualBackupMessage.contains("success", ignoreCase = true)) Color.semanticSuccess else Color.semanticError
-                            )
-                        )
-                    }
-
-                    OutlinedButton(
-                        onClick = onManualBackup,
-                        enabled = !isBackingUp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .testTag("manual_backup_button"),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        if (isBackingUp) {
-                            CircularProgressIndicator(
-                                color = Color.semanticPrimaryAccent,
-                                modifier = Modifier.size(18.dp),
-                                strokeWidth = 2.dp
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Backing up...", color = primaryText)
-                        } else {
-                            Icon(
-                                imageVector = Icons.Outlined.Backup,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = Color.semanticPrimaryAccent
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Back Up Now", color = primaryText)
-                        }
-                    }
-                } else {
-                    Text(
-                        text = "To enable automatic backups, connect your Google Drive account. FiveLight will remember your preference (${currentFrequency.name.lowercase()}) and schedule backups as soon as Google Drive is authorized.",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                        color = secondaryText
-                    )
-
-                    Button(
-                        onClick = onRequestDriveAuth,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .testTag("connect_drive_button"),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.semanticPrimaryAccent,
-                            contentColor = Color.White
-                        )
-                    ) {
-                        Text("Connect Google Drive", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-                    }
-                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "The connected Google Drive account differs from your FiveLight account.",
+                    fontSize = 15.sp,
+                    color = Color.semanticSecondaryText,
+                    lineHeight = 22.sp
+                )
+            } else if (restoreState == "RESTORING") {
+                Text(
+                    text = "Welcome back",
+                    fontFamily = InstrumentSerifItalic,
+                    fontSize = 34.sp,
+                    color = Color.semanticPrimaryText
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Restoring your FiveLight data…",
+                    fontSize = 15.sp,
+                    color = Color.semanticSecondaryText
+                )
+            } else if (restoreState == "SUCCESS") {
+                Text(
+                    text = "Welcome back",
+                    fontFamily = InstrumentSerifItalic,
+                    fontSize = 34.sp,
+                    color = Color.semanticPrimaryText
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Your FiveLight data is ready.",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.semanticSuccess
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Your previous experience has been restored.",
+                    fontSize = 14.sp,
+                    color = Color.semanticSecondaryText
+                )
+            } else if (restoreState == "FAILURE") {
+                Text(
+                    text = "Restore Interrupted",
+                    fontFamily = InstrumentSerifItalic,
+                    fontSize = 32.sp,
+                    color = Color.semanticPrimaryText
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "We couldn't restore your backup.",
+                    fontSize = 15.sp,
+                    color = Color.semanticSecondaryText
+                )
+            } else if (backupFound) {
+                Text(
+                    text = "Welcome back",
+                    fontFamily = InstrumentSerifItalic,
+                    fontSize = 34.sp,
+                    color = Color.semanticPrimaryText
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "We found a FiveLight backup associated with your account.",
+                    fontSize = 15.sp,
+                    color = Color.semanticSecondaryText,
+                    lineHeight = 22.sp
+                )
+            } else {
+                Text(
+                    text = "Your Data",
+                    fontFamily = InstrumentSerifItalic,
+                    fontSize = 34.sp,
+                    color = Color.semanticPrimaryText
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "No previous FiveLight backup was found for this account.",
+                    fontSize = 15.sp,
+                    color = Color.semanticSecondaryText,
+                    lineHeight = 22.sp
+                )
             }
-        }
-    }
-}
 
-// -------------------------------------------------------------------------------------------------
-// Step 10: Appearance & Complete System Capabilities Summary
-// -------------------------------------------------------------------------------------------------
+            Spacer(modifier = Modifier.height(24.dp))
 
-@Composable
-private fun StepAppearanceAndCapabilities(
-    selectedMode: AppearanceMode,
-    onSelectMode: (AppearanceMode) -> Unit,
-    selectedCity: CityLocation,
-    calcMethod: CalcMethod,
-    madhab: Madhab,
-    isLocationPermissionGranted: Boolean,
-    isNotificationPermissionGranted: Boolean,
-    isBatteryOptimizationIgnored: Boolean,
-    driveAccount: GoogleSignInAccount?,
-    autoBackupFrequency: BackupManager.AutoBackupFrequency,
-    primaryText: Color,
-    secondaryText: Color,
-    mutedText: Color,
-    borderColor: Color
-) {
-    val modes = remember {
-        listOf(
-            Triple(AppearanceMode.SYSTEM, "System Default", Icons.Outlined.LightMode),
-            Triple(AppearanceMode.LIGHT, "Light Mode", Icons.Outlined.LightMode),
-            Triple(AppearanceMode.DARK, "Dark Mode", Icons.Outlined.DarkMode)
-        )
-    }
-
-    val scrollState = rememberScrollState()
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(scrollState)
-            .testTag("step_appearance_container"),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        // Theme Options (Immediately responds live)
-        modes.forEach { (mode, title, icon) ->
-            val isSelected = mode == selectedMode
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(
-                        if (isSelected) Color.semanticSurfaceElevated else Color.semanticSurfaceElevated.copy(alpha = 0.5f)
-                    )
-                    .border(
-                        1.5.dp,
-                        if (isSelected) Color.semanticPrimaryAccent else borderColor,
-                        RoundedCornerShape(14.dp)
-                    )
-                    .clickable { onSelectMode(mode) }
-                    .padding(16.dp)
-                    .testTag("appearance_mode_${mode.name.lowercase()}")
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+            // Body Card based on state
+            if (isAccountMismatch) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.semanticSurfaceElevated)
+                        .border(1.dp, Color.semanticWarning.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                        .padding(20.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(Color.semanticPrimaryAccent.copy(alpha = 0.12f)),
-                            contentAlignment = Alignment.Center
-                        ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = icon,
+                                imageVector = Icons.Outlined.Warning,
+                                contentDescription = null,
+                                tint = Color.semanticWarning,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Accounts do not match",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.semanticPrimaryText
+                            )
+                        }
+
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "FiveLight account: $userEmail",
+                                fontSize = 13.sp,
+                                color = Color.semanticSecondaryText
+                            )
+                            Text(
+                                text = "Google Drive: $driveEmail",
+                                fontSize = 13.sp,
+                                color = Color.semanticSecondaryText
+                            )
+                        }
+
+                        Text(
+                            text = "To protect your privacy and ensure your data matches your identity, connect the matching Google Drive account or start fresh.",
+                            fontSize = 12.sp,
+                            color = Color.semanticMutedText,
+                            lineHeight = 16.sp
+                        )
+                    }
+                }
+            } else if (restoreState == "RESTORING" || restoreState == "SUCCESS") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.semanticSurfaceElevated)
+                        .border(
+                            1.dp,
+                            if (restoreState == "SUCCESS") Color.semanticSuccess.copy(alpha = 0.4f) else Color.semanticBorder,
+                            RoundedCornerShape(16.dp)
+                        )
+                        .padding(20.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        RestoreProgressItem(
+                            label = "Prayer history",
+                            isComplete = restoreState == "SUCCESS" || currentRestoreStage == "Restoring data" || currentRestoreStage == "Finishing",
+                            isInProgress = restoreState == "RESTORING" && currentRestoreStage != "Restoring data" && currentRestoreStage != "Finishing"
+                        )
+                        RestoreProgressItem(
+                            label = "Dhikr",
+                            isComplete = restoreState == "SUCCESS" || currentRestoreStage == "Restoring data" || currentRestoreStage == "Finishing",
+                            isInProgress = false
+                        )
+                        RestoreProgressItem(
+                            label = "Quran",
+                            isComplete = restoreState == "SUCCESS" || currentRestoreStage == "Finishing",
+                            isInProgress = false
+                        )
+                        RestoreProgressItem(
+                            label = "Preferences",
+                            isComplete = restoreState == "SUCCESS",
+                            isInProgress = false
+                        )
+                    }
+                }
+            } else if (restoreState == "FAILURE") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.semanticSurfaceElevated)
+                        .border(1.dp, Color.semanticError.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                        .padding(20.dp)
+                ) {
+                    Column {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = null,
+                                tint = Color.semanticError,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Restore failed",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.semanticPrimaryText
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = restoreErrorMessage ?: "We couldn't restore your data. You can try again or start fresh.",
+                            fontSize = 13.sp,
+                            color = Color.semanticSecondaryText,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            } else if (backupFound) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.semanticSurfaceElevated)
+                        .border(1.dp, Color.semanticBorder, RoundedCornerShape(16.dp))
+                        .padding(20.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "FIVELIGHT ACCOUNT",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    color = Color.semanticMutedText
+                                )
+                                Text(
+                                    text = userEmail.ifBlank { "Signed In" },
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.semanticPrimaryText
+                                )
+                            }
+
+                            Icon(
+                                imageVector = Icons.Outlined.AccountCircle,
                                 contentDescription = null,
                                 tint = Color.semanticPrimaryAccent,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
+
+                        HorizontalRowDivider()
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "GOOGLE DRIVE",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    color = Color.semanticMutedText
+                                )
+                                Text(
+                                    text = driveEmail.ifBlank { userEmail },
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.semanticPrimaryText
+                                )
+                            }
+
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = null,
+                                    tint = Color.semanticSuccess,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Connected",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.semanticSuccess
+                                )
+                            }
+                        }
+
+                        HorizontalRowDivider()
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "LAST BACKUP",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    color = Color.semanticMutedText
+                                )
+                                Text(
+                                    text = formattedBackupDate.ifBlank { "Available" },
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.semanticPrimaryText
+                                )
+                            }
+
+                            Icon(
+                                imageVector = Icons.Outlined.Restore,
+                                contentDescription = null,
+                                tint = Color.semanticPrimaryAccent,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        HorizontalRowDivider()
 
                         Column {
                             Text(
-                                text = title,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                ),
-                                color = primaryText
+                                text = "YOUR BACKUP CONTAINS",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp,
+                                color = Color.semanticMutedText
                             )
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = when (mode) {
-                                    AppearanceMode.SYSTEM -> "Follows your Android system theme."
-                                    AppearanceMode.LIGHT -> "Clean, high-contrast daytime layout."
-                                    AppearanceMode.DARK -> "Deep, eye-safe nighttime canvas."
-                                },
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                                color = secondaryText
+                                text = "Prayer history · Dhikr · Quran · Preferences",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.semanticSecondaryText
                             )
                         }
-                    }
 
-                    RadioButton(
-                        selected = isSelected,
-                        onClick = { onSelectMode(mode) },
-                        colors = RadioButtonDefaults.colors(
-                            selectedColor = Color.semanticPrimaryAccent,
-                            unselectedColor = Color.semanticStrongBorder
+                        Text(
+                            text = "Your backup is encrypted before it is stored securely in Google Drive.",
+                            fontSize = 12.sp,
+                            color = Color.semanticMutedText,
+                            lineHeight = 16.sp
                         )
-                    )
+                    }
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.semanticSurfaceElevated)
+                        .border(1.dp, Color.semanticBorder, RoundedCornerShape(16.dp))
+                        .padding(20.dp)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Outlined.CloudDone,
+                                contentDescription = null,
+                                tint = Color.semanticPrimaryAccent,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Fresh Setup Ready",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.semanticPrimaryText
+                            )
+                        }
+                        Text(
+                            text = "You can continue with a fresh setup. FiveLight will automatically safeguard your daily rhythm once you begin.",
+                            fontSize = 13.sp,
+                            color = Color.semanticSecondaryText,
+                            lineHeight = 18.sp
+                        )
+                    }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // Real Capability & Configuration Summary Card (NO FAKE SUCCESS STATES)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.semanticSurfaceElevated.copy(alpha = 0.6f))
-                .border(1.dp, borderColor, RoundedCornerShape(16.dp))
-                .padding(16.dp)
-                .testTag("final_capability_summary_card")
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "SETUP & CAPABILITY SUMMARY",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
-                    ),
-                    color = Color.semanticPrimaryAccent
-                )
-
-                // Cloud Sync
-                SummaryItemRow(
-                    label = "Cloud Sync",
-                    value = "✓ Active",
-                    isPositive = true
-                )
-
-                // Prayer Preferences
-                SummaryItemRow(
-                    label = "Prayer Schedule",
-                    value = "${calcMethod.displayName} • ${madhab.displayName}",
-                    isPositive = true
-                )
-
-                // Location Real State
-                SummaryItemRow(
-                    label = "Location",
-                    value = if (isLocationPermissionGranted) {
-                        "✓ Enabled (${selectedCity.cityName})"
-                    } else {
-                        "Manual (${selectedCity.cityName})"
+        // Actions Bottom Section
+        Column {
+            if (isAccountMismatch) {
+                PrimaryOnboardingButton(
+                    text = "Connect Matching Drive Account",
+                    onClick = {
+                        val signInClient = GoogleDriveService.getGoogleSignInClient(context)
+                        signInClient.signOut().addOnCompleteListener {
+                            driveAuthLauncher.launch(signInClient.signInIntent)
+                        }
                     },
-                    isPositive = isLocationPermissionGranted
+                    testTag = "switch_google_drive_account_button"
                 )
 
-                // Notifications Real State
-                SummaryItemRow(
-                    label = "Notifications",
-                    value = if (isNotificationPermissionGranted) "✓ Enabled" else "Not enabled",
-                    isPositive = isNotificationPermissionGranted
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedButton(
+                    onClick = onContinue,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("start_fresh_mismatch_button"),
+                    shape = RoundedCornerShape(14.dp),
+                    border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                        brush = SolidColor(Color.semanticBorder)
+                    )
+                ) {
+                    Text(
+                        text = "Start fresh",
+                        fontSize = 14.sp,
+                        color = Color.semanticSecondaryText
+                    )
+                }
+            } else if (restoreState == "SUCCESS") {
+                PrimaryOnboardingButton(
+                    text = "Continue",
+                    onClick = onContinue,
+                    testTag = "continue_after_restore_success_button"
+                )
+            } else if (restoreState == "FAILURE") {
+                PrimaryOnboardingButton(
+                    text = "Try again",
+                    onClick = { startRestore() },
+                    testTag = "retry_restore_button"
                 )
 
-                // Background Activity Real State
-                SummaryItemRow(
-                    label = "Background Activity",
-                    value = if (isBatteryOptimizationIgnored) "✓ Unrestricted" else "Standard",
-                    isPositive = isBatteryOptimizationIgnored
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedButton(
+                    onClick = onContinue,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("start_fresh_after_fail_button"),
+                    shape = RoundedCornerShape(14.dp),
+                    border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                        brush = SolidColor(Color.semanticBorder)
+                    )
+                ) {
+                    Text(
+                        text = "Start fresh",
+                        fontSize = 14.sp,
+                        color = Color.semanticSecondaryText
+                    )
+                }
+            } else if (restoreState == "RESTORING") {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Color.semanticPrimaryAccent,
+                        strokeWidth = 2.5.dp
+                    )
+                }
+            } else if (backupFound) {
+                PrimaryOnboardingButton(
+                    text = "Restore my data",
+                    onClick = { startRestore() },
+                    testTag = "restore_my_data_button"
                 )
 
-                // Google Drive
-                SummaryItemRow(
-                    label = "Google Drive",
-                    value = if (driveAccount != null) "✓ Connected" else "Not connected",
-                    isPositive = driveAccount != null
-                )
+                Spacer(modifier = Modifier.height(10.dp))
 
-                // Auto Backup
-                SummaryItemRow(
-                    label = "Automatic Backup",
-                    value = when {
-                        autoBackupFrequency == BackupManager.AutoBackupFrequency.OFF -> "Off"
-                        driveAccount != null -> "✓ ${autoBackupFrequency.name.lowercase().replaceFirstChar { it.uppercase() }}"
-                        else -> "Requires Drive (${autoBackupFrequency.name.lowercase()})"
-                    },
-                    isPositive = driveAccount != null && autoBackupFrequency != BackupManager.AutoBackupFrequency.OFF
+                OutlinedButton(
+                    onClick = onContinue,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("start_fresh_button"),
+                    shape = RoundedCornerShape(14.dp),
+                    border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                        brush = SolidColor(Color.semanticBorder)
+                    )
+                ) {
+                    Text(
+                        text = "Start fresh",
+                        fontSize = 14.sp,
+                        color = Color.semanticSecondaryText
+                    )
+                }
+            } else {
+                PrimaryOnboardingButton(
+                    text = "Continue",
+                    onClick = onContinue,
+                    testTag = "continue_no_backup_button"
                 )
             }
         }
@@ -3196,10 +1252,10 @@ private fun StepAppearanceAndCapabilities(
 }
 
 @Composable
-private fun SummaryItemRow(
+private fun RestoreProgressItem(
     label: String,
-    value: String,
-    isPositive: Boolean = true
+    isComplete: Boolean,
+    isInProgress: Boolean
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -3208,87 +1264,1979 @@ private fun SummaryItemRow(
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-            color = Color.semanticSecondaryText
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color.semanticPrimaryText
         )
+
+        if (isComplete) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = "$label completed",
+                tint = Color.semanticSuccess,
+                modifier = Modifier.size(18.dp)
+            )
+        } else if (isInProgress) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                color = Color.semanticPrimaryAccent,
+                strokeWidth = 2.dp
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(Color.semanticBorder)
+            )
+        }
+    }
+}
+
+/**
+ * Step 3: Location Moment "WHERE ARE YOU?"
+ * Contextual auto-advance upon verified location resolution.
+ */
+@Composable
+private fun WhereAreYouStep(
+    viewModel: AppViewModel,
+    selectedCity: CityLocation,
+    hasLocationPermission: Boolean,
+    onPermissionUpdated: (Boolean) -> Unit,
+    onContinue: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isDetectingLocation by remember { mutableStateOf(false) }
+    var locationState by remember { mutableStateOf(if (hasLocationPermission) "RESOLVED" else "INITIAL") }
+    var showCityPickerSheet by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    fun resolveCurrentGPS(triggerAutoAdvance: Boolean = false) {
+        isDetectingLocation = true
+        errorMessage = null
+        try {
+            val location = LocationHelper.getLastKnownLocation(context)
+            if (location != null) {
+                val resolved = LocationHelper.resolveCityLocation(context, location)
+                viewModel.autoConfigureFromLocation(resolved)
+                locationState = "RESOLVED"
+            } else {
+                locationState = "RESOLVED"
+            }
+
+            if (triggerAutoAdvance) {
+                scope.launch {
+                    delay(350)
+                    onContinue()
+                }
+            }
+        } catch (_: Exception) {
+            locationState = "UNAVAILABLE"
+            errorMessage = "Location unavailable. Please choose your city manually."
+        } finally {
+            isDetectingLocation = false
+        }
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        val granted = fineGranted || coarseGranted
+
+        onPermissionUpdated(granted)
+        if (granted) {
+            resolveCurrentGPS(triggerAutoAdvance = true)
+        } else {
+            locationState = "DENIED"
+        }
+    }
+
+    LaunchedEffect(hasLocationPermission) {
+        if (hasLocationPermission && locationState == "INITIAL") {
+            resolveCurrentGPS(triggerAutoAdvance = false)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column {
+            Text(
+                text = "Where are you?",
+                fontFamily = InstrumentSerifItalic,
+                fontSize = 34.sp,
+                color = Color.semanticPrimaryText
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = "FiveLight uses your location to calculate accurate prayer times and Qibla direction.",
+                fontSize = 15.sp,
+                color = Color.semanticSecondaryText,
+                lineHeight = 22.sp
+            )
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            when (locationState) {
+                "RESOLVED" -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.semanticSurfaceElevated)
+                            .border(1.dp, Color.semanticSuccess.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                            .padding(20.dp)
+                    ) {
+                        Column {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "YOUR LOCATION",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    color = Color.semanticMutedText
+                                )
+
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Check,
+                                        contentDescription = null,
+                                        tint = Color.semanticSuccess,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Location found",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = Color.semanticSuccess
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Text(
+                                text = "${selectedCity.cityName}, ${selectedCity.countryName}",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.semanticPrimaryText
+                            )
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Text(
+                                text = "Prayer methods, Hijri convention, and solar angles auto-configured for your coordinates.",
+                                fontSize = 13.sp,
+                                color = Color.semanticMutedText
+                            )
+                        }
+                    }
+                }
+
+                "DENIED" -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.semanticSurfaceElevated)
+                            .border(1.dp, Color.semanticWarning.copy(alpha = 0.5f), RoundedCornerShape(16.dp))
+                            .padding(18.dp)
+                    ) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Warning,
+                                    contentDescription = null,
+                                    tint = Color.semanticWarning,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Location access needed",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.semanticPrimaryText
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Location permission is required for automatic solar calculations. You can retry or choose your city manually.",
+                                fontSize = 13.sp,
+                                color = Color.semanticSecondaryText,
+                                lineHeight = 18.sp
+                            )
+                        }
+                    }
+                }
+
+                "UNAVAILABLE" -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.semanticSurfaceElevated)
+                            .border(1.dp, Color.semanticError.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+                            .padding(18.dp)
+                    ) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Info,
+                                    contentDescription = null,
+                                    tint = Color.semanticError,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Location unavailable",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.semanticPrimaryText
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = errorMessage ?: "Unable to acquire location. Please choose your city manually.",
+                                fontSize = 13.sp,
+                                color = Color.semanticSecondaryText
+                            )
+                        }
+                    }
+                }
+
+                else -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.semanticSurfaceElevated)
+                            .border(1.dp, Color.semanticBorder, RoundedCornerShape(16.dp))
+                            .padding(20.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.semanticPrimaryAccent.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.MyLocation,
+                                    contentDescription = null,
+                                    tint = Color.semanticPrimaryAccent,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text(
+                                    text = "Automatic & Private",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.semanticPrimaryText
+                                )
+                                Text(
+                                    text = "Stored exclusively on device",
+                                    fontSize = 13.sp,
+                                    color = Color.semanticMutedText
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Actions
+        Column {
+            if (locationState == "RESOLVED") {
+                PrimaryOnboardingButton(
+                    text = "Continue to Prayer Times",
+                    onClick = onContinue,
+                    testTag = "continue_to_prayer_times_button"
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                TextButton(
+                    onClick = { showCityPickerSheet = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("change_city_button")
+                ) {
+                    Text(
+                        text = "Change city manually",
+                        fontSize = 14.sp,
+                        color = Color.semanticPrimaryAccent
+                    )
+                }
+            } else {
+                Button(
+                    onClick = {
+                        locationPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .testTag("use_my_location_button"),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.semanticPrimaryAccent,
+                        contentColor = Color.White
+                    )
+                ) {
+                    if (isDetectingLocation) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Outlined.MyLocation,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = if (locationState == "DENIED") "Try Again" else "Use my location",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = { showCityPickerSheet = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("choose_city_button"),
+                    shape = RoundedCornerShape(14.dp),
+                    border = ButtonDefaults.outlinedButtonBorder(enabled = true).copy(
+                        brush = SolidColor(Color.semanticBorder)
+                    )
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Outlined.Place,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = Color.semanticSecondaryText
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Choose a city",
+                            fontSize = 14.sp,
+                            color = Color.semanticSecondaryText
+                        )
+                    }
+                }
+
+                if (locationState == "DENIED") {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = {
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:${context.packageName}")
+                                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            try {
+                                context.startActivity(intent)
+                            } catch (_: Exception) {}
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "Open System Settings",
+                            fontSize = 13.sp,
+                            color = Color.semanticMutedText
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showCityPickerSheet) {
+        CityPickerBottomSheet(
+            viewModel = viewModel,
+            onCitySelected = { chosenCity ->
+                viewModel.autoConfigureFromLocation(chosenCity)
+                locationState = "RESOLVED"
+                showCityPickerSheet = false
+            },
+            onDismiss = { showCityPickerSheet = false }
+        )
+    }
+}
+
+/**
+ * Step 4: Combined Prayer Times Screen.
+ */
+@Composable
+private fun CombinedPrayerScreen(
+    viewModel: AppViewModel,
+    selectedCity: CityLocation,
+    calcMethod: CalcMethod,
+    madhab: Madhab,
+    hijriDateMethod: HijriDateMethod,
+    onContinue: () -> Unit
+) {
+    var showCitySheet by remember { mutableStateOf(false) }
+    var showCalcSheet by remember { mutableStateOf(false) }
+    var showMadhabSheet by remember { mutableStateOf(false) }
+    var showHijriSheet by remember { mutableStateOf(false) }
+
+    val regionalDefaults = remember(selectedCity) {
+        LocationHelper.determineRegionalPrayerSettings(selectedCity)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column {
+            Text(
+                text = "Prayer Times",
+                fontFamily = InstrumentSerifItalic,
+                fontSize = 34.sp,
+                color = Color.semanticPrimaryText
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = "Configured for ${selectedCity.cityName}, ${selectedCity.countryName}",
+                fontSize = 15.sp,
+                color = Color.semanticSecondaryText
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.semanticSurfaceElevated)
+                    .border(1.dp, Color.semanticBorder, RoundedCornerShape(16.dp))
+            ) {
+                Column {
+                    SelectablePrayerRow(
+                        title = "Location",
+                        value = "${selectedCity.cityName}, ${selectedCity.countryName}",
+                        subtitle = "Solar coordinates and timezone",
+                        testTag = "row_location",
+                        onClick = { showCitySheet = true }
+                    )
+
+                    HorizontalRowDivider()
+
+                    SelectablePrayerRow(
+                        title = "Calculation method",
+                        value = calcMethod.displayName,
+                        subtitle = regionalDefaults.calcMethodRecommendation,
+                        isRecommended = calcMethod == regionalDefaults.calcMethod,
+                        testTag = "row_calc_method",
+                        onClick = { showCalcSheet = true }
+                    )
+
+                    HorizontalRowDivider()
+
+                    SelectablePrayerRow(
+                        title = "Asr calculation",
+                        value = madhab.displayName,
+                        subtitle = regionalDefaults.madhabRecommendation,
+                        isRecommended = madhab == regionalDefaults.madhab,
+                        testTag = "row_madhab",
+                        onClick = { showMadhabSheet = true }
+                    )
+
+                    HorizontalRowDivider()
+
+                    SelectablePrayerRow(
+                        title = "Hijri calendar",
+                        value = hijriDateMethod.displayName,
+                        subtitle = regionalDefaults.hijriMethodRecommendation,
+                        isRecommended = hijriDateMethod == regionalDefaults.hijriDateMethod,
+                        testTag = "row_hijri_method",
+                        onClick = { showHijriSheet = true }
+                    )
+                }
+            }
+        }
+
+        PrimaryOnboardingButton(
+            text = "Continue",
+            onClick = onContinue,
+            testTag = "continue_to_notifications_button"
+        )
+    }
+
+    if (showCitySheet) {
+        CityPickerBottomSheet(
+            viewModel = viewModel,
+            onCitySelected = { city ->
+                viewModel.autoConfigureFromLocation(city)
+                showCitySheet = false
+            },
+            onDismiss = { showCitySheet = false }
+        )
+    }
+
+    if (showCalcSheet) {
+        CalcMethodBottomSheet(
+            selectedMethod = calcMethod,
+            recommendedMethod = regionalDefaults.calcMethod,
+            onMethodSelected = {
+                viewModel.setCalcMethod(it)
+                showCalcSheet = false
+            },
+            onDismiss = { showCalcSheet = false }
+        )
+    }
+
+    if (showMadhabSheet) {
+        MadhabBottomSheet(
+            selectedMadhab = madhab,
+            onMadhabSelected = {
+                viewModel.setMadhab(it)
+                showMadhabSheet = false
+            },
+            onDismiss = { showMadhabSheet = false }
+        )
+    }
+
+    if (showHijriSheet) {
+        HijriMethodBottomSheet(
+            selectedMethod = hijriDateMethod,
+            recommendedMethod = regionalDefaults.hijriDateMethod,
+            onMethodSelected = {
+                viewModel.setHijriDateMethod(it)
+                showHijriSheet = false
+            },
+            onDismiss = { showHijriSheet = false }
+        )
+    }
+}
+
+@Composable
+private fun SelectablePrayerRow(
+    title: String,
+    value: String,
+    subtitle: String,
+    isRecommended: Boolean = false,
+    testTag: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 16.dp)
+            .testTag(testTag),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.semanticPrimaryText
+                )
+                if (isRecommended) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.semanticPrimaryAccent.copy(alpha = 0.12f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "Recommended",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.semanticPrimaryAccent
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = value,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.semanticSecondaryText
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                fontSize = 11.sp,
+                color = Color.semanticMutedText
+            )
+        }
+
+        Icon(
+            imageVector = Icons.Filled.ChevronRight,
+            contentDescription = "Edit",
+            tint = Color.semanticMutedText,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun HorizontalRowDivider() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(Color.semanticBorder)
+    )
+}
+
+/**
+ * Step 5: Notifications Screen "STAY ON TIME"
+ * Contextual auto-advance when permission is granted.
+ */
+@Composable
+private fun StayOnTimeStep(
+    notificationManager: SmartPrayerNotificationManager,
+    hasNotificationPermission: Boolean,
+    onPermissionUpdated: (Boolean) -> Unit,
+    onContinue: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    var preReminder by remember { mutableStateOf(notificationManager.preReminderOffset) }
+    var permissionDeniedState by remember { mutableStateOf(false) }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        onPermissionUpdated(isGranted)
+        if (isGranted) {
+            notificationManager.isSmartNotificationsEnabled = true
+            notificationManager.isPrayerTimeNotificationsEnabled = true
+            permissionDeniedState = false
+            scope.launch {
+                delay(350)
+                onContinue()
+            }
+        } else {
+            permissionDeniedState = true
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column {
+            Text(
+                text = "Stay on time",
+                fontFamily = InstrumentSerifItalic,
+                fontSize = 34.sp,
+                color = Color.semanticPrimaryText
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Allow FiveLight to notify you when prayer times arrive.",
+                fontSize = 15.sp,
+                color = Color.semanticSecondaryText,
+                lineHeight = 22.sp
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.semanticSurfaceElevated)
+                    .border(
+                        1.dp,
+                        if (hasNotificationPermission) Color.semanticSuccess.copy(alpha = 0.4f) else Color.semanticBorder,
+                        RoundedCornerShape(16.dp)
+                    )
+                    .padding(20.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (hasNotificationPermission) Color.semanticSuccess.copy(alpha = 0.12f)
+                                else Color.semanticPrimaryAccent.copy(alpha = 0.12f)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (hasNotificationPermission) Icons.Outlined.NotificationsActive else Icons.Outlined.Notifications,
+                            contentDescription = null,
+                            tint = if (hasNotificationPermission) Color.semanticSuccess else Color.semanticPrimaryAccent,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column {
+                        Text(
+                            text = if (hasNotificationPermission) "Prayer reminders" else "Notifications required",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.semanticPrimaryText
+                        )
+                        Text(
+                            text = if (hasNotificationPermission) "Enabled ✓" else "Not enabled yet",
+                            fontSize = 13.sp,
+                            color = if (hasNotificationPermission) Color.semanticSuccess else Color.semanticMutedText
+                        )
+                    }
+                }
+            }
+
+            if (permissionDeniedState && !hasNotificationPermission) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.semanticSurfaceElevated)
+                        .border(1.dp, Color.semanticWarning.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                        .padding(16.dp)
+                ) {
+                    Column {
+                        Text(
+                            text = "Notifications are off",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.semanticPrimaryText
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Prayer reminders won't appear until notifications are enabled.",
+                            fontSize = 12.sp,
+                            color = Color.semanticSecondaryText
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            Text(
+                text = "PRE-PRAYER REMINDER",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                color = Color.semanticMutedText
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                PrePrayerReminderOffset.entries.forEach { offset ->
+                    val isSelected = preReminder == offset
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isSelected) Color.semanticPrimaryAccent else Color.semanticSurfaceElevated)
+                            .border(
+                                1.dp,
+                                if (isSelected) Color.semanticPrimaryAccent else Color.semanticBorder,
+                                RoundedCornerShape(10.dp)
+                            )
+                            .clickable {
+                                preReminder = offset
+                                notificationManager.preReminderOffset = offset
+                            }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = offset.label,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) Color.White else Color.semanticPrimaryText
+                        )
+                    }
+                }
+            }
+        }
+
+        // Action Buttons
+        Column {
+            if (!hasNotificationPermission) {
+                PrimaryOnboardingButton(
+                    text = if (permissionDeniedState) "Try again" else "Allow notifications",
+                    onClick = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            notificationManager.isSmartNotificationsEnabled = true
+                            notificationManager.isPrayerTimeNotificationsEnabled = true
+                            onPermissionUpdated(true)
+                            onContinue()
+                        }
+                    },
+                    testTag = "allow_notifications_button"
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                TextButton(
+                    onClick = onContinue,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("continue_without_notifications_button")
+                ) {
+                    Text(
+                        text = "Continue for now",
+                        fontSize = 14.sp,
+                        color = Color.semanticMutedText
+                    )
+                }
+            } else {
+                PrimaryOnboardingButton(
+                    text = "Continue",
+                    onClick = onContinue,
+                    testTag = "continue_notifications_button"
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Step 6: Background Delivery Screen "KEEP REMINDERS RELIABLE"
+ */
+@Composable
+private fun KeepReliableStep(
+    isBackgroundExempt: Boolean,
+    onStateUpdated: (Boolean) -> Unit,
+    onContinue: () -> Unit
+) {
+    val context = LocalContext.current
+    var currentExempt by remember { mutableStateOf(isBackgroundExempt) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val status = checkBackgroundOptimization(context)
+                currentExempt = status
+                onStateUpdated(status)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column {
+            Text(
+                text = "Keep reminders reliable",
+                fontFamily = InstrumentSerifItalic,
+                fontSize = 32.sp,
+                color = Color.semanticPrimaryText
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "FiveLight can run reliably in the background so scheduled prayer reminders can arrive on time.",
+                fontSize = 15.sp,
+                color = Color.semanticSecondaryText,
+                lineHeight = 22.sp
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.semanticSurfaceElevated)
+                    .border(
+                        1.dp,
+                        if (currentExempt) Color.semanticSuccess.copy(alpha = 0.4f) else Color.semanticBorder,
+                        RoundedCornerShape(16.dp)
+                    )
+                    .padding(20.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (currentExempt) Color.semanticSuccess.copy(alpha = 0.12f)
+                                else Color.semanticPrimaryAccent.copy(alpha = 0.12f)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (currentExempt) Icons.Outlined.CheckCircle else Icons.Outlined.BatteryAlert,
+                            contentDescription = null,
+                            tint = if (currentExempt) Color.semanticSuccess else Color.semanticPrimaryAccent,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column {
+                        Text(
+                            text = "Background delivery",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.semanticPrimaryText
+                        )
+                        Text(
+                            text = if (currentExempt) "Enabled ✓" else "Currently restricted by system battery optimization",
+                            fontSize = 13.sp,
+                            color = if (currentExempt) Color.semanticSuccess else Color.semanticMutedText
+                        )
+                    }
+                }
+            }
+
+            if (!currentExempt) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.semanticSurfaceElevated)
+                        .border(1.dp, Color.semanticBorder, RoundedCornerShape(14.dp))
+                        .padding(16.dp)
+                ) {
+                    Text(
+                        text = "Android battery savers may defer prayer reminders unless FiveLight is allowed to deliver in the background.",
+                        fontSize = 13.sp,
+                        color = Color.semanticMutedText,
+                        lineHeight = 18.sp
+                    )
+                }
+            }
+        }
+
+        Column {
+            if (!currentExempt) {
+                PrimaryOnboardingButton(
+                    text = "Allow Background Delivery",
+                    onClick = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            try {
+                                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                }
+                                context.startActivity(intent)
+                            } catch (_: Exception) {
+                                try {
+                                    val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    },
+                    testTag = "enable_background_button"
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                TextButton(
+                    onClick = onContinue,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("continue_background_button")
+                ) {
+                    Text(
+                        text = "Continue for now",
+                        fontSize = 14.sp,
+                        color = Color.semanticMutedText
+                    )
+                }
+            } else {
+                PrimaryOnboardingButton(
+                    text = "Continue",
+                    onClick = onContinue,
+                    testTag = "continue_background_enabled_button"
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Step 7: Automatic Backup Step (Weekly Recommended Default).
+ */
+@Composable
+private fun AutomaticBackupStep(
+    viewModel: AppViewModel,
+    currentUser: FirebaseUser?,
+    onContinue: () -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var driveAccount by remember { mutableStateOf(GoogleDriveService.getAuthorizedAccount(context)) }
+    var selectedFrequency by remember { mutableStateOf(BackupManager.getAutoBackupFrequency(context)) }
+    var lastBackupTime by remember { mutableLongStateOf(BackupManager.getLastBackupTime(context)) }
+    var isBackingUpNow by remember { mutableStateOf(false) }
+
+    val driveAuthLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            if (account != null && GoogleSignIn.hasPermissions(account, GoogleDriveService.DRIVE_APPDATA_SCOPE)) {
+                driveAccount = account
+                Toast.makeText(context, "Google Drive connected: ${account.email}", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(context, "Google Drive connection cancelled", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val formattedLastBackup = remember(lastBackupTime) {
+        if (lastBackupTime > 0) {
+            try {
+                DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(lastBackupTime))
+            } catch (_: Exception) {
+                "Not backed up yet"
+            }
+        } else {
+            "Not backed up yet"
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column {
+            Text(
+                text = "Automatic Backup",
+                fontFamily = InstrumentSerifItalic,
+                fontSize = 32.sp,
+                color = Color.semanticPrimaryText
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Keep an encrypted backup of your FiveLight data in your private Google Drive.",
+                fontSize = 15.sp,
+                color = Color.semanticSecondaryText
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.semanticSurfaceElevated)
+                    .border(1.dp, Color.semanticBorder, RoundedCornerShape(16.dp))
+                    .padding(20.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Google Drive",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.semanticPrimaryText
+                            )
+                            Text(
+                                text = if (driveAccount != null) "Connected ✓ (${driveAccount?.email ?: ""})"
+                                else "Your backup will be stored securely in your Google Drive.",
+                                fontSize = 13.sp,
+                                color = if (driveAccount != null) Color.semanticSuccess else Color.semanticMutedText
+                            )
+                        }
+
+                        if (driveAccount == null) {
+                            Button(
+                                onClick = {
+                                    val client = GoogleDriveService.getGoogleSignInClient(context)
+                                    client.signOut().addOnCompleteListener {
+                                        driveAuthLauncher.launch(client.signInIntent)
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color.semanticPrimaryAccent,
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier.testTag("connect_google_drive_button")
+                            ) {
+                                Text(
+                                    text = "Connect",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalRowDivider()
+
+                    // Frequency selector (Weekly default recommended, Daily, Off)
+                    Column {
+                        Text(
+                            text = "BACKUP FREQUENCY",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp,
+                            color = Color.semanticMutedText
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            listOf(
+                                BackupManager.AutoBackupFrequency.WEEKLY to "Weekly",
+                                BackupManager.AutoBackupFrequency.DAILY to "Daily",
+                                BackupManager.AutoBackupFrequency.OFF to "Off"
+                            ).forEach { (freq, label) ->
+                                val isSelected = selectedFrequency == freq
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isSelected) Color.semanticPrimaryAccent else Color.semanticSurfaceElevated)
+                                        .border(
+                                            1.dp,
+                                            if (isSelected) Color.semanticPrimaryAccent else Color.semanticBorder,
+                                            RoundedCornerShape(10.dp)
+                                        )
+                                        .clickable {
+                                            selectedFrequency = freq
+                                            BackupManager.setAutoBackupFrequency(context, freq)
+                                        }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(
+                                            text = label,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) Color.White else Color.semanticPrimaryText
+                                        )
+                                        if (freq == BackupManager.AutoBackupFrequency.WEEKLY) {
+                                            Text(
+                                                text = "Recommended",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) Color.White.copy(alpha = 0.9f) else Color.semanticPrimaryAccent
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalRowDivider()
+
+                    // Manual Backup and Last Backup
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "LAST BACKUP",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp,
+                                color = Color.semanticMutedText
+                            )
+                            Text(
+                                text = formattedLastBackup,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.semanticPrimaryText
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                if (!isBackingUpNow) {
+                                    isBackingUpNow = true
+                                    scope.launch {
+                                        val res = viewModel.performDriveBackup()
+                                        isBackingUpNow = false
+                                        if (res.isSuccess) {
+                                            lastBackupTime = res.getOrNull() ?: System.currentTimeMillis()
+                                            Toast.makeText(context, "Backup completed successfully", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Backup failed: ${res.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = !isBackingUpNow && driveAccount != null,
+                            shape = RoundedCornerShape(10.dp),
+                            border = ButtonDefaults.outlinedButtonBorder(enabled = driveAccount != null).copy(
+                                brush = SolidColor(Color.semanticBorder)
+                            ),
+                            modifier = Modifier.testTag("backup_now_button")
+                        ) {
+                            if (isBackingUpNow) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = Color.semanticPrimaryAccent
+                                )
+                            } else {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.CloudUpload,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Back Up Now",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        PrimaryOnboardingButton(
+            text = "Continue",
+            onClick = onContinue,
+            testTag = "continue_backup_step_button"
+        )
+    }
+}
+
+/**
+ * Step 8: Tasbeeh & Haptics Feedback.
+ */
+@Composable
+private fun TasbeehHapticsStep(
+    viewModel: AppViewModel,
+    tasbeehSound: TasbeehSound,
+    vibrationEnabled: Boolean,
+    onContinue: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column {
+            Text(
+                text = "Dhikr & Haptics",
+                fontFamily = InstrumentSerifItalic,
+                fontSize = 32.sp,
+                color = Color.semanticPrimaryText
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Customize audio taps and tactile feedback during daily dhikr recitation.",
+                fontSize = 15.sp,
+                color = Color.semanticSecondaryText
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.semanticSurfaceElevated)
+                    .border(1.dp, Color.semanticBorder, RoundedCornerShape(16.dp))
+                    .padding(20.dp)
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Tactile Vibration",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.semanticPrimaryText
+                            )
+                            Text(
+                                text = "Subtle haptic tick upon each count",
+                                fontSize = 13.sp,
+                                color = Color.semanticMutedText
+                            )
+                        }
+
+                        Switch(
+                            checked = vibrationEnabled,
+                            onCheckedChange = { viewModel.setVibrationEnabled(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color.semanticPrimaryAccent
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    Text(
+                        text = "AUDIO FEEDBACK",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp,
+                        color = Color.semanticMutedText
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    TasbeehSound.entries.forEach { sound ->
+                        val isSelected = tasbeehSound == sound
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { viewModel.setTasbeehSound(sound) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = { viewModel.setTasbeehSound(sound) },
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = Color.semanticPrimaryAccent
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = sound.displayName,
+                                    fontSize = 14.sp,
+                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = Color.semanticPrimaryText
+                                )
+                                Text(
+                                    text = sound.description,
+                                    fontSize = 12.sp,
+                                    color = Color.semanticMutedText
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        PrimaryOnboardingButton(
+            text = "Continue",
+            onClick = onContinue,
+            testTag = "continue_haptics_button"
+        )
+    }
+}
+
+/**
+ * Step 9: Final Screen "YOU'RE READY".
+ * Shows only verified confirmations based on actual system state.
+ */
+@Composable
+private fun AppearanceAndReadyStep(
+    viewModel: AppViewModel,
+    appearanceMode: AppearanceMode,
+    selectedCity: CityLocation,
+    calcMethod: CalcMethod,
+    hasLocationPermission: Boolean,
+    hasNotificationPermission: Boolean,
+    isBackgroundExempt: Boolean,
+    isRestoreRestored: Boolean,
+    effectiveUser: FirebaseUser?,
+    onFinish: () -> Unit
+) {
+    val context = LocalContext.current
+    val autoBackupFreq = remember { BackupManager.getAutoBackupFrequency(context) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column {
+            Text(
+                text = "FiveLight is ready for you.",
+                fontFamily = InstrumentSerifItalic,
+                fontSize = 36.sp,
+                color = Color.semanticPrimaryText,
+                lineHeight = 40.sp
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "A calm companion for your daily prayer rhythm.",
+                fontSize = 15.sp,
+                color = Color.semanticSecondaryText
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Appearance Selector
+            Text(
+                text = "APPEARANCE",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                color = Color.semanticMutedText
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                listOf(
+                    AppearanceMode.SYSTEM to "System",
+                    AppearanceMode.LIGHT to "Light",
+                    AppearanceMode.DARK to "Dark"
+                ).forEach { (mode, label) ->
+                    val isSelected = appearanceMode == mode
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) Color.semanticPrimaryAccent else Color.semanticSurfaceElevated)
+                            .border(
+                                1.dp,
+                                if (isSelected) Color.semanticPrimaryAccent else Color.semanticBorder,
+                                RoundedCornerShape(12.dp)
+                            )
+                            .clickable { viewModel.setAppearanceMode(mode) }
+                            .padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 13.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) Color.White else Color.semanticPrimaryText
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Verified Confirmation Checklist
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.semanticSurfaceElevated)
+                    .border(1.dp, Color.semanticBorder, RoundedCornerShape(16.dp))
+                    .padding(20.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    VerifiedReadyItem(
+                        text = "Prayer times for ${selectedCity.cityName}, ${selectedCity.countryName}"
+                    )
+
+                    VerifiedReadyItem(
+                        text = "${calcMethod.displayName} method configured"
+                    )
+
+                    if (hasNotificationPermission) {
+                        VerifiedReadyItem(
+                            text = "Prayer reminders enabled"
+                        )
+                    }
+
+                    if (isBackgroundExempt) {
+                        VerifiedReadyItem(
+                            text = "Background delivery configured"
+                        )
+                    }
+
+                    if (isRestoreRestored) {
+                        VerifiedReadyItem(
+                            text = "Your previous data restored"
+                        )
+                    }
+
+                    if (effectiveUser != null && autoBackupFreq != BackupManager.AutoBackupFrequency.OFF) {
+                        VerifiedReadyItem(
+                            text = "${autoBackupFreq.label} backup enabled"
+                        )
+                    }
+                }
+            }
+        }
+
+        PrimaryOnboardingButton(
+            text = "Start FiveLight",
+            onClick = onFinish,
+            testTag = "complete_setup_button"
+        )
+    }
+}
+
+@Composable
+private fun VerifiedReadyItem(text: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Check,
+            contentDescription = null,
+            tint = Color.semanticSuccess,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
         Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall.copy(
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 12.sp
-            ),
-            color = if (value.startsWith("✓")) Color.semanticSuccess else if (value.startsWith("Not enabled") || value.startsWith("Requires Drive")) Color.semanticWarning else Color.semanticPrimaryText
+            text = text,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = Color.semanticPrimaryText
         )
     }
 }
 
 // -------------------------------------------------------------------------------------------------
-// Bottom Actions Bar
+// Modal Bottom Sheets
 // -------------------------------------------------------------------------------------------------
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SetupBottomActions(
-    currentStep: Int,
-    totalSteps: Int,
-    onBack: () -> Unit,
-    onNext: () -> Unit,
-    modifier: Modifier = Modifier
+private fun CityPickerBottomSheet(
+    viewModel: AppViewModel,
+    onCitySelected: (CityLocation) -> Unit,
+    onDismiss: () -> Unit
 ) {
-    val isLastStep = currentStep == totalSteps - 1
-    val buttonText = when {
-        currentStep == 0 -> "Get Started"
-        isLastStep -> "Start FiveLight"
-        else -> "Continue"
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var searchQuery by remember { mutableStateOf("") }
+    val allCities = viewModel.repository.PREDEFINED_CITIES
+
+    val filteredCities = remember(searchQuery) {
+        if (searchQuery.isBlank()) allCities
+        else allCities.filter {
+            it.cityName.contains(searchQuery, ignoreCase = true) ||
+                    it.countryName.contains(searchQuery, ignoreCase = true)
+        }
     }
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(Color.semanticBackground)
-            .border(1.dp, Color.semanticBorder.copy(alpha = 0.4f))
-            .navigationBarsPadding()
-            .padding(horizontal = 24.dp, vertical = 16.dp)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.semanticSurfaceElevated
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 12.dp)
         ) {
-            if (currentStep > 0) {
-                TextButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .height(50.dp)
-                        .testTag("setup_bottom_back_button")
-                ) {
-                    Text(
-                        text = "Back",
-                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                        color = Color.semanticSecondaryText
+            Text(
+                text = "Select City",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.semanticPrimaryText
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.semanticBackground)
+                    .border(1.dp, Color.semanticBorder, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = null,
+                        tint = Color.semanticMutedText,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        textStyle = TextStyle(
+                            fontSize = 14.sp,
+                            color = Color.semanticPrimaryText
+                        ),
+                        cursorBrush = SolidColor(Color.semanticPrimaryAccent),
+                        modifier = Modifier.fillMaxWidth(),
+                        decorationBox = { innerTextField ->
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = "Search city or country...",
+                                    fontSize = 14.sp,
+                                    color = Color.semanticMutedText
+                                )
+                            }
+                            innerTextField()
+                        }
                     )
                 }
             }
 
-            Button(
-                onClick = onNext,
+            Spacer(modifier = Modifier.height(16.dp))
+
+            LazyColumn(
                 modifier = Modifier
-                    .weight(1f)
-                    .height(50.dp)
-                    .testTag(if (isLastStep) "setup_complete_button" else "setup_continue_button"),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.semanticPrimaryAccent,
-                    contentColor = Color.White
-                )
+                    .fillMaxWidth()
+                    .height(320.dp)
             ) {
-                Text(
-                    text = buttonText,
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        letterSpacing = 0.5.sp
+                items(filteredCities) { city ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onCitySelected(city) }
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = city.cityName,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.semanticPrimaryText
+                            )
+                            Text(
+                                text = city.countryName,
+                                fontSize = 13.sp,
+                                color = Color.semanticMutedText
+                            )
+                        }
+
+                        Icon(
+                            imageVector = Icons.Outlined.Place,
+                            contentDescription = null,
+                            tint = Color.semanticMutedText,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CalcMethodBottomSheet(
+    selectedMethod: CalcMethod,
+    recommendedMethod: CalcMethod,
+    onMethodSelected: (CalcMethod) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.semanticSurfaceElevated
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 12.dp)
+        ) {
+            Text(
+                text = "Prayer Calculation Method",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.semanticPrimaryText
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            CalcMethod.entries.forEach { method ->
+                val isSelected = selectedMethod == method
+                val isRec = recommendedMethod == method
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onMethodSelected(method) }
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = method.displayName,
+                                fontSize = 14.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = Color.semanticPrimaryText
+                            )
+                            if (isRec) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color.semanticPrimaryAccent.copy(alpha = 0.12f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "Recommended",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.semanticPrimaryAccent
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = "Fajr: ${method.fajrAngle}° · Isha: ${method.ishaAngle}°",
+                            fontSize = 12.sp,
+                            color = Color.semanticMutedText
+                        )
+                    }
+
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = { onMethodSelected(method) },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = Color.semanticPrimaryAccent
+                        )
                     )
-                )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MadhabBottomSheet(
+    selectedMadhab: Madhab,
+    onMadhabSelected: (Madhab) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.semanticSurfaceElevated
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 12.dp)
+        ) {
+            Text(
+                text = "Asr Calculation (Madhab)",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.semanticPrimaryText
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Madhab.entries.forEach { m ->
+                val isSelected = selectedMadhab == m
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onMadhabSelected(m) }
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = m.displayName,
+                            fontSize = 15.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = Color.semanticPrimaryText
+                        )
+                        Text(
+                            text = if (m == Madhab.HANAFI) "Asr enters when shadow is 2x object length"
+                            else "Asr enters when shadow is 1x object length (Standard)",
+                            fontSize = 12.sp,
+                            color = Color.semanticMutedText
+                        )
+                    }
+
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = { onMadhabSelected(m) },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = Color.semanticPrimaryAccent
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HijriMethodBottomSheet(
+    selectedMethod: HijriDateMethod,
+    recommendedMethod: HijriDateMethod,
+    onMethodSelected: (HijriDateMethod) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = Color.semanticSurfaceElevated
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 12.dp)
+        ) {
+            Text(
+                text = "Hijri Date Convention",
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.semanticPrimaryText
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            HijriDateMethod.entries.forEach { method ->
+                val isSelected = selectedMethod == method
+                val isRec = recommendedMethod == method
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onMethodSelected(method) }
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = method.displayName,
+                                fontSize = 14.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = Color.semanticPrimaryText
+                            )
+                            if (isRec) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(Color.semanticPrimaryAccent.copy(alpha = 0.12f))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "Recommended",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.semanticPrimaryAccent
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = method.description,
+                            fontSize = 12.sp,
+                            color = Color.semanticMutedText
+                        )
+                    }
+
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = { onMethodSelected(method) },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = Color.semanticPrimaryAccent
+                        )
+                    )
+                }
             }
         }
     }

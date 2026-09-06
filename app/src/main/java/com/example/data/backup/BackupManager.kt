@@ -86,7 +86,7 @@ object BackupManager {
 
     fun getAutoBackupFrequency(context: Context): AutoBackupFrequency {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return AutoBackupFrequency.fromString(prefs.getString(KEY_AUTO_BACKUP_FREQ, AutoBackupFrequency.OFF.name))
+        return AutoBackupFrequency.fromString(prefs.getString(KEY_AUTO_BACKUP_FREQ, AutoBackupFrequency.WEEKLY.name))
     }
 
     fun setAutoBackupFrequency(context: Context, frequency: AutoBackupFrequency) {
