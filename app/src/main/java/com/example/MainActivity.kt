@@ -6,6 +6,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
@@ -848,57 +853,67 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        when (authRouteState) {
-                            "LOGIN_EMAIL" -> {
-                                LoginScreen(
-                                    authRepository = viewModel.authRepository,
-                                    onBack = {
-                                        authRouteState = "NONE"
-                                        showLoginBottomSheet = true
-                                    },
-                                    onAuthSuccess = {
-                                        viewModel.setHasSeenAccountPrompt(true)
-                                        authRouteState = "NONE"
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .zIndex(10f)
-                                )
-                            }
-                            "REGISTER" -> {
-                                RegisterScreen(
-                                    authRepository = viewModel.authRepository,
-                                    onBack = {
-                                        authRouteState = "NONE"
-                                        showLoginBottomSheet = true
-                                    },
-                                    onRegistrationSuccess = { registeredEmail ->
-                                        pendingVerificationEmail = registeredEmail
-                                        authRouteState = "EMAIL_VERIFICATION"
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .zIndex(10f)
-                                )
-                            }
-                            "EMAIL_VERIFICATION" -> {
-                                EmailVerificationScreen(
-                                    email = pendingVerificationEmail,
-                                    authRepository = viewModel.authRepository,
-                                    onBack = {
-                                        coroutineScope.launch {
-                                            viewModel.authRepository.signOut()
-                                            authRouteState = "REGISTER"
-                                        }
-                                    },
-                                    onAuthSuccess = {
-                                        viewModel.setHasSeenAccountPrompt(true)
-                                        authRouteState = "NONE"
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .zIndex(10f)
-                                )
+                        AnimatedContent(
+                            targetState = authRouteState,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(350, easing = FastOutSlowInEasing)) +
+                                        slideInVertically(animationSpec = tween(350, easing = FastOutSlowInEasing), initialOffsetY = { it / 12 }) togetherWith
+                                        fadeOut(animationSpec = tween(250, easing = FastOutSlowInEasing))
+                            },
+                            label = "authRouteTransition"
+                        ) { targetRoute ->
+                            when (targetRoute) {
+                                "LOGIN_EMAIL" -> {
+                                    LoginScreen(
+                                        authRepository = viewModel.authRepository,
+                                        onBack = {
+                                            authRouteState = "NONE"
+                                            showLoginBottomSheet = true
+                                        },
+                                        onAuthSuccess = {
+                                            viewModel.setHasSeenAccountPrompt(true)
+                                            authRouteState = "NONE"
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .zIndex(10f)
+                                    )
+                                }
+                                "REGISTER" -> {
+                                    RegisterScreen(
+                                        authRepository = viewModel.authRepository,
+                                        onBack = {
+                                            authRouteState = "NONE"
+                                            showLoginBottomSheet = true
+                                        },
+                                        onRegistrationSuccess = { registeredEmail ->
+                                            pendingVerificationEmail = registeredEmail
+                                            authRouteState = "EMAIL_VERIFICATION"
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .zIndex(10f)
+                                    )
+                                }
+                                "EMAIL_VERIFICATION" -> {
+                                    EmailVerificationScreen(
+                                        email = pendingVerificationEmail,
+                                        authRepository = viewModel.authRepository,
+                                        onBack = {
+                                            coroutineScope.launch {
+                                                viewModel.authRepository.signOut()
+                                                authRouteState = "REGISTER"
+                                            }
+                                        },
+                                        onAuthSuccess = {
+                                            viewModel.setHasSeenAccountPrompt(true)
+                                            authRouteState = "NONE"
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .zIndex(10f)
+                                    )
+                                }
                             }
                         }
 

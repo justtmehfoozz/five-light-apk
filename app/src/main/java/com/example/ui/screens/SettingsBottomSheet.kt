@@ -96,8 +96,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.content.Context
 import android.media.AudioAttributes
 import android.media.SoundPool
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import com.example.data.model.AppearanceMode
 import com.example.data.model.CalcMethod
 import com.example.data.model.CityLocation
@@ -208,6 +215,45 @@ fun SettingsBottomSheet(
         onDispose {
             try {
                 soundPool.release()
+            } catch (_: Exception) {}
+        }
+    }
+
+    val haptic = LocalHapticFeedback.current
+    val vibrator = remember(context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+            vibratorManager?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        }
+    }
+
+    fun playAudioAndHapticPreview(sound: TasbeehSound, isVibEnabled: Boolean) {
+        try {
+            soundPool.autoPause()
+            if (sound != TasbeehSound.OFF) {
+                val soundId = soundIdMap[sound]
+                if (soundId != null && soundId > 0) {
+                    soundPool.play(soundId, 0.9f, 0.9f, 1, 0, 1.0f)
+                }
+            }
+        } catch (_: Exception) {}
+
+        if (isVibEnabled) {
+            try {
+                if (vibrator != null && vibrator.hasVibrator()) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        val effect = VibrationEffect.createOneShot(16L, 90)
+                        vibrator.vibrate(effect)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        vibrator.vibrate(16L)
+                    }
+                } else {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                }
             } catch (_: Exception) {}
         }
     }
@@ -562,7 +608,7 @@ fun SettingsBottomSheet(
                                             .clip(RoundedCornerShape(12.dp))
                                             .clickable {
                                                 onSelectTasbeehSound(sound)
-                                                activeSubScreen = PreferencesSubScreen.MAIN
+                                                playAudioAndHapticPreview(sound, vibrationEnabled)
                                             }
                                             .padding(vertical = 12.dp, horizontal = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
@@ -575,7 +621,7 @@ fun SettingsBottomSheet(
                                             ),
                                             onClick = {
                                                 onSelectTasbeehSound(sound)
-                                                activeSubScreen = PreferencesSubScreen.MAIN
+                                                playAudioAndHapticPreview(sound, vibrationEnabled)
                                             }
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
@@ -595,12 +641,8 @@ fun SettingsBottomSheet(
                                         if (sound.resId != null) {
                                             IconButton(
                                                 onClick = {
-                                                    try {
-                                                        val soundId = soundIdMap[sound]
-                                                        if (soundId != null && soundId > 0) {
-                                                            soundPool.play(soundId, 0.9f, 0.9f, 1, 0, 1.0f)
-                                                        }
-                                                    } catch (_: Exception) {}
+                                                    onSelectTasbeehSound(sound)
+                                                    playAudioAndHapticPreview(sound, vibrationEnabled)
                                                 }
                                             ) {
                                                 Icon(

@@ -102,6 +102,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import android.media.AudioAttributes
+import android.media.SoundPool
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.auth.AuthRepository
@@ -2965,6 +2972,79 @@ private fun TasbeehHapticsStep(
     vibrationEnabled: Boolean,
     onContinue: () -> Unit
 ) {
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+
+    val soundPool = remember {
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        SoundPool.Builder()
+            .setMaxStreams(4)
+            .setAudioAttributes(audioAttributes)
+            .build()
+    }
+
+    val soundIdMap = remember(soundPool, context) {
+        val map = mutableMapOf<TasbeehSound, Int>()
+        TasbeehSound.entries.forEach { sound ->
+            sound.resId?.let { resId ->
+                try {
+                    val soundId = soundPool.load(context, resId, 1)
+                    map[sound] = soundId
+                } catch (_: Exception) {}
+            }
+        }
+        map
+    }
+
+    DisposableEffect(soundPool) {
+        onDispose {
+            try {
+                soundPool.release()
+            } catch (_: Exception) {}
+        }
+    }
+
+    val vibrator = remember(context) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+            vibratorManager?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+        }
+    }
+
+    fun playAudioAndHapticPreview(sound: TasbeehSound, isVibEnabled: Boolean) {
+        try {
+            soundPool.autoPause()
+            if (sound != TasbeehSound.OFF) {
+                val soundId = soundIdMap[sound]
+                if (soundId != null && soundId > 0) {
+                    soundPool.play(soundId, 0.9f, 0.9f, 1, 0, 1.0f)
+                }
+            }
+        } catch (_: Exception) {}
+
+        if (isVibEnabled) {
+            try {
+                if (vibrator != null && vibrator.hasVibrator()) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        val effect = VibrationEffect.createOneShot(16L, 90)
+                        vibrator.vibrate(effect)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        vibrator.vibrate(16L)
+                    }
+                } else {
+                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -3021,7 +3101,24 @@ private fun TasbeehHapticsStep(
 
                         Switch(
                             checked = vibrationEnabled,
-                            onCheckedChange = { viewModel.setVibrationEnabled(it) },
+                            onCheckedChange = { enabled ->
+                                viewModel.setVibrationEnabled(enabled)
+                                if (enabled) {
+                                    try {
+                                        if (vibrator != null && vibrator.hasVibrator()) {
+                                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                                val effect = VibrationEffect.createOneShot(16L, 90)
+                                                vibrator.vibrate(effect)
+                                            } else {
+                                                @Suppress("DEPRECATION")
+                                                vibrator.vibrate(16L)
+                                            }
+                                        } else {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+                            },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
                                 checkedTrackColor = Color.semanticPrimaryAccent,
@@ -3050,7 +3147,10 @@ private fun TasbeehHapticsStep(
                                 title = sound.displayName,
                                 subtitle = sound.description,
                                 isSelected = isSelected,
-                                onClick = { viewModel.setTasbeehSound(sound) }
+                                onClick = {
+                                    viewModel.setTasbeehSound(sound)
+                                    playAudioAndHapticPreview(sound, vibrationEnabled)
+                                }
                             )
                         }
                     }
