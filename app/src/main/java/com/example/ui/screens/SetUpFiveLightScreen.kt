@@ -146,30 +146,29 @@ fun checkNotificationPermission(context: Context): Boolean = SmartPrayerNotifica
 fun checkBackgroundOptimization(context: Context): Boolean = SmartPrayerNotificationManager(context).isIgnoringBatteryOptimizations()
 
 /**
- * Global Reusable "Recommended" Badge Component for FiveLight.
+ * Global Reusable "Recommended" Chip Component for FiveLight.
  *
  * Requirements:
- * - Always renders on ONE horizontal line (no vertical letter wrapping, softWrap = false).
+ * - Single source of truth across all onboarding screens and bottom sheets.
+ * - Always renders on ONE horizontal line (no vertical letter wrapping, softWrap = false, maxLines = 1).
  * - Intrinsic content-based sizing with stable horizontal padding (8.dp) and vertical padding (3.dp).
- * - High-contrast text in both Light mode (warm primary accent) and Dark mode (clearly crisp White).
- * - Visually compact, subordinate annotation that never distorts parent card layout or row height.
+ * - Chip background uses the FiveLight accent color (dark-mode accent in dark theme, primary accent in light theme).
+ * - Chip text is ALWAYS high-contrast pure WHITE (Color.White, #FFFFFF) with semi-bold typography.
+ * - Text never inherits secondary, muted, or disabled colors and never becomes grey-on-dark.
+ * - The full word "Recommended" is guaranteed to be visible without clipping or truncation.
  */
 @Composable
-fun FiveLightRecommendedBadge(
+fun RecommendedChip(
     modifier: Modifier = Modifier,
     isOnAccentBackground: Boolean = false
 ) {
     val isDark = isAppInDarkTheme()
     val bgColor = when {
         isOnAccentBackground -> Color.White.copy(alpha = 0.22f)
-        isDark -> Color.White.copy(alpha = 0.12f)
-        else -> Color.semanticPrimaryAccent.copy(alpha = 0.14f)
+        isDark -> Color(0xFF494556) // FiveLight dark-mode accent color
+        else -> Color.semanticPrimaryAccent // FiveLight light-mode accent color
     }
-    val textColor = when {
-        isOnAccentBackground -> Color.White
-        isDark -> Color(0xFFFFFFFF)
-        else -> Color.semanticPrimaryAccent
-    }
+    val textColor = Color(0xFFFFFFFF) // ALWAYS crisp, pure WHITE text
 
     Box(
         modifier = modifier
@@ -189,6 +188,113 @@ fun FiveLightRecommendedBadge(
             maxLines = 1,
             softWrap = false
         )
+    }
+}
+
+/**
+ * Backward compatibility alias for RecommendedChip.
+ */
+@Composable
+fun FiveLightRecommendedBadge(
+    modifier: Modifier = Modifier,
+    isOnAccentBackground: Boolean = false
+) {
+    RecommendedChip(
+        modifier = modifier,
+        isOnAccentBackground = isOnAccentBackground
+    )
+}
+
+/**
+ * Global Reusable Selectable Option Row for FiveLight Onboarding & Sheets.
+ *
+ * Requirements:
+ * - Selected background spans full row within rounded 12.dp bounds without clipping or edge bleeding.
+ * - Entire row is tappable with proper touch target.
+ * - Title and Recommended chip layout is responsive: title wraps gracefully if long, chip is never clipped.
+ * - Consistent dark mode surface, border, and accent colors.
+ */
+@Composable
+fun SelectableOptionRow(
+    title: String,
+    subtitle: String? = null,
+    isRecommended: Boolean = false,
+    isSelected: Boolean = false,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isDark = isAppInDarkTheme()
+    val animatedBgColor by animateColorAsState(
+        targetValue = if (isSelected) {
+            if (isDark) Color(0xFF494556).copy(alpha = 0.22f) else Color.semanticPrimaryAccent.copy(alpha = 0.08f)
+        } else {
+            Color.Transparent
+        },
+        animationSpec = tween(220),
+        label = "SelectableRowBg"
+    )
+    val animatedBorderColor by animateColorAsState(
+        targetValue = if (isSelected) Color.semanticPrimaryAccent else Color.semanticBorder.copy(alpha = 0.6f),
+        animationSpec = tween(220),
+        label = "SelectableRowBorder"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(animatedBgColor)
+            .border(1.dp, animatedBorderColor, RoundedCornerShape(12.dp))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = androidx.compose.material3.ripple(),
+                onClick = onClick
+            )
+            .padding(horizontal = 16.dp, vertical = 13.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = title,
+                        fontSize = 14.sp,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                        color = Color.semanticPrimaryText,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (isRecommended) {
+                        RecommendedChip()
+                    }
+                }
+                if (!subtitle.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Text(
+                        text = subtitle,
+                        fontSize = 12.sp,
+                        color = Color.semanticSecondaryText,
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            FiveLightAnimatedRadio(
+                selected = isSelected,
+                onClick = onClick
+            )
+        }
     }
 }
 
@@ -249,35 +355,35 @@ enum class AdaptiveOnboardingStep(
     WELCOME(
         sectionLabel = "WELCOME",
         title = "Make FiveLight yours.",
-        subtitle = "A few calm choices and FiveLight will be ready for your daily rhythm."
+        subtitle = "A few quick choices and FiveLight will be ready for your daily rhythm."
     ),
     DATA_RESTORE(
-        sectionLabel = "WELCOME BACK",
+        sectionLabel = "YOUR DATA",
         title = "Welcome back",
         subtitle = "We found a FiveLight backup associated with your account."
     ),
     WHERE_ARE_YOU(
-        sectionLabel = "WHERE ARE YOU?",
-        title = "Your Location",
+        sectionLabel = "LOCATION",
+        title = "Where are you?",
         subtitle = "FiveLight uses your location to calculate accurate prayer times and Qibla direction."
     ),
     PRAYER_TIMES(
-        sectionLabel = "PRAYER TIMES",
+        sectionLabel = "PRAYER",
         title = "Prayer Times",
         subtitle = "Configured automatically for your region."
     ),
     STAY_ON_TIME(
-        sectionLabel = "STAY ON TIME",
-        title = "Prayer Notifications",
+        sectionLabel = "REMINDERS",
+        title = "Stay on time",
         subtitle = "Allow FiveLight to notify you when prayer times arrive."
     ),
     KEEP_RELIABLE(
-        sectionLabel = "KEEP REMINDERS RELIABLE",
-        title = "Background Delivery",
+        sectionLabel = "RELIABILITY",
+        title = "Keep reminders reliable",
         subtitle = "FiveLight needs to run reliably in the background so scheduled prayer reminders can arrive on time."
     ),
     AUTOMATIC_BACKUP(
-        sectionLabel = "AUTOMATIC BACKUP",
+        sectionLabel = "BACKUP",
         title = "Automatic Backup",
         subtitle = "Keep an encrypted backup of your FiveLight data in your private Google Drive."
     ),
@@ -287,9 +393,9 @@ enum class AdaptiveOnboardingStep(
         subtitle = "Customize audio taps and tactile feedback during daily dhikr recitation."
     ),
     APPEARANCE_AND_READY(
-        sectionLabel = "YOU'RE READY",
-        title = "FiveLight is ready for you.",
-        subtitle = "A calm companion for your daily prayer rhythm."
+        sectionLabel = "READY",
+        title = "You're ready.",
+        subtitle = "FiveLight is set up for you."
     )
 }
 
@@ -303,6 +409,7 @@ fun SetUpFiveLightScreen(
     onSetupFinished: () -> Unit = onSetupComplete
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val notificationManager = remember { SmartPrayerNotificationManager(context) }
 
     val activeUser by viewModel.currentUser.collectAsStateWithLifecycle(initialValue = currentUser)
@@ -320,6 +427,25 @@ fun SetUpFiveLightScreen(
     var hasNotificationPermission by remember { mutableStateOf(checkNotificationPermission(context)) }
     var isBackgroundExempt by remember { mutableStateOf(checkBackgroundOptimization(context)) }
 
+    // Adaptive Backup Detection: Only show Welcome Back / Data Restore if a backup genuinely exists
+    var hasDetectedBackup by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(effectiveUser) {
+        if (effectiveUser != null) {
+            val lastLocalTime = BackupManager.getLastBackupTime(context)
+            if (lastLocalTime > 0) {
+                hasDetectedBackup = true
+            } else {
+                try {
+                    val remoteRes = viewModel.checkRemoteBackup()
+                    if (remoteRes.isSuccess && remoteRes.getOrNull() != null) {
+                        hasDetectedBackup = true
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
     // Track restore outcome for summary on final screen
     var restoreCompletedSuccessfully by rememberSaveable { mutableStateOf(false) }
 
@@ -336,11 +462,11 @@ fun SetUpFiveLightScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Compute Active Onboarding Sequence
-    val activeSteps = remember(effectiveUser) {
+    // Compute Active Onboarding Sequence Adaptively
+    val activeSteps = remember(effectiveUser, hasDetectedBackup) {
         buildList {
             add(AdaptiveOnboardingStep.WELCOME)
-            if (effectiveUser != null) {
+            if (effectiveUser != null && hasDetectedBackup) {
                 add(AdaptiveOnboardingStep.DATA_RESTORE)
             }
             add(AdaptiveOnboardingStep.WHERE_ARE_YOU)
@@ -408,14 +534,32 @@ fun SetUpFiveLightScreen(
                 AnimatedContent(
                     targetState = currentStep,
                     transitionSpec = {
-                        slideInHorizontally(
-                            animationSpec = tween(280, easing = FastOutSlowInEasing),
-                            initialOffsetX = { fullWidth -> fullWidth }
-                        ) + fadeIn(animationSpec = tween(220)) togetherWith
+                        val targetIdx = activeSteps.indexOf(targetState)
+                        val initialIdx = activeSteps.indexOf(initialState)
+                        val forward = targetIdx >= initialIdx
+                        val offsetFraction = 0.12f
+
+                        if (forward) {
+                            (slideInHorizontally(
+                                animationSpec = tween(300, easing = FastOutSlowInEasing),
+                                initialOffsetX = { fullWidth -> (fullWidth * offsetFraction).toInt() }
+                            ) + fadeIn(animationSpec = tween(280, easing = FastOutSlowInEasing))) togetherWith (
                                 slideOutHorizontally(
-                                    animationSpec = tween(280, easing = FastOutSlowInEasing),
-                                    targetOffsetX = { fullWidth -> -fullWidth }
-                                ) + fadeOut(animationSpec = tween(180))
+                                    animationSpec = tween(300, easing = FastOutSlowInEasing),
+                                    targetOffsetX = { fullWidth -> -(fullWidth * offsetFraction).toInt() }
+                                ) + fadeOut(animationSpec = tween(220, easing = FastOutSlowInEasing))
+                            )
+                        } else {
+                            (slideInHorizontally(
+                                animationSpec = tween(300, easing = FastOutSlowInEasing),
+                                initialOffsetX = { fullWidth -> -(fullWidth * offsetFraction).toInt() }
+                            ) + fadeIn(animationSpec = tween(280, easing = FastOutSlowInEasing))) togetherWith (
+                                slideOutHorizontally(
+                                    animationSpec = tween(300, easing = FastOutSlowInEasing),
+                                    targetOffsetX = { fullWidth -> (fullWidth * offsetFraction).toInt() }
+                                ) + fadeOut(animationSpec = tween(220, easing = FastOutSlowInEasing))
+                            )
+                        }
                     },
                     label = "OnboardingStepTransition"
                 ) { step ->
@@ -519,6 +663,8 @@ fun SetUpFiveLightScreen(
 
 /**
  * Top bar with gentle progress indicator and back navigation.
+ * Uses a clean contextual section title and smooth subtle progress line
+ * without technical numeric ratios (e.g. 1/9).
  */
 @Composable
 private fun OnboardingHeaderBar(
@@ -571,19 +717,13 @@ private fun OnboardingHeaderBar(
                 )
             )
 
-            Text(
-                text = "${stepIndex + 1}/$totalSteps",
-                style = TextStyle(
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.semanticMutedText
-                )
-            )
+            // Balance spacer for symmetric center alignment
+            Spacer(modifier = Modifier.size(40.dp))
         }
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Progress line
+        // Subtle progress line
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1194,7 +1334,7 @@ private fun WelcomeBackRestoreStep(
                         }
 
                         Text(
-                            text = "Your backup is encrypted before it is stored securely in Google Drive.",
+                            text = "Your backup is encrypted before it is stored in Google Drive.",
                             fontSize = 12.sp,
                             color = Color.semanticMutedText,
                             lineHeight = 16.sp
@@ -1220,14 +1360,14 @@ private fun WelcomeBackRestoreStep(
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = "Fresh Setup Ready",
+                                text = "Fresh Setup",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.semanticPrimaryText
                             )
                         }
                         Text(
-                            text = "You can continue with a fresh setup. FiveLight will automatically safeguard your daily rhythm once you begin.",
+                            text = "No previous FiveLight backup was found for this account. Continue with a fresh setup.",
                             fontSize = 13.sp,
                             color = Color.semanticSecondaryText,
                             lineHeight = 18.sp
@@ -1265,7 +1405,7 @@ private fun WelcomeBackRestoreStep(
                     )
                 ) {
                     Text(
-                        text = "Start fresh",
+                        text = "Skip for now",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color.semanticPrimaryText
@@ -1298,7 +1438,7 @@ private fun WelcomeBackRestoreStep(
                     )
                 ) {
                     Text(
-                        text = "Start fresh",
+                        text = "Skip for now",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color.semanticPrimaryText
@@ -1319,7 +1459,7 @@ private fun WelcomeBackRestoreStep(
                 }
             } else if (backupFound) {
                 PrimaryOnboardingButton(
-                    text = "Restore my data",
+                    text = "Restore",
                     onClick = { startRestore() },
                     testTag = "restore_my_data_button"
                 )
@@ -1338,7 +1478,7 @@ private fun WelcomeBackRestoreStep(
                     )
                 ) {
                     Text(
-                        text = "Start fresh",
+                        text = "Skip for now",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color.semanticPrimaryText
@@ -1794,6 +1934,7 @@ private fun WhereAreYouStep(
     if (showCityPickerSheet) {
         CityPickerBottomSheet(
             viewModel = viewModel,
+            selectedCity = selectedCity,
             onCitySelected = { chosenCity ->
                 viewModel.autoConfigureFromLocation(chosenCity)
                 locationState = "RESOLVED"
@@ -1913,6 +2054,7 @@ private fun CombinedPrayerScreen(
     if (showCitySheet) {
         CityPickerBottomSheet(
             viewModel = viewModel,
+            selectedCity = selectedCity,
             onCitySelected = { city ->
                 viewModel.autoConfigureFromLocation(city)
                 showCitySheet = false
@@ -1936,6 +2078,7 @@ private fun CombinedPrayerScreen(
     if (showMadhabSheet) {
         MadhabBottomSheet(
             selectedMadhab = madhab,
+            recommendedMadhab = regionalDefaults.madhab,
             onMadhabSelected = {
                 viewModel.setMadhab(it)
                 showMadhabSheet = false
@@ -1969,7 +2112,11 @@ private fun SelectablePrayerRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = androidx.compose.material3.ripple(),
+                onClick = onClick
+            )
             .padding(horizontal = 20.dp, vertical = 16.dp)
             .testTag(testTag),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1978,16 +2125,18 @@ private fun SelectablePrayerRow(
         Column(modifier = Modifier.weight(1f)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     text = title,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color.semanticPrimaryText
+                    color = Color.semanticPrimaryText,
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 if (isRecommended) {
-                    FiveLightRecommendedBadge()
+                    RecommendedChip()
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
@@ -2004,6 +2153,8 @@ private fun SelectablePrayerRow(
                 color = Color.semanticMutedText
             )
         }
+
+        Spacer(modifier = Modifier.width(12.dp))
 
         Icon(
             imageVector = Icons.Filled.ChevronRight,
@@ -2124,7 +2275,7 @@ private fun StayOnTimeStep(
                             color = Color.semanticPrimaryText
                         )
                         Text(
-                            text = if (hasNotificationPermission) "Enabled ✓" else "Not enabled yet",
+                            text = if (hasNotificationPermission) "✓ Notifications enabled" else "Not enabled yet",
                             fontSize = 13.sp,
                             fontWeight = if (hasNotificationPermission) FontWeight.Medium else FontWeight.Normal,
                             color = if (hasNotificationPermission) Color.semanticSuccess else Color.semanticMutedText
@@ -2302,7 +2453,7 @@ private fun KeepReliableStep(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "FiveLight can run reliably in the background so scheduled prayer reminders can arrive on time.",
+                text = "FiveLight needs reliable background delivery so scheduled prayer reminders can arrive on time.",
                 fontSize = 15.sp,
                 color = Color.semanticSecondaryText,
                 lineHeight = 22.sp
@@ -2351,7 +2502,7 @@ private fun KeepReliableStep(
                             color = Color.semanticPrimaryText
                         )
                         Text(
-                            text = if (currentExempt) "Enabled ✓" else "Currently restricted by system battery optimization",
+                            text = if (currentExempt) "✓ Background delivery enabled" else "Currently restricted by system battery optimization",
                             fontSize = 13.sp,
                             fontWeight = if (currentExempt) FontWeight.Medium else FontWeight.Normal,
                             color = if (currentExempt) Color.semanticSuccess else Color.semanticMutedText
@@ -2460,6 +2611,14 @@ private fun AutomaticBackupStep(
     var selectedFrequency by remember { mutableStateOf(BackupManager.getAutoBackupFrequency(context)) }
     var lastBackupTime by remember { mutableLongStateOf(BackupManager.getLastBackupTime(context)) }
     var isBackingUpNow by remember { mutableStateOf(false) }
+
+    // Automatically detect and initialize existing Google Drive authorization without requiring button press
+    LaunchedEffect(Unit) {
+        val account = GoogleDriveService.getAuthorizedAccount(context)
+        if (account != null && GoogleSignIn.hasPermissions(account, GoogleDriveService.DRIVE_APPDATA_SCOPE)) {
+            driveAccount = account
+        }
+    }
 
     val driveAuthLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -2751,7 +2910,7 @@ private fun AnimatedBackupOptionRow(
                         color = Color.semanticPrimaryText
                     )
                     if (option.isRecommended) {
-                        FiveLightRecommendedBadge()
+                        RecommendedChip()
                     }
                 }
 
@@ -2865,34 +3024,15 @@ private fun TasbeehHapticsStep(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    TasbeehSound.entries.forEach { sound ->
-                        val isSelected = tasbeehSound == sound
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { viewModel.setTasbeehSound(sound) }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            FiveLightAnimatedRadio(
-                                selected = isSelected,
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TasbeehSound.entries.forEach { sound ->
+                            val isSelected = tasbeehSound == sound
+                            SelectableOptionRow(
+                                title = sound.displayName,
+                                subtitle = sound.description,
+                                isSelected = isSelected,
                                 onClick = { viewModel.setTasbeehSound(sound) }
                             )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = sound.displayName,
-                                    fontSize = 14.sp,
-                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = Color.semanticPrimaryText
-                                )
-                                Text(
-                                    text = sound.description,
-                                    fontSize = 12.sp,
-                                    color = Color.semanticSecondaryText
-                                )
-                            }
                         }
                     }
                 }
@@ -2936,17 +3076,17 @@ private fun AppearanceAndReadyStep(
     ) {
         Column {
             Text(
-                text = "FiveLight is ready for you.",
+                text = "You're ready.",
                 fontFamily = InstrumentSerifItalic,
-                fontSize = 30.sp,
+                fontSize = 32.sp,
                 color = Color.semanticPrimaryText,
-                lineHeight = 34.sp
+                lineHeight = 36.sp
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "A calm companion for your daily prayer rhythm.",
+                text = "FiveLight is set up for you.",
                 fontSize = 15.sp,
                 color = Color.semanticSecondaryText
             )
@@ -3053,7 +3193,7 @@ private fun AppearanceAndReadyStep(
         }
 
         PrimaryOnboardingButton(
-            text = "Start FiveLight",
+            text = "Begin your journey →",
             onClick = onFinish,
             testTag = "complete_setup_button"
         )
@@ -3083,13 +3223,14 @@ private fun VerifiedReadyItem(text: String) {
 }
 
 // -------------------------------------------------------------------------------------------------
-// Modal Bottom Sheets with Reusable Recommended Badges & Animated Radios
+// Modal Bottom Sheets with Reusable SelectableOptionRow, Recommended Badges & Animated Radios
 // -------------------------------------------------------------------------------------------------
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CityPickerBottomSheet(
     viewModel: AppViewModel,
+    selectedCity: CityLocation? = null,
     onCitySelected: (CityLocation) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -3168,40 +3309,23 @@ private fun CityPickerBottomSheet(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(320.dp)
+                    .height(340.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(filteredCities) { city ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onCitySelected(city) }
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = city.cityName,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.semanticPrimaryText
-                            )
-                            Text(
-                                text = city.countryName,
-                                fontSize = 13.sp,
-                                color = Color.semanticMutedText
-                            )
-                        }
+                    val isSelected = selectedCity != null &&
+                            city.cityName.equals(selectedCity.cityName, ignoreCase = true) &&
+                            city.countryName.equals(selectedCity.countryName, ignoreCase = true)
 
-                        Icon(
-                            imageVector = Icons.Outlined.Place,
-                            contentDescription = null,
-                            tint = Color.semanticMutedText,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                    SelectableOptionRow(
+                        title = city.cityName,
+                        subtitle = city.countryName,
+                        isSelected = isSelected,
+                        onClick = { onCitySelected(city) }
+                    )
                 }
             }
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -3235,47 +3359,21 @@ private fun CalcMethodBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            CalcMethod.entries.forEach { method ->
-                val isSelected = selectedMethod == method
-                val isRec = recommendedMethod == method
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                CalcMethod.entries.forEach { method ->
+                    val isSelected = selectedMethod == method
+                    val isRec = recommendedMethod == method
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onMethodSelected(method) }
-                        .padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = method.displayName,
-                                fontSize = 14.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = Color.semanticPrimaryText
-                            )
-                            if (isRec) {
-                                FiveLightRecommendedBadge()
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Fajr: ${method.fajrAngle}° · Isha: ${method.ishaAngle}°",
-                            fontSize = 12.sp,
-                            color = Color.semanticSecondaryText
-                        )
-                    }
-
-                    FiveLightAnimatedRadio(
-                        selected = isSelected,
+                    SelectableOptionRow(
+                        title = method.displayName,
+                        subtitle = "Fajr: ${method.fajrAngle}° · Isha: ${method.ishaAngle}°",
+                        isRecommended = isRec,
+                        isSelected = isSelected,
                         onClick = { onMethodSelected(method) }
                     )
                 }
             }
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -3284,6 +3382,7 @@ private fun CalcMethodBottomSheet(
 @Composable
 private fun MadhabBottomSheet(
     selectedMadhab: Madhab,
+    recommendedMadhab: Madhab = Madhab.STANDARD,
     onMadhabSelected: (Madhab) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -3308,38 +3407,20 @@ private fun MadhabBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Madhab.entries.forEach { m ->
-                val isSelected = selectedMadhab == m
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onMadhabSelected(m) }
-                        .padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = m.displayName,
-                            fontSize = 15.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = Color.semanticPrimaryText
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = if (m == Madhab.HANAFI) "Asr enters when shadow is 2x object length"
-                            else "Asr enters when shadow is 1x object length (Standard)",
-                            fontSize = 12.sp,
-                            color = Color.semanticSecondaryText
-                        )
-                    }
-
-                    FiveLightAnimatedRadio(
-                        selected = isSelected,
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Madhab.entries.forEach { m ->
+                    val isSelected = selectedMadhab == m
+                    SelectableOptionRow(
+                        title = m.displayName,
+                        subtitle = if (m == Madhab.HANAFI) "Asr enters when shadow is 2x object length"
+                        else "Asr enters when shadow is 1x object length (Standard)",
+                        isRecommended = m == recommendedMadhab,
+                        isSelected = isSelected,
                         onClick = { onMadhabSelected(m) }
                     )
                 }
             }
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -3373,47 +3454,21 @@ private fun HijriMethodBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            HijriDateMethod.entries.forEach { method ->
-                val isSelected = selectedMethod == method
-                val isRec = recommendedMethod == method
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                HijriDateMethod.entries.forEach { method ->
+                    val isSelected = selectedMethod == method
+                    val isRec = recommendedMethod == method
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onMethodSelected(method) }
-                        .padding(vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = method.displayName,
-                                fontSize = 14.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = Color.semanticPrimaryText
-                            )
-                            if (isRec) {
-                                FiveLightRecommendedBadge()
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = method.description,
-                            fontSize = 12.sp,
-                            color = Color.semanticSecondaryText
-                        )
-                    }
-
-                    FiveLightAnimatedRadio(
-                        selected = isSelected,
+                    SelectableOptionRow(
+                        title = method.displayName,
+                        subtitle = method.description,
+                        isRecommended = isRec,
+                        isSelected = isSelected,
                         onClick = { onMethodSelected(method) }
                     )
                 }
             }
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
