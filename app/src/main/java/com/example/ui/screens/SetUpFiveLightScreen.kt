@@ -11,7 +11,6 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -118,6 +117,7 @@ import com.example.data.reminder.PrePrayerReminderOffset
 import com.example.data.reminder.SmartPrayerNotificationManager
 import com.example.data.util.LocationHelper
 import com.example.ui.theme.InstrumentSerifItalic
+import com.example.ui.theme.semanticAccentForeground
 import com.example.ui.theme.semanticBackground
 import com.example.ui.theme.semanticBorder
 import com.example.ui.theme.semanticError
@@ -143,6 +143,44 @@ import java.util.Date
 fun checkLocationPermission(context: Context): Boolean = LocationHelper.hasLocationPermission(context)
 fun checkNotificationPermission(context: Context): Boolean = SmartPrayerNotificationManager(context).isNotificationPermissionGranted()
 fun checkBackgroundOptimization(context: Context): Boolean = SmartPrayerNotificationManager(context).isIgnoringBatteryOptimizations()
+
+/**
+ * Global Reusable "Recommended" Badge Component for FiveLight.
+ *
+ * Requirements:
+ * - Always renders on ONE horizontal line (no vertical letter wrapping, softWrap = false).
+ * - Intrinsic content-based sizing with stable horizontal padding (8.dp) and vertical padding (3.dp).
+ * - High-contrast foreground color whether placed on normal surfaces or accent-filled containers.
+ * - Visually compact, subordinate annotation that never distorts parent card layout or row height.
+ */
+@Composable
+fun FiveLightRecommendedBadge(
+    modifier: Modifier = Modifier,
+    isOnAccentBackground: Boolean = false
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(
+                if (isOnAccentBackground) Color.White.copy(alpha = 0.22f)
+                else Color.semanticPrimaryAccent.copy(alpha = 0.14f)
+            )
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "Recommended",
+            style = TextStyle(
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.3.sp,
+                color = if (isOnAccentBackground) Color.White else Color.semanticPrimaryAccent
+            ),
+            maxLines = 1,
+            softWrap = false
+        )
+    }
+}
 
 /**
  * Adaptive Onboarding Step definitions for FiveLight.
@@ -509,7 +547,7 @@ private fun OnboardingHeaderBar(
 }
 
 /**
- * Standard Primary CTA Button with calm subtle press animation.
+ * Standard Primary CTA Button with calm subtle press animation and high-contrast text.
  */
 @Composable
 private fun PrimaryOnboardingButton(
@@ -539,13 +577,14 @@ private fun PrimaryOnboardingButton(
         shape = RoundedCornerShape(14.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = Color.semanticPrimaryAccent,
-            contentColor = Color.White
+            contentColor = Color.semanticAccentForeground
         )
     ) {
         Text(
             text = text,
             fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
+            color = Color.semanticAccentForeground
         )
     }
 }
@@ -1166,7 +1205,8 @@ private fun WelcomeBackRestoreStep(
                     Text(
                         text = "Start fresh",
                         fontSize = 14.sp,
-                        color = Color.semanticSecondaryText
+                        fontWeight = FontWeight.Medium,
+                        color = Color.semanticPrimaryText
                     )
                 }
             } else if (restoreState == "SUCCESS") {
@@ -1198,7 +1238,8 @@ private fun WelcomeBackRestoreStep(
                     Text(
                         text = "Start fresh",
                         fontSize = 14.sp,
-                        color = Color.semanticSecondaryText
+                        fontWeight = FontWeight.Medium,
+                        color = Color.semanticPrimaryText
                     )
                 }
             } else if (restoreState == "RESTORING") {
@@ -1237,7 +1278,8 @@ private fun WelcomeBackRestoreStep(
                     Text(
                         text = "Start fresh",
                         fontSize = 14.sp,
-                        color = Color.semanticSecondaryText
+                        fontWeight = FontWeight.Medium,
+                        color = Color.semanticPrimaryText
                     )
                 }
             } else {
@@ -1582,6 +1624,7 @@ private fun WhereAreYouStep(
                     Text(
                         text = "Change city manually",
                         fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
                         color = Color.semanticPrimaryAccent
                     )
                 }
@@ -1602,13 +1645,13 @@ private fun WhereAreYouStep(
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.semanticPrimaryAccent,
-                        contentColor = Color.White
+                        contentColor = Color.semanticAccentForeground
                     )
                 ) {
                     if (isDetectingLocation) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(20.dp),
-                            color = Color.White,
+                            color = Color.semanticAccentForeground,
                             strokeWidth = 2.dp
                         )
                     } else {
@@ -1616,13 +1659,15 @@ private fun WhereAreYouStep(
                             Icon(
                                 imageVector = Icons.Outlined.MyLocation,
                                 contentDescription = null,
+                                tint = Color.semanticAccentForeground,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = if (locationState == "DENIED") "Try Again" else "Use my location",
                                 fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.semanticAccentForeground
                             )
                         }
                     }
@@ -1652,7 +1697,8 @@ private fun WhereAreYouStep(
                         Text(
                             text = "Choose a city",
                             fontSize = 14.sp,
-                            color = Color.semanticSecondaryText
+                            fontWeight = FontWeight.Medium,
+                            color = Color.semanticPrimaryText
                         )
                     }
                 }
@@ -1696,7 +1742,7 @@ private fun WhereAreYouStep(
 }
 
 /**
- * Step 4: Combined Prayer Times Screen.
+ * Step 4: Combined Prayer Times Screen with clean reusable recommended badges.
  */
 @Composable
 private fun CombinedPrayerScreen(
@@ -1866,7 +1912,10 @@ private fun SelectablePrayerRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Text(
                     text = title,
                     fontSize = 14.sp,
@@ -1874,20 +1923,7 @@ private fun SelectablePrayerRow(
                     color = Color.semanticPrimaryText
                 )
                 if (isRecommended) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color.semanticPrimaryAccent.copy(alpha = 0.12f))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(
-                            text = "Recommended",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.semanticPrimaryAccent
-                        )
-                    }
+                    FiveLightRecommendedBadge()
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
@@ -2025,6 +2061,7 @@ private fun StayOnTimeStep(
                         Text(
                             text = if (hasNotificationPermission) "Enabled ✓" else "Not enabled yet",
                             fontSize = 13.sp,
+                            fontWeight = if (hasNotificationPermission) FontWeight.Medium else FontWeight.Normal,
                             color = if (hasNotificationPermission) Color.semanticSuccess else Color.semanticMutedText
                         )
                     }
@@ -2097,7 +2134,7 @@ private fun StayOnTimeStep(
                             text = offset.label,
                             fontSize = 12.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) Color.White else Color.semanticPrimaryText
+                            color = if (isSelected) Color.semanticAccentForeground else Color.semanticPrimaryText
                         )
                     }
                 }
@@ -2133,7 +2170,8 @@ private fun StayOnTimeStep(
                     Text(
                         text = "Continue for now",
                         fontSize = 14.sp,
-                        color = Color.semanticMutedText
+                        fontWeight = FontWeight.Medium,
+                        color = Color.semanticSecondaryText
                     )
                 }
             } else {
@@ -2241,6 +2279,7 @@ private fun KeepReliableStep(
                         Text(
                             text = if (currentExempt) "Enabled ✓" else "Currently restricted by system battery optimization",
                             fontSize = 13.sp,
+                            fontWeight = if (currentExempt) FontWeight.Medium else FontWeight.Normal,
                             color = if (currentExempt) Color.semanticSuccess else Color.semanticMutedText
                         )
                     }
@@ -2260,7 +2299,7 @@ private fun KeepReliableStep(
                     Text(
                         text = "Android battery savers may defer prayer reminders unless FiveLight is allowed to deliver in the background.",
                         fontSize = 13.sp,
-                        color = Color.semanticMutedText,
+                        color = Color.semanticSecondaryText,
                         lineHeight = 18.sp
                     )
                 }
@@ -2303,7 +2342,8 @@ private fun KeepReliableStep(
                     Text(
                         text = "Continue for now",
                         fontSize = 14.sp,
-                        color = Color.semanticMutedText
+                        fontWeight = FontWeight.Medium,
+                        color = Color.semanticSecondaryText
                     )
                 }
             } else {
@@ -2317,8 +2357,18 @@ private fun KeepReliableStep(
     }
 }
 
+data class AutoBackupOption(
+    val freq: BackupManager.AutoBackupFrequency,
+    val title: String,
+    val description: String,
+    val isRecommended: Boolean = false
+)
+
 /**
  * Step 7: Automatic Backup Step (Weekly Recommended Default).
+ *
+ * Full-width option rows with equal heights, clean spacing, and the reusable
+ * FiveLightRecommendedBadge positioned without layout distortion or wrapping.
  */
 @Composable
 private fun AutomaticBackupStep(
@@ -2359,6 +2409,29 @@ private fun AutomaticBackupStep(
         } else {
             "Not backed up yet"
         }
+    }
+
+    val backupOptions = remember {
+        listOf(
+            AutoBackupOption(
+                freq = BackupManager.AutoBackupFrequency.WEEKLY,
+                title = "Weekly",
+                description = "Back up once every 7 days in the background",
+                isRecommended = true
+            ),
+            AutoBackupOption(
+                freq = BackupManager.AutoBackupFrequency.DAILY,
+                title = "Daily",
+                description = "Back up once every 24 hours in the background",
+                isRecommended = false
+            ),
+            AutoBackupOption(
+                freq = BackupManager.AutoBackupFrequency.OFF,
+                title = "Off",
+                description = "Manual backups only",
+                isRecommended = false
+            )
+        )
     }
 
     Column(
@@ -2407,8 +2480,9 @@ private fun AutomaticBackupStep(
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.semanticPrimaryText
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = if (driveAccount != null) "Connected ✓ (${driveAccount?.email ?: ""})"
+                                text = if (driveAccount != null) "Connected (${driveAccount?.email ?: ""})"
                                 else "Your backup will be stored securely in your Google Drive.",
                                 fontSize = 13.sp,
                                 color = if (driveAccount != null) Color.semanticSuccess else Color.semanticMutedText
@@ -2426,14 +2500,15 @@ private fun AutomaticBackupStep(
                                 shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Color.semanticPrimaryAccent,
-                                    contentColor = Color.White
+                                    contentColor = Color.semanticAccentForeground
                                 ),
                                 modifier = Modifier.testTag("connect_google_drive_button")
                             ) {
                                 Text(
                                     text = "Connect",
                                     fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.semanticAccentForeground
                                 )
                             }
                         }
@@ -2441,7 +2516,7 @@ private fun AutomaticBackupStep(
 
                     HorizontalRowDivider()
 
-                    // Frequency selector (Weekly default recommended, Daily, Off)
+                    // Frequency selector with stable full-width rows & clean Recommended badge
                     Column {
                         Text(
                             text = "BACKUP FREQUENCY",
@@ -2450,50 +2525,69 @@ private fun AutomaticBackupStep(
                             letterSpacing = 1.sp,
                             color = Color.semanticMutedText
                         )
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            listOf(
-                                BackupManager.AutoBackupFrequency.WEEKLY to "Weekly",
-                                BackupManager.AutoBackupFrequency.DAILY to "Daily",
-                                BackupManager.AutoBackupFrequency.OFF to "Off"
-                            ).forEach { (freq, label) ->
-                                val isSelected = selectedFrequency == freq
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            backupOptions.forEach { option ->
+                                val isSelected = selectedFrequency == option.freq
                                 Box(
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (isSelected) Color.semanticPrimaryAccent else Color.semanticSurfaceElevated)
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(
+                                            if (isSelected) Color.semanticPrimaryAccent.copy(alpha = 0.08f)
+                                            else Color.semanticBackground
+                                        )
                                         .border(
                                             1.dp,
                                             if (isSelected) Color.semanticPrimaryAccent else Color.semanticBorder,
-                                            RoundedCornerShape(10.dp)
+                                            RoundedCornerShape(12.dp)
                                         )
                                         .clickable {
-                                            selectedFrequency = freq
-                                            BackupManager.setAutoBackupFrequency(context, freq)
+                                            selectedFrequency = option.freq
+                                            BackupManager.setAutoBackupFrequency(context, option.freq)
                                         }
-                                        .padding(vertical = 10.dp),
-                                    contentAlignment = Alignment.Center
+                                        .padding(horizontal = 16.dp, vertical = 12.dp)
                                 ) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text(
-                                            text = label,
-                                            fontSize = 13.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) Color.White else Color.semanticPrimaryText
-                                        )
-                                        if (freq == BackupManager.AutoBackupFrequency.WEEKLY) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Text(
+                                                    text = option.title,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                                    color = Color.semanticPrimaryText
+                                                )
+                                                if (option.isRecommended) {
+                                                    FiveLightRecommendedBadge()
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.height(2.dp))
                                             Text(
-                                                text = "Recommended",
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isSelected) Color.White.copy(alpha = 0.9f) else Color.semanticPrimaryAccent
+                                                text = option.description,
+                                                fontSize = 12.sp,
+                                                color = Color.semanticSecondaryText
                                             )
                                         }
+
+                                        RadioButton(
+                                            selected = isSelected,
+                                            onClick = {
+                                                selectedFrequency = option.freq
+                                                BackupManager.setAutoBackupFrequency(context, option.freq)
+                                            },
+                                            colors = RadioButtonDefaults.colors(
+                                                selectedColor = Color.semanticPrimaryAccent,
+                                                unselectedColor = Color.semanticMutedText
+                                            )
+                                        )
                                     }
                                 }
                             }
@@ -2558,13 +2652,15 @@ private fun AutomaticBackupStep(
                                     Icon(
                                         imageVector = Icons.Outlined.CloudUpload,
                                         contentDescription = null,
+                                        tint = if (driveAccount != null) Color.semanticPrimaryText else Color.semanticMutedText,
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "Back Up Now",
                                         fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (driveAccount != null) Color.semanticPrimaryText else Color.semanticMutedText
                                     )
                                 }
                             }
@@ -2650,7 +2746,9 @@ private fun TasbeehHapticsStep(
                             onCheckedChange = { viewModel.setVibrationEnabled(it) },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = Color.White,
-                                checkedTrackColor = Color.semanticPrimaryAccent
+                                checkedTrackColor = Color.semanticPrimaryAccent,
+                                uncheckedThumbColor = Color.White,
+                                uncheckedTrackColor = Color.semanticBorder
                             )
                         )
                     }
@@ -2681,7 +2779,8 @@ private fun TasbeehHapticsStep(
                                 selected = isSelected,
                                 onClick = { viewModel.setTasbeehSound(sound) },
                                 colors = RadioButtonDefaults.colors(
-                                    selectedColor = Color.semanticPrimaryAccent
+                                    selectedColor = Color.semanticPrimaryAccent,
+                                    unselectedColor = Color.semanticMutedText
                                 )
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -2695,7 +2794,7 @@ private fun TasbeehHapticsStep(
                                 Text(
                                     text = sound.description,
                                     fontSize = 12.sp,
-                                    color = Color.semanticMutedText
+                                    color = Color.semanticSecondaryText
                                 )
                             }
                         }
@@ -2758,7 +2857,7 @@ private fun AppearanceAndReadyStep(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Appearance Selector
+            // Appearance Selector with High-Contrast Text
             Text(
                 text = "APPEARANCE",
                 fontSize = 11.sp,
@@ -2783,7 +2882,10 @@ private fun AppearanceAndReadyStep(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(if (isSelected) Color.semanticPrimaryAccent else Color.semanticSurfaceElevated)
+                            .background(
+                                if (isSelected) Color.semanticPrimaryAccent
+                                else Color.semanticSurfaceElevated
+                            )
                             .border(
                                 1.dp,
                                 if (isSelected) Color.semanticPrimaryAccent else Color.semanticBorder,
@@ -2797,7 +2899,7 @@ private fun AppearanceAndReadyStep(
                             text = label,
                             fontSize = 13.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) Color.White else Color.semanticPrimaryText
+                            color = if (isSelected) Color.semanticAccentForeground else Color.semanticPrimaryText
                         )
                     }
                 }
@@ -2881,7 +2983,7 @@ private fun VerifiedReadyItem(text: String) {
 }
 
 // -------------------------------------------------------------------------------------------------
-// Modal Bottom Sheets
+// Modal Bottom Sheets with Reusable Recommended Badges
 // -------------------------------------------------------------------------------------------------
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -3046,7 +3148,10 @@ private fun CalcMethodBottomSheet(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Text(
                                 text = method.displayName,
                                 fontSize = 14.sp,
@@ -3054,26 +3159,14 @@ private fun CalcMethodBottomSheet(
                                 color = Color.semanticPrimaryText
                             )
                             if (isRec) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color.semanticPrimaryAccent.copy(alpha = 0.12f))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "Recommended",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.semanticPrimaryAccent
-                                    )
-                                }
+                                FiveLightRecommendedBadge()
                             }
                         }
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "Fajr: ${method.fajrAngle}° · Isha: ${method.ishaAngle}°",
                             fontSize = 12.sp,
-                            color = Color.semanticMutedText
+                            color = Color.semanticSecondaryText
                         )
                     }
 
@@ -3081,7 +3174,8 @@ private fun CalcMethodBottomSheet(
                         selected = isSelected,
                         onClick = { onMethodSelected(method) },
                         colors = RadioButtonDefaults.colors(
-                            selectedColor = Color.semanticPrimaryAccent
+                            selectedColor = Color.semanticPrimaryAccent,
+                            unselectedColor = Color.semanticMutedText
                         )
                     )
                 }
@@ -3135,11 +3229,12 @@ private fun MadhabBottomSheet(
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                             color = Color.semanticPrimaryText
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = if (m == Madhab.HANAFI) "Asr enters when shadow is 2x object length"
                             else "Asr enters when shadow is 1x object length (Standard)",
                             fontSize = 12.sp,
-                            color = Color.semanticMutedText
+                            color = Color.semanticSecondaryText
                         )
                     }
 
@@ -3147,7 +3242,8 @@ private fun MadhabBottomSheet(
                         selected = isSelected,
                         onClick = { onMadhabSelected(m) },
                         colors = RadioButtonDefaults.colors(
-                            selectedColor = Color.semanticPrimaryAccent
+                            selectedColor = Color.semanticPrimaryAccent,
+                            unselectedColor = Color.semanticMutedText
                         )
                     )
                 }
@@ -3198,7 +3294,10 @@ private fun HijriMethodBottomSheet(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Text(
                                 text = method.displayName,
                                 fontSize = 14.sp,
@@ -3206,26 +3305,14 @@ private fun HijriMethodBottomSheet(
                                 color = Color.semanticPrimaryText
                             )
                             if (isRec) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color.semanticPrimaryAccent.copy(alpha = 0.12f))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "Recommended",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.semanticPrimaryAccent
-                                    )
-                                }
+                                FiveLightRecommendedBadge()
                             }
                         }
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = method.description,
                             fontSize = 12.sp,
-                            color = Color.semanticMutedText
+                            color = Color.semanticSecondaryText
                         )
                     }
 
@@ -3233,7 +3320,8 @@ private fun HijriMethodBottomSheet(
                         selected = isSelected,
                         onClick = { onMethodSelected(method) },
                         colors = RadioButtonDefaults.colors(
-                            selectedColor = Color.semanticPrimaryAccent
+                            selectedColor = Color.semanticPrimaryAccent,
+                            unselectedColor = Color.semanticMutedText
                         )
                     )
                 }
