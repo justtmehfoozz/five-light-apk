@@ -106,14 +106,12 @@ fun LoginBottomSheet(
                     .height(4.dp)
                     .background(color = handleColor, shape = CircleShape)
             )
-        },
-        modifier = Modifier
-            .statusBarsPadding()
-            .navigationBarsPadding()
+        }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 24.dp)
                 .testTag("login_bottom_sheet")

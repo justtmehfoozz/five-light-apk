@@ -229,10 +229,12 @@ fun TasbeehScreen(
     var isAutoCountEnabled by remember { mutableStateOf(false) }
     var autoCountSpeedSec by remember { mutableFloatStateOf(2.0f) }
 
+    val loadedSoundIds = remember { mutableSetOf<Int>() }
+
     // SoundPool for Instantaneous, Zero-Latency Tap Audio Playback
     val soundPool = remember {
         val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+            .setUsage(AudioAttributes.USAGE_MEDIA)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
         SoundPool.Builder()
@@ -255,6 +257,11 @@ fun TasbeehScreen(
     }
 
     DisposableEffect(soundPool) {
+        soundPool.setOnLoadCompleteListener { _, sampleId, status ->
+            if (status == 0) {
+                loadedSoundIds.add(sampleId)
+            }
+        }
         onDispose {
             try {
                 soundPool.release()

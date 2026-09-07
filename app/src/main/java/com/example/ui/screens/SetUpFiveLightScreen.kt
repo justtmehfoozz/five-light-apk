@@ -2975,9 +2975,12 @@ private fun TasbeehHapticsStep(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
+    val loadedSoundIds = remember { mutableSetOf<Int>() }
+    var pendingPreviewSound by remember { mutableStateOf<TasbeehSound?>(null) }
+
     val soundPool = remember {
         val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+            .setUsage(AudioAttributes.USAGE_MEDIA)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
         SoundPool.Builder()
@@ -3000,6 +3003,18 @@ private fun TasbeehHapticsStep(
     }
 
     DisposableEffect(soundPool) {
+        soundPool.setOnLoadCompleteListener { _, sampleId, status ->
+            if (status == 0) {
+                loadedSoundIds.add(sampleId)
+                val currentPending = pendingPreviewSound
+                if (currentPending != null && soundIdMap[currentPending] == sampleId) {
+                    try {
+                        soundPool.play(sampleId, 0.9f, 0.9f, 1, 0, 1.0f)
+                    } catch (_: Exception) {}
+                    pendingPreviewSound = null
+                }
+            }
+        }
         onDispose {
             try {
                 soundPool.release()
@@ -3023,12 +3038,19 @@ private fun TasbeehHapticsStep(
             if (sound != TasbeehSound.OFF) {
                 val soundId = soundIdMap[sound]
                 if (soundId != null && soundId > 0) {
-                    soundPool.play(soundId, 0.9f, 0.9f, 1, 0, 1.0f)
+                    if (loadedSoundIds.contains(soundId)) {
+                        pendingPreviewSound = null
+                        soundPool.play(soundId, 0.9f, 0.9f, 1, 0, 1.0f)
+                    } else {
+                        pendingPreviewSound = sound
+                    }
                 }
+            } else {
+                pendingPreviewSound = null
             }
         } catch (_: Exception) {}
 
-        if (isVibEnabled) {
+        if (sound != TasbeehSound.OFF && isVibEnabled) {
             try {
                 if (vibrator != null && vibrator.hasVibrator()) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

@@ -187,13 +187,16 @@ fun SettingsBottomSheet(
     val context = LocalContext.current
     val updateManager = remember(context) { com.example.data.updater.AppUpdateManager(context) }
 
+    val loadedSoundIds = remember { mutableSetOf<Int>() }
+    var pendingPreviewSound by remember { mutableStateOf<TasbeehSound?>(null) }
+
     val soundPool = remember {
         val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+            .setUsage(AudioAttributes.USAGE_MEDIA)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
         SoundPool.Builder()
-            .setMaxStreams(2)
+            .setMaxStreams(4)
             .setAudioAttributes(audioAttributes)
             .build()
     }
@@ -212,6 +215,18 @@ fun SettingsBottomSheet(
     }
 
     DisposableEffect(soundPool) {
+        soundPool.setOnLoadCompleteListener { _, sampleId, status ->
+            if (status == 0) {
+                loadedSoundIds.add(sampleId)
+                val currentPending = pendingPreviewSound
+                if (currentPending != null && soundIdMap[currentPending] == sampleId) {
+                    try {
+                        soundPool.play(sampleId, 0.9f, 0.9f, 1, 0, 1.0f)
+                    } catch (_: Exception) {}
+                    pendingPreviewSound = null
+                }
+            }
+        }
         onDispose {
             try {
                 soundPool.release()
@@ -236,12 +251,19 @@ fun SettingsBottomSheet(
             if (sound != TasbeehSound.OFF) {
                 val soundId = soundIdMap[sound]
                 if (soundId != null && soundId > 0) {
-                    soundPool.play(soundId, 0.9f, 0.9f, 1, 0, 1.0f)
+                    if (loadedSoundIds.contains(soundId)) {
+                        pendingPreviewSound = null
+                        soundPool.play(soundId, 0.9f, 0.9f, 1, 0, 1.0f)
+                    } else {
+                        pendingPreviewSound = sound
+                    }
                 }
+            } else {
+                pendingPreviewSound = null
             }
         } catch (_: Exception) {}
 
-        if (isVibEnabled) {
+        if (sound != TasbeehSound.OFF && isVibEnabled) {
             try {
                 if (vibrator != null && vibrator.hasVibrator()) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -619,10 +641,7 @@ fun SettingsBottomSheet(
                                                 selectedColor = MaterialTheme.colorScheme.primary,
                                                 unselectedColor = Color.semanticStrongBorder
                                             ),
-                                            onClick = {
-                                                onSelectTasbeehSound(sound)
-                                                playAudioAndHapticPreview(sound, vibrationEnabled)
-                                            }
+                                            onClick = null
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Column(modifier = Modifier.weight(1f)) {

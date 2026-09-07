@@ -1684,7 +1684,7 @@ fun BismillahHeader(
 
     val activeAlpha by animateFloatAsState(
         targetValue = if (isVerseActive) 1f else 0f,
-        animationSpec = if (isReducedMotion) snap() else tween(durationMillis = 250, easing = FastOutSlowInEasing),
+        animationSpec = if (isReducedMotion) snap() else tween(durationMillis = 220, easing = FastOutSlowInEasing),
         label = "bismillahActiveHighlight"
     )
 
@@ -1704,13 +1704,13 @@ fun BismillahHeader(
                     val barMargin = 8.dp.toPx()
                     drawRoundRect(
                         color = accent.copy(alpha = activeAlpha * 0.95f),
-                        topLeft = Offset(4.dp.toPx(), barMargin),
+                        topLeft = Offset(3.5.dp.toPx(), barMargin),
                         size = Size(barWidth, (size.height - barMargin * 2).coerceAtLeast(0f)),
                         cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
                     )
                 }
             }
-            .padding(top = 16.dp, bottom = 20.dp, start = if (isVerseActive) 14.dp else 8.dp, end = 8.dp)
+            .padding(top = 16.dp, bottom = 20.dp, start = 12.dp, end = 8.dp)
             .combinedClickable(
                 onClick = { onOpenLens?.invoke() },
                 onLongClick = onLongClick
@@ -1945,7 +1945,7 @@ fun VerseCard(
 
     val activeAlpha by animateFloatAsState(
         targetValue = if (isVerseActive) 1f else 0f,
-        animationSpec = if (isReducedMotion) snap() else tween(durationMillis = 250, easing = FastOutSlowInEasing),
+        animationSpec = if (isReducedMotion) snap() else tween(durationMillis = 220, easing = FastOutSlowInEasing),
         label = "verseActiveHighlight"
     )
 
@@ -1965,7 +1965,7 @@ fun VerseCard(
                     val barMargin = 6.dp.toPx()
                     drawRoundRect(
                         color = accent.copy(alpha = activeAlpha * 0.95f),
-                        topLeft = Offset(3.dp.toPx(), barMargin),
+                        topLeft = Offset(3.5.dp.toPx(), barMargin),
                         size = Size(barWidth, (size.height - barMargin * 2).coerceAtLeast(0f)),
                         cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
                     )
@@ -1975,7 +1975,7 @@ fun VerseCard(
                 onClick = { onOpenLens?.invoke() },
                 onLongClick = onLongClick
             )
-            .padding(start = if (isVerseActive) 14.dp else 6.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)
+            .padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)
     ) {
         // Verse Header: Arabic-Indic Number Badge on Start, Action Icons on End
         Row(
