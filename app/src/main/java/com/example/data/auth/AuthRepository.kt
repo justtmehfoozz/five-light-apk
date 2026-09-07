@@ -81,15 +81,14 @@ class AuthRepository(private val context: Context) {
     val setupCompletedEvent: StateFlow<Int> = _setupCompletedEvent.asStateFlow()
 
     fun isSetupCompleted(uid: String): Boolean {
-        if (uid.isBlank()) return false
-        return prefs.getBoolean("setup_completed_$uid", false)
+        val key = if (uid.isBlank()) "anonymous_user" else uid
+        return prefs.getBoolean("setup_completed_$key", false)
     }
 
     fun setSetupCompleted(uid: String, completed: Boolean = true) {
-        if (uid.isNotBlank()) {
-            prefs.edit().putBoolean("setup_completed_$uid", completed).apply()
-            _setupCompletedEvent.value += 1
-        }
+        val key = if (uid.isBlank()) "anonymous_user" else uid
+        prefs.edit().putBoolean("setup_completed_$key", completed).apply()
+        _setupCompletedEvent.value += 1
     }
 
     suspend fun signInWithEmail(email: String, password: String): Result<FirebaseUser> = withContext(Dispatchers.IO) {

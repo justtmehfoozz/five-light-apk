@@ -647,8 +647,9 @@ fun SetUpFiveLightScreen(
                                 isRestoreRestored = restoreCompletedSuccessfully,
                                 effectiveUser = effectiveUser,
                                 onFinish = {
-                                    val uid = effectiveUser?.uid ?: "anonymous_user"
+                                    val uid = effectiveUser?.uid.orEmpty().ifBlank { "anonymous_user" }
                                     authRepository.setSetupCompleted(uid, true)
+                                    viewModel.setSetupCompleted(uid, true)
                                     viewModel.syncManager.notifyPreferencesChanged()
                                     onSetupFinished()
                                 }
@@ -1598,8 +1599,18 @@ private fun WhereAreYouStep(
         }
     }
 
+    var hasAutoRequestedPermission by rememberSaveable { mutableStateOf(false) }
+
     LaunchedEffect(hasLocationPermission) {
-        if (hasLocationPermission && locationState == "INITIAL") {
+        if (!hasLocationPermission && !hasAutoRequestedPermission) {
+            hasAutoRequestedPermission = true
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        } else if (hasLocationPermission && locationState == "INITIAL") {
             resolveCurrentGPS(triggerAutoAdvance = false)
         }
     }
@@ -2612,13 +2623,7 @@ private fun AutomaticBackupStep(
     var lastBackupTime by remember { mutableLongStateOf(BackupManager.getLastBackupTime(context)) }
     var isBackingUpNow by remember { mutableStateOf(false) }
 
-    // Automatically detect and initialize existing Google Drive authorization without requiring button press
-    LaunchedEffect(Unit) {
-        val account = GoogleDriveService.getAuthorizedAccount(context)
-        if (account != null && GoogleSignIn.hasPermissions(account, GoogleDriveService.DRIVE_APPDATA_SCOPE)) {
-            driveAccount = account
-        }
-    }
+    var hasAutoTriggeredDrive by rememberSaveable { mutableStateOf(false) }
 
     val driveAuthLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -2632,6 +2637,20 @@ private fun AutomaticBackupStep(
             }
         } catch (e: Exception) {
             Toast.makeText(context, "Google Drive connection cancelled", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Automatically detect and initialize existing Google Drive authorization or trigger connect flow
+    LaunchedEffect(Unit) {
+        val account = GoogleDriveService.getAuthorizedAccount(context)
+        if (account != null && GoogleSignIn.hasPermissions(account, GoogleDriveService.DRIVE_APPDATA_SCOPE)) {
+            driveAccount = account
+        } else if (!hasAutoTriggeredDrive) {
+            hasAutoTriggeredDrive = true
+            try {
+                val signInClient = GoogleDriveService.getGoogleSignInClient(context)
+                driveAuthLauncher.launch(signInClient.signInIntent)
+            } catch (_: Exception) {}
         }
     }
 

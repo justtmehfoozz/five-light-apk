@@ -165,7 +165,9 @@ class MainActivity : ComponentActivity() {
                 val hasSeenAccountPrompt by viewModel.hasSeenAccountPrompt.collectAsStateWithLifecycle()
                 val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
                 val setupCompletedEvent by viewModel.setupCompletedEvent.collectAsStateWithLifecycle()
-                val isSetupRequired = currentUser != null && !viewModel.isSetupCompleted(currentUser?.uid.orEmpty())
+                val isSetupRequired = remember(currentUser, setupCompletedEvent) {
+                    currentUser != null && !viewModel.isSetupCompleted(currentUser?.uid.orEmpty())
+                }
 
                 androidx.compose.runtime.LaunchedEffect(isSetupRequired) {
                     if (isSetupRequired) {
@@ -554,6 +556,8 @@ class MainActivity : ComponentActivity() {
                                     onUpdateCustomDhikr = { preset -> viewModel.updateCustomDhikr(preset) },
                                     onDeleteCustomDhikr = { id -> viewModel.deleteCustomDhikr(id) },
                                     onDeleteCustomTarget = { t -> viewModel.deleteCustomTarget(t) },
+                                    onToggleVibration = { enabled -> viewModel.setVibrationEnabled(enabled) },
+                                    onSelectTasbeehSound = { sound -> viewModel.setTasbeehSound(sound) },
                                     isActiveTab = (pagerState.currentPage == 3)
                                 )
                             }
@@ -903,10 +907,8 @@ class MainActivity : ComponentActivity() {
                                 viewModel = viewModel,
                                 currentUser = currentUser,
                                 onSetupComplete = {
-                                    val uid = currentUser?.uid.orEmpty()
-                                    if (uid.isNotBlank()) {
-                                        viewModel.setSetupCompleted(uid, true)
-                                    }
+                                    val uid = currentUser?.uid.orEmpty().ifBlank { "anonymous_user" }
+                                    viewModel.setSetupCompleted(uid, true)
                                     viewModel.setHasSeenAccountPrompt(true)
                                 },
                                 modifier = Modifier

@@ -158,6 +158,8 @@ fun TasbeehScreen(
     onAddCustomDhikr: (transliteration: String, arabicText: String, meaning: String, target: Int) -> Unit = { _, _, _, _ -> },
     onUpdateCustomDhikr: (DhikrPreset) -> Unit = {},
     onDeleteCustomDhikr: (String) -> Unit = {},
+    onToggleVibration: (Boolean) -> Unit = {},
+    onSelectTasbeehSound: (TasbeehSound) -> Unit = {},
     isActiveTab: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -221,8 +223,9 @@ fun TasbeehScreen(
     )
 
     // User Feedback Preferences
-    var isVibrationEnabled by remember { mutableStateOf(true) }
-    var isSoundEnabled by remember { mutableStateOf(true) }
+    val globalVibrationEnabled = LocalVibrationEnabled.current
+    var isVibrationEnabled by remember(globalVibrationEnabled) { mutableStateOf(globalVibrationEnabled) }
+    var isSoundEnabled by remember(selectedTasbeehSound) { mutableStateOf(selectedTasbeehSound != TasbeehSound.OFF) }
     var isAutoCountEnabled by remember { mutableStateOf(false) }
     var autoCountSpeedSec by remember { mutableFloatStateOf(2.0f) }
 
@@ -269,7 +272,6 @@ fun TasbeehScreen(
         }
     }
 
-    val globalVibrationEnabled = LocalVibrationEnabled.current
     fun triggerVibration(isCompletion: Boolean) {
         if (!isVibrationEnabled || !globalVibrationEnabled) return
         try {
@@ -580,7 +582,10 @@ fun TasbeehScreen(
                         }
                         Switch(
                             checked = isVibrationEnabled,
-                            onCheckedChange = { isVibrationEnabled = it },
+                            onCheckedChange = {
+                                isVibrationEnabled = it
+                                onToggleVibration(it)
+                            },
                             modifier = Modifier.testTag("vibration_switch"),
                             colors = androidx.compose.material3.SwitchDefaults.colors(
                                 checkedThumbColor = Color.semanticAccentForeground,
@@ -605,7 +610,14 @@ fun TasbeehScreen(
                         }
                         Switch(
                             checked = isSoundEnabled,
-                            onCheckedChange = { isSoundEnabled = it },
+                            onCheckedChange = {
+                                isSoundEnabled = it
+                                if (!it) {
+                                    onSelectTasbeehSound(TasbeehSound.OFF)
+                                } else if (selectedTasbeehSound == TasbeehSound.OFF) {
+                                    onSelectTasbeehSound(TasbeehSound.SOFT_TICK)
+                                }
+                            },
                             modifier = Modifier.testTag("sound_switch"),
                             colors = androidx.compose.material3.SwitchDefaults.colors(
                                 checkedThumbColor = Color.semanticAccentForeground,
