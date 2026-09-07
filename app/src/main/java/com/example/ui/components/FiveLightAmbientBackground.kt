@@ -90,14 +90,14 @@ fun FiveLightAmbientBackground(
     val durationMs = 600
 
     val bgColor by animateColorAsState(
-        targetValue = if (isDark) Color(0xFF0D0D11) else Color(0xFFFAF7F2),
+        targetValue = if (isDark) Color(0xFF000000) else Color(0xFFFAF7F2),
         animationSpec = tween(durationMs),
         label = "bgAnim"
     )
 
     // Depth Lights Color (Soft diffused background glow)
     val depthLightColor by animateColorAsState(
-        targetValue = if (isDark) Color(0xFF231F33) else Color(0xFFE8DCCB),
+        targetValue = if (isDark) Color(0xFF13101C) else Color(0xFFE8DCCB),
         animationSpec = tween(durationMs),
         label = "depthLightAnim"
     )
@@ -141,7 +141,7 @@ fun FiveLightAmbientBackground(
     )
 
     val primaryAuraColor by animateColorAsState(
-        targetValue = if (isDark) Color(0xFF483F63) else Color(0xFFEFE4D4),
+        targetValue = if (isDark) Color(0xFF38304A) else Color(0xFFEFE4D4),
         animationSpec = tween(durationMs),
         label = "primaryAuraAnim"
     )
