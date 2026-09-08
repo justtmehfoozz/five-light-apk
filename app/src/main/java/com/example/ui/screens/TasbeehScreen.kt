@@ -110,7 +110,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -132,9 +134,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -143,6 +147,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.example.data.db.DhikrHistoryEntity
@@ -218,40 +225,6 @@ fun TasbeehScreen(
 
     // Dhikr Customization & Reorder States
     var activeEditDhikrId by rememberSaveable { mutableStateOf<String?>(null) }
-    var draggingPresetId by remember { mutableStateOf<String?>(null) }
-    var dragOffsetX by remember { mutableFloatStateOf(0f) }
-    val lazyRowState = rememberLazyListState()
-    var localPresets by remember(presets) { mutableStateOf(presets) }
-
-    LaunchedEffect(presets) {
-        if (draggingPresetId == null) {
-            localPresets = presets
-        }
-    }
-
-    // Edge auto-scroll during drag
-    LaunchedEffect(draggingPresetId) {
-        if (draggingPresetId == null) return@LaunchedEffect
-        val edgeThresholdPx = with(density) { 40.dp.toPx() }
-        while (isActive && draggingPresetId != null) {
-            val visible = lazyRowState.layoutInfo.visibleItemsInfo
-            val draggedItem = visible.find { it.key == draggingPresetId }
-            if (draggedItem != null) {
-                val visualLeft = draggedItem.offset + dragOffsetX
-                val visualRight = visualLeft + draggedItem.size
-                val viewportWidth = lazyRowState.layoutInfo.viewportSize.width
-
-                if (visualLeft < edgeThresholdPx && lazyRowState.canScrollBackward) {
-                    val speed = ((edgeThresholdPx - visualLeft) / edgeThresholdPx).coerceIn(0.1f, 1f) * 10f
-                    lazyRowState.scrollBy(-speed)
-                } else if (visualRight > viewportWidth - edgeThresholdPx && lazyRowState.canScrollForward) {
-                    val speed = ((visualRight - (viewportWidth - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0.1f, 1f) * 10f
-                    lazyRowState.scrollBy(speed)
-                }
-            }
-            delay(16)
-        }
-    }
 
     // Separate Dialog States: Dhikr Dialog vs Target Dialog
     var showCustomDhikrDialog by remember { mutableStateOf(false) }
@@ -766,329 +739,30 @@ fun TasbeehScreen(
 
         // =========================================================================
         // SECTION 2 & 3: DHIKR SELECTOR + STANDALONE DHIKR "+" BUTTON
-        // Press & hold to reorder Dhikrs or show X delete control.
+        // Displaced reordering layout with spring animation & continuous spatial tracking
         // =========================================================================
-        LazyRow(
-            state = lazyRowState,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .animateContentSize()
-        ) {
-            items(localPresets, key = { it.id }) { preset ->
-                val isDraggingThis = draggingPresetId == preset.id
-                val isActiveEdit = activeEditDhikrId == preset.id
-                val isSelected = preset.id == selectedPreset.id
-                val canDelete = localPresets.size > 1
-
-                val itemScale by animateFloatAsState(
-                    targetValue = if (isDraggingThis) 1.04f else 1.0f,
-                    animationSpec = spring(dampingRatio = 0.75f, stiffness = 600f),
-                    label = "chipScale_${preset.id}"
-                )
-                val itemElevation by animateDpAsState(
-                    targetValue = if (isDraggingThis) 8.dp else 0.dp,
-                    animationSpec = spring(dampingRatio = 0.75f, stiffness = 600f),
-                    label = "chipElevation_${preset.id}"
-                )
-                val pillBg by animateColorAsState(
-                    targetValue = if (isSelected) {
-                        Color.semanticPrimaryAccent
-                    } else {
-                        Color.semanticSurface
-                    },
-                    animationSpec = tween(180),
-                    label = "pillBg_${preset.id}"
-                )
-                val pillText by animateColorAsState(
-                    targetValue = if (isSelected) {
-                        if (isDarkTheme) Color(0xFFFFFFFF) else Color.semanticAccentForeground
-                    } else {
-                        Color.semanticSecondaryText
-                    },
-                    animationSpec = tween(180),
-                    label = "pillText_${preset.id}"
-                )
-                val pillBorder = if (isSelected) {
-                    BorderStroke(1.2.dp, Color.semanticPrimaryAccent)
-                } else {
-                    BorderStroke(1.dp, Color.semanticBorder)
+        ReorderableDhikrChipsRow(
+            presets = presets,
+            selectedPreset = selectedPreset,
+            activeEditDhikrId = activeEditDhikrId,
+            onSelectPreset = { preset ->
+                onSelectPreset(preset)
+                isAutoCountEnabled = false
+                if (activeEditDhikrId != null && activeEditDhikrId != preset.id) {
+                    activeEditDhikrId = null
                 }
-
-                Box(
-                    modifier = Modifier
-                        .animateItem(
-                            placementSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
-                            fadeInSpec = tween(200),
-                            fadeOutSpec = tween(200)
-                        )
-                        .zIndex(if (isDraggingThis) 10f else 1f)
-                        .graphicsLayer {
-                            translationX = if (isDraggingThis) dragOffsetX else 0f
-                            scaleX = itemScale
-                            scaleY = itemScale
-                            shadowElevation = itemElevation.toPx()
-                            shape = RoundedCornerShape(16.dp)
-                            clip = false
-                        }
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = pillBg,
-                        border = pillBorder,
-                        modifier = Modifier
-                            .testTag("preset_${preset.id}")
-                            .semantics {
-                                contentDescription = if (isActiveEdit) {
-                                    "${preset.nameEnglish}, edit mode active"
-                                } else {
-                                    preset.nameEnglish
-                                }
-                                if (isSelected) stateDescription = "selected"
-                            }
-                            .pointerInput(preset.id) {
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                    val downTime = System.currentTimeMillis()
-                                    val downPos = down.position
-                                    val longPressTimeout = viewConfiguration.longPressTimeoutMillis
-                                    var isLongPress = false
-                                    var hasMovedBeyondSlop = false
-
-                                    while (true) {
-                                        val remaining = (longPressTimeout - (System.currentTimeMillis() - downTime)).coerceAtLeast(1L)
-                                        val event = withTimeoutOrNull(remaining) {
-                                            awaitPointerEvent(PointerEventPass.Main)
-                                        }
-
-                                        if (event == null) {
-                                            // Long press timeout reached!
-                                            isLongPress = true
-                                            break
-                                        }
-
-                                        val change = event.changes.firstOrNull { it.id == down.id }
-                                        if (change == null || !change.pressed) {
-                                            // Lifted before long press timeout -> short tap!
-                                            if (!hasMovedBeyondSlop) {
-                                                onSelectPreset(preset)
-                                                isAutoCountEnabled = false
-                                                if (activeEditDhikrId != null && activeEditDhikrId != preset.id) {
-                                                    activeEditDhikrId = null
-                                                }
-                                            }
-                                            return@awaitEachGesture
-                                        }
-
-                                        val dist = (change.position - downPos).getDistance()
-                                        if (dist > viewConfiguration.touchSlop) {
-                                            // Scrolling horizontally -> let LazyRow scroll naturally
-                                            hasMovedBeyondSlop = true
-                                            return@awaitEachGesture
-                                        }
-                                    }
-
-                                    if (isLongPress) {
-                                        activeEditDhikrId = preset.id
-                                        draggingPresetId = preset.id
-                                        dragOffsetX = 0f
-                                        if (isVibrationEnabled && globalVibrationEnabled) {
-                                            try {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            } catch (_: Exception) {}
-                                        }
-
-                                        while (true) {
-                                            val event = awaitPointerEvent(PointerEventPass.Main)
-                                            val change = event.changes.firstOrNull { it.id == down.id }
-                                            if (change == null || !change.pressed) {
-                                                // Drag ended/released
-                                                val currentOrder = localPresets.toList()
-                                                draggingPresetId = null
-                                                dragOffsetX = 0f
-                                                onReorderPresets(currentOrder)
-                                                break
-                                            }
-
-                                            val dragDelta = change.positionChange()
-                                            change.consume()
-                                            val deltaX = dragDelta.x
-                                            dragOffsetX += deltaX
-
-                                            // Reorder swap calculation based on item midpoints
-                                            val currentIndex = localPresets.indexOfFirst { it.id == preset.id }
-                                            if (currentIndex != -1) {
-                                                val visible = lazyRowState.layoutInfo.visibleItemsInfo
-                                                val currentItemInfo = visible.find { it.key == preset.id }
-                                                if (currentItemInfo != null) {
-                                                    val currentCenter = currentItemInfo.offset + (currentItemInfo.size / 2f) + dragOffsetX
-
-                                                    if (dragOffsetX > 0 && currentIndex < localPresets.lastIndex) {
-                                                        val nextPreset = localPresets[currentIndex + 1]
-                                                        val nextItemInfo = visible.find { it.key == nextPreset.id }
-                                                        val nextCenter = if (nextItemInfo != null) {
-                                                            nextItemInfo.offset + (nextItemInfo.size / 2f)
-                                                        } else {
-                                                            currentItemInfo.offset + currentItemInfo.size + 10f
-                                                        }
-
-                                                        if (currentCenter > nextCenter) {
-                                                            val mutable = localPresets.toMutableList()
-                                                            val item = mutable.removeAt(currentIndex)
-                                                            mutable.add(currentIndex + 1, item)
-                                                            localPresets = mutable
-
-                                                            val shift = if (nextItemInfo != null) {
-                                                                (nextItemInfo.size + with(density) { 8.dp.toPx() })
-                                                            } else {
-                                                                (currentItemInfo.size + with(density) { 8.dp.toPx() })
-                                                            }
-                                                            dragOffsetX -= shift
-
-                                                            if (isVibrationEnabled && globalVibrationEnabled) {
-                                                                try {
-                                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                                } catch (_: Exception) {}
-                                                            }
-                                                        }
-                                                    } else if (dragOffsetX < 0 && currentIndex > 0) {
-                                                        val prevPreset = localPresets[currentIndex - 1]
-                                                        val prevItemInfo = visible.find { it.key == prevPreset.id }
-                                                        val prevCenter = if (prevItemInfo != null) {
-                                                            prevItemInfo.offset + (prevItemInfo.size / 2f)
-                                                        } else {
-                                                            currentItemInfo.offset - 10f
-                                                        }
-
-                                                        if (currentCenter < prevCenter) {
-                                                            val mutable = localPresets.toMutableList()
-                                                            val item = mutable.removeAt(currentIndex)
-                                                            mutable.add(currentIndex - 1, item)
-                                                            localPresets = mutable
-
-                                                            val shift = if (prevItemInfo != null) {
-                                                                (prevItemInfo.size + with(density) { 8.dp.toPx() })
-                                                            } else {
-                                                                (currentItemInfo.size + with(density) { 8.dp.toPx() })
-                                                            }
-                                                            dragOffsetX += shift
-
-                                                            if (isVibrationEnabled && globalVibrationEnabled) {
-                                                                try {
-                                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                                } catch (_: Exception) {}
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(
-                                start = 14.dp,
-                                end = if (isActiveEdit && canDelete) 6.dp else 14.dp,
-                                top = 8.dp,
-                                bottom = 8.dp
-                            )
-                        ) {
-                            Text(
-                                text = preset.nameEnglish,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = pillText
-                            )
-
-                            AnimatedVisibility(
-                                visible = isActiveEdit && canDelete,
-                                enter = fadeIn(tween(180)) + expandHorizontally(tween(180), expandFrom = Alignment.Start),
-                                exit = fadeOut(tween(150)) + shrinkHorizontally(tween(150), shrinkTowards = Alignment.Start)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .size(22.dp)
-                                            .clip(CircleShape)
-                                            .background(
-                                                if (isSelected) {
-                                                    if (isDarkTheme) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.35f)
-                                                } else {
-                                                    if (isDarkTheme) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f)
-                                                }
-                                            )
-                                            .clickable(
-                                                interactionSource = remember { MutableInteractionSource() },
-                                                indication = ripple(bounded = true, radius = 11.dp)
-                                            ) {
-                                                if (canDelete) {
-                                                    if (isVibrationEnabled && globalVibrationEnabled) {
-                                                        try {
-                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                        } catch (_: Exception) {}
-                                                    }
-                                                    onDeleteDhikr(preset.id)
-                                                    if (activeEditDhikrId == preset.id) {
-                                                        activeEditDhikrId = null
-                                                    }
-                                                }
-                                            }
-                                            .semantics { contentDescription = "Delete ${preset.nameEnglish}" }
-                                            .testTag("delete_dhikr_${preset.id}"),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.Close,
-                                            contentDescription = "Delete ${preset.nameEnglish}",
-                                            tint = if (isSelected) {
-                                                if (isDarkTheme) Color.White else Color.semanticAccentForeground
-                                            } else {
-                                                Color.semanticPrimaryText
-                                            },
-                                            modifier = Modifier.size(12.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Standalone "+" Icon Button to Add Custom Dhikr
-            item(key = "add_custom_dhikr_button") {
-                Surface(
-                    onClick = {
-                        editingCustomDhikr = null
-                        showCustomDhikrDialog = true
-                    },
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color.semanticSurface,
-                    border = BorderStroke(1.dp, Color.semanticBorder),
-                    modifier = Modifier
-                        .height(34.dp)
-                        .width(38.dp)
-                        .testTag("add_custom_dhikr_btn")
-                        .semantics {
-                            contentDescription = "Add Custom Dhikr"
-                        }
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Outlined.Add,
-                            contentDescription = "Add Custom Dhikr",
-                            tint = Color.semanticPrimaryAccent,
-                            modifier = Modifier.size(17.dp)
-                        )
-                    }
-                }
-            }
-        }
+            },
+            onReorderPresets = onReorderPresets,
+            onDeleteDhikr = onDeleteDhikr,
+            onEditActiveDhikrChange = { activeEditDhikrId = it },
+            onAddCustomDhikrClick = {
+                editingCustomDhikr = null
+                showCustomDhikrDialog = true
+            },
+            isDarkTheme = isDarkTheme,
+            isVibrationEnabled = isVibrationEnabled,
+            globalVibrationEnabled = globalVibrationEnabled
+        )
 
         // SECTION 4: Reserved Stable Content Container (Arabic + Meaning)
         Box(
@@ -2034,5 +1708,436 @@ fun TasbeehScreen(
                 }
             }
         )
+    }
+}
+
+private data class DhikrChipBounds(val x: Float, val width: Float)
+
+@Composable
+private fun ReorderableDhikrChipsRow(
+    presets: List<DhikrPreset>,
+    selectedPreset: DhikrPreset,
+    activeEditDhikrId: String?,
+    onSelectPreset: (DhikrPreset) -> Unit,
+    onReorderPresets: (List<DhikrPreset>) -> Unit,
+    onDeleteDhikr: (String) -> Unit,
+    onEditActiveDhikrChange: (String?) -> Unit,
+    onAddCustomDhikrClick: () -> Unit,
+    isDarkTheme: Boolean,
+    isVibrationEnabled: Boolean,
+    globalVibrationEnabled: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val viewConfig = LocalViewConfiguration.current
+    val coroutineScope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
+
+    var localList by remember(presets) { mutableStateOf(presets) }
+    var draggingPresetId by remember { mutableStateOf<String?>(null) }
+    var initialIndex by remember { mutableIntStateOf(-1) }
+    var targetIndex by remember { mutableIntStateOf(-1) }
+    val dragOffset = remember { Animatable(0f) }
+    var isSettling by remember { mutableStateOf(false) }
+
+    LaunchedEffect(presets) {
+        if (draggingPresetId == null && !isSettling) {
+            localList = presets
+        }
+    }
+
+    val itemBounds = remember { mutableStateMapOf<String, DhikrChipBounds>() }
+    val spacingPx = with(density) { 8.dp.toPx() }
+
+    // Edge auto-scroll during drag
+    LaunchedEffect(draggingPresetId, isSettling) {
+        val currentDragId = draggingPresetId
+        if (currentDragId == null || isSettling) return@LaunchedEffect
+        val edgeThresholdPx = with(density) { 48.dp.toPx() }
+        while (isActive && draggingPresetId == currentDragId && !isSettling) {
+            val draggedBounds = itemBounds[currentDragId]
+            if (draggedBounds != null) {
+                val visualScreenLeft = draggedBounds.x + dragOffset.value - scrollState.value
+                val visualScreenRight = visualScreenLeft + draggedBounds.width
+                val viewportWidth = scrollState.viewportSize
+
+                if (visualScreenLeft < edgeThresholdPx && scrollState.value > 0) {
+                    val speed = ((edgeThresholdPx - visualScreenLeft) / edgeThresholdPx).coerceIn(0.1f, 1f) * 12f
+                    val actualScroll = -minOf(speed, scrollState.value.toFloat())
+                    scrollState.scrollBy(actualScroll)
+                    dragOffset.snapTo(dragOffset.value + actualScroll)
+                } else if (visualScreenRight > viewportWidth - edgeThresholdPx && scrollState.value < scrollState.maxValue) {
+                    val speed = ((visualScreenRight - (viewportWidth - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0.1f, 1f) * 12f
+                    val maxCanScroll = (scrollState.maxValue - scrollState.value).toFloat()
+                    val actualScroll = minOf(speed, maxCanScroll)
+                    scrollState.scrollBy(actualScroll)
+                    dragOffset.snapTo(dragOffset.value + actualScroll)
+                }
+            }
+            delay(16)
+        }
+    }
+
+    fun finishDrag() {
+        val fromIdx = initialIndex
+        val toIdx = targetIndex
+        val currentDragId = draggingPresetId
+        if (currentDragId != null && fromIdx != -1 && toIdx != -1 && fromIdx != toIdx &&
+            fromIdx in localList.indices && toIdx in localList.indices
+        ) {
+            isSettling = true
+            val draggedW = itemBounds[currentDragId]?.width ?: 0f
+            val initialSlotBounds = itemBounds[currentDragId]
+            val targetSlotBounds = itemBounds[localList[toIdx].id]
+
+            val targetSlotX = if (targetSlotBounds != null && initialSlotBounds != null) {
+                if (toIdx > fromIdx) {
+                    targetSlotBounds.x + targetSlotBounds.width - draggedW
+                } else {
+                    targetSlotBounds.x
+                }
+            } else {
+                initialSlotBounds?.x ?: 0f
+            }
+            val settleDelta = targetSlotX - (initialSlotBounds?.x ?: 0f)
+
+            coroutineScope.launch {
+                dragOffset.animateTo(
+                    targetValue = settleDelta,
+                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 450f)
+                )
+                val updated = localList.toMutableList()
+                val moved = updated.removeAt(fromIdx)
+                updated.add(toIdx, moved)
+                localList = updated
+                onReorderPresets(updated)
+
+                dragOffset.snapTo(0f)
+                draggingPresetId = null
+                initialIndex = -1
+                targetIndex = -1
+                isSettling = false
+            }
+        } else {
+            isSettling = true
+            coroutineScope.launch {
+                dragOffset.animateTo(
+                    targetValue = 0f,
+                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 450f)
+                )
+                draggingPresetId = null
+                initialIndex = -1
+                targetIndex = -1
+                isSettling = false
+            }
+        }
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(scrollState),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        localList.forEachIndexed { i, preset ->
+            key(preset.id) {
+                val isThisDragging = draggingPresetId == preset.id
+                val isActiveEdit = activeEditDhikrId == preset.id
+                val isSelected = preset.id == selectedPreset.id
+                val canDelete = localList.size > 1
+
+                val targetShiftX = if (draggingPresetId != null && !isThisDragging && initialIndex != -1 && targetIndex != -1) {
+                    val draggedWidth = (itemBounds[draggingPresetId]?.width ?: 0f) + spacingPx
+                    if (targetIndex > initialIndex && i > initialIndex && i <= targetIndex) {
+                        -draggedWidth
+                    } else if (targetIndex < initialIndex && i >= targetIndex && i < initialIndex) {
+                        +draggedWidth
+                    } else {
+                        0f
+                    }
+                } else {
+                    0f
+                }
+
+                val animatedShiftX by animateFloatAsState(
+                    targetValue = targetShiftX,
+                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 450f),
+                    label = "shift_${preset.id}"
+                )
+
+                val itemScale by animateFloatAsState(
+                    targetValue = if (isThisDragging) 1.03f else 1.0f,
+                    animationSpec = spring(dampingRatio = 0.8f, stiffness = 500f),
+                    label = "chipScale_${preset.id}"
+                )
+                val itemElevation by animateDpAsState(
+                    targetValue = if (isThisDragging) 8.dp else 0.dp,
+                    animationSpec = spring(dampingRatio = 0.8f, stiffness = 500f),
+                    label = "chipElevation_${preset.id}"
+                )
+                val pillBg by animateColorAsState(
+                    targetValue = if (isSelected) {
+                        Color.semanticPrimaryAccent
+                    } else {
+                        Color.semanticSurface
+                    },
+                    animationSpec = tween(180),
+                    label = "pillBg_${preset.id}"
+                )
+                val pillText by animateColorAsState(
+                    targetValue = if (isSelected) {
+                        if (isDarkTheme) Color(0xFFFFFFFF) else Color.semanticAccentForeground
+                    } else {
+                        Color.semanticSecondaryText
+                    },
+                    animationSpec = tween(180),
+                    label = "pillText_${preset.id}"
+                )
+                val pillBorder = if (isSelected) {
+                    BorderStroke(1.2.dp, Color.semanticPrimaryAccent)
+                } else {
+                    BorderStroke(1.dp, Color.semanticBorder)
+                }
+
+                Box(
+                    modifier = Modifier
+                        .onGloballyPositioned { coords ->
+                            val pos = coords.positionInParent()
+                            itemBounds[preset.id] = DhikrChipBounds(
+                                x = pos.x,
+                                width = coords.size.width.toFloat()
+                            )
+                        }
+                        .zIndex(if (isThisDragging) 100f else 1f)
+                        .graphicsLayer {
+                            translationX = if (isThisDragging) dragOffset.value else animatedShiftX
+                            scaleX = itemScale
+                            scaleY = itemScale
+                            shadowElevation = itemElevation.toPx()
+                            shape = RoundedCornerShape(16.dp)
+                            clip = false
+                        }
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = pillBg,
+                        border = pillBorder,
+                        modifier = Modifier
+                            .testTag("preset_${preset.id}")
+                            .semantics {
+                                contentDescription = if (isActiveEdit) {
+                                    "${preset.nameEnglish}, edit mode active"
+                                } else {
+                                    preset.nameEnglish
+                                }
+                                if (isSelected) stateDescription = "selected"
+                            }
+                            .pointerInput(preset.id) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val downTime = System.currentTimeMillis()
+                                    val downPos = down.position
+                                    val longPressTimeout = viewConfig.longPressTimeoutMillis
+                                    var isLongPress = false
+                                    var hasMovedBeyondSlop = false
+
+                                    while (true) {
+                                        val remaining = (longPressTimeout - (System.currentTimeMillis() - downTime)).coerceAtLeast(1L)
+                                        val event = withTimeoutOrNull(remaining) {
+                                            awaitPointerEvent(PointerEventPass.Main)
+                                        }
+
+                                        if (event == null) {
+                                            isLongPress = true
+                                            break
+                                        }
+
+                                        val change = event.changes.firstOrNull { it.id == down.id }
+                                        if (change == null || !change.pressed) {
+                                            if (!hasMovedBeyondSlop && !isSettling && draggingPresetId == null) {
+                                                onSelectPreset(preset)
+                                                if (activeEditDhikrId != null && activeEditDhikrId != preset.id) {
+                                                    onEditActiveDhikrChange(null)
+                                                }
+                                            }
+                                            return@awaitEachGesture
+                                        }
+
+                                        val dist = (change.position - downPos).getDistance()
+                                        if (dist > viewConfig.touchSlop) {
+                                            hasMovedBeyondSlop = true
+                                            return@awaitEachGesture
+                                        }
+                                    }
+
+                                    if (isLongPress && !isSettling) {
+                                        onEditActiveDhikrChange(preset.id)
+                                        val currIdx = localList.indexOfFirst { it.id == preset.id }
+                                        if (currIdx != -1) {
+                                            draggingPresetId = preset.id
+                                            initialIndex = currIdx
+                                            targetIndex = currIdx
+                                            coroutineScope.launch { dragOffset.snapTo(0f) }
+                                            if (isVibrationEnabled && globalVibrationEnabled) {
+                                                try {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                } catch (_: Exception) {}
+                                            }
+
+                                            while (true) {
+                                                val event = awaitPointerEvent(PointerEventPass.Main)
+                                                val change = event.changes.firstOrNull { it.id == down.id }
+                                                if (change == null || !change.pressed) {
+                                                    finishDrag()
+                                                    break
+                                                }
+
+                                                val dragDelta = change.positionChange()
+                                                change.consume()
+                                                val deltaX = dragDelta.x
+                                                val currentVal = dragOffset.value + deltaX
+                                                coroutineScope.launch {
+                                                    dragOffset.snapTo(currentVal)
+                                                }
+
+                                                // Update targetIndex
+                                                val draggedBounds = itemBounds[preset.id]
+                                                if (draggedBounds != null) {
+                                                    val visualCenter = draggedBounds.x + currentVal + (draggedBounds.width / 2f)
+
+                                                    var newTarget = 0
+                                                    for (j in 0 until localList.size) {
+                                                        val currCenter = itemBounds[localList[j].id]?.let { it.x + it.width / 2f } ?: (j * 100f)
+                                                        if (j == 0 && visualCenter <= currCenter) {
+                                                            newTarget = 0
+                                                            break
+                                                        }
+                                                        if (j == localList.lastIndex && visualCenter >= currCenter) {
+                                                            newTarget = localList.lastIndex
+                                                            break
+                                                        }
+                                                        if (j < localList.lastIndex) {
+                                                            val nextCenter = itemBounds[localList[j + 1].id]?.let { it.x + it.width / 2f } ?: ((j + 1) * 100f)
+                                                            val midpoint = (currCenter + nextCenter) / 2f
+                                                            if (visualCenter < midpoint) {
+                                                                newTarget = j
+                                                                break
+                                                            }
+                                                        }
+                                                    }
+
+                                                    if (newTarget != targetIndex) {
+                                                        targetIndex = newTarget
+                                                        if (isVibrationEnabled && globalVibrationEnabled) {
+                                                            try {
+                                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                            } catch (_: Exception) {}
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(
+                                start = 14.dp,
+                                end = if (isActiveEdit && canDelete) 6.dp else 14.dp,
+                                top = 8.dp,
+                                bottom = 8.dp
+                            )
+                        ) {
+                            Text(
+                                text = preset.nameEnglish,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = pillText
+                            )
+
+                            AnimatedVisibility(
+                                visible = isActiveEdit && canDelete,
+                                enter = fadeIn(tween(180)) + expandHorizontally(tween(180), expandFrom = Alignment.Start),
+                                exit = fadeOut(tween(150)) + shrinkHorizontally(tween(150), shrinkTowards = Alignment.Start)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (isSelected) {
+                                                    if (isDarkTheme) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.35f)
+                                                } else {
+                                                    if (isDarkTheme) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f)
+                                                }
+                                            )
+                                            .clickable(
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                indication = ripple(bounded = true, radius = 11.dp)
+                                            ) {
+                                                if (canDelete) {
+                                                    if (isVibrationEnabled && globalVibrationEnabled) {
+                                                        try {
+                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        } catch (_: Exception) {}
+                                                    }
+                                                    onDeleteDhikr(preset.id)
+                                                    if (activeEditDhikrId == preset.id) {
+                                                        onEditActiveDhikrChange(null)
+                                                    }
+                                                }
+                                            }
+                                            .semantics { contentDescription = "Delete ${preset.nameEnglish}" }
+                                            .testTag("delete_dhikr_${preset.id}"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Close,
+                                            contentDescription = "Delete ${preset.nameEnglish}",
+                                            tint = if (isSelected) {
+                                                if (isDarkTheme) Color.White else Color.semanticAccentForeground
+                                            } else {
+                                                Color.semanticPrimaryText
+                                            },
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Standalone "+" Icon Button to Add Custom Dhikr
+        Surface(
+            onClick = onAddCustomDhikrClick,
+            shape = RoundedCornerShape(16.dp),
+            color = Color.semanticSurface,
+            border = BorderStroke(1.dp, Color.semanticBorder),
+            modifier = Modifier
+                .height(34.dp)
+                .width(38.dp)
+                .testTag("add_custom_dhikr_btn")
+                .semantics {
+                    contentDescription = "Add Custom Dhikr"
+                }
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Outlined.Add,
+                    contentDescription = "Add Custom Dhikr",
+                    tint = Color.semanticPrimaryAccent,
+                    modifier = Modifier.size(17.dp)
+                )
+            }
+        }
     }
 }
