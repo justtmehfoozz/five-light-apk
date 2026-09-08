@@ -44,6 +44,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
@@ -146,13 +147,14 @@ import com.example.ui.theme.QuietEmptyState
 import com.example.ui.theme.LocalVibrationEnabled
 import com.example.ui.components.PageHeader
 import com.example.ui.theme.ArabicText
+import androidx.compose.foundation.ExperimentalFoundationApi
 import com.example.ui.theme.SerifHeaderFont
 import com.example.ui.theme.SpaceGrotesk
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.mutableIntStateOf
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun TasbeehScreen(
     presets: List<DhikrPreset>,
@@ -800,9 +802,9 @@ fun TasbeehScreen(
                             scaleY = dragScale
                             translationX = if (isBeingDragged) dragOffsetX else 0f
                         }
-                        .pointerInput(preset.id, isEditMode, activeEditChipId) {
-                            if (isEditMode) {
-                                if (isActiveEditChip) {
+                        .then(
+                            if (isActiveEditChip) {
+                                Modifier.pointerInput(preset.id) {
                                     detectHorizontalDragGestures(
                                         onDragStart = {
                                             draggingPresetId = preset.id
@@ -867,42 +869,40 @@ fun TasbeehScreen(
                                             }
                                         }
                                     )
-                                } else {
-                                    detectTapGestures(
-                                        onTap = {
-                                            onSelectPreset(preset)
-                                            isAutoCountEnabled = false
-                                            activeEditChipId = null
-                                        },
-                                        onLongPress = {
-                                            activeEditChipId = preset.id
-                                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
-                                        }
-                                    )
                                 }
                             } else {
-                                detectTapGestures(
-                                    onTap = {
+                                Modifier.combinedClickable(
+                                    onClick = {
                                         onSelectPreset(preset)
                                         isAutoCountEnabled = false
+                                        if (isEditMode) {
+                                            activeEditChipId = null
+                                        }
                                     },
-                                    onLongPress = {
+                                    onLongClick = {
                                         activeEditChipId = preset.id
                                         FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
                                     }
                                 )
                             }
-                        }
+                        )
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
-                            .clickable(
-                                enabled = isEditMode && isActiveEditChip,
-                                onClick = {
-                                    onSelectPreset(preset)
-                                    isAutoCountEnabled = false
-                                    activeEditChipId = null
+                            .then(
+                                if (isActiveEditChip) {
+                                    Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = {
+                                            onSelectPreset(preset)
+                                            isAutoCountEnabled = false
+                                            activeEditChipId = null
+                                        }
+                                    )
+                                } else {
+                                    Modifier
                                 }
                             )
                             .padding(
