@@ -696,7 +696,10 @@ fun SettingsBottomSheet(
                     }
 
                     PreferencesSubScreen.HOME_FEATURES -> {
-                        val homeFeatureItems = homeFeaturesPreferences.featureOrder.map { featId ->
+                        val validFeatureIds = com.example.data.model.HomeFeaturesPreferences.DEFAULT_FEATURE_ORDER
+                        val homeFeatureItems = homeFeaturesPreferences.featureOrder
+                            .filter { validFeatureIds.contains(it.uppercase()) }
+                            .map { featId ->
                             when (featId.uppercase()) {
                                 "PRAYER_PREP" -> com.example.ui.components.ReorderableItemData(
                                     id = "PRAYER_PREP",

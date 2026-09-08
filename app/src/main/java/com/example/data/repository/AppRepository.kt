@@ -178,7 +178,7 @@ class AppRepository(
     private val initialFeatureOrder = if (!savedFeatureOrderStr.isNullOrEmpty()) {
         val parsed = savedFeatureOrderStr.split(",")
             .map { it.trim().uppercase() }
-            .filter { it.isNotEmpty() && it != "RIGHT_NOW" && it != "NEXT_OPPORTUNITY" }
+            .filter { com.example.data.model.HomeFeaturesPreferences.DEFAULT_FEATURE_ORDER.contains(it) }
         val missing = com.example.data.model.HomeFeaturesPreferences.DEFAULT_FEATURE_ORDER.filter { !parsed.contains(it) }
         parsed + missing
     } else {
@@ -203,6 +203,53 @@ class AppRepository(
     )
     private val _homeFeaturesPreferences = MutableStateFlow(initialHomeFeatures)
     val homeFeaturesPreferences: StateFlow<com.example.data.model.HomeFeaturesPreferences> = _homeFeaturesPreferences
+
+    // Daily Reflection State & Used History Persistence
+    private val _dailyReflectionState = MutableStateFlow<com.example.data.model.DailyReflectionItem?>(null)
+    val dailyReflectionState: StateFlow<com.example.data.model.DailyReflectionItem?> = _dailyReflectionState
+
+    fun getOrGenerateDailyReflection(todayDateStr: String = getTodayDateString()): com.example.data.model.DailyReflectionItem {
+        val cachedDate = prefs?.getString("daily_reflection_date", null)
+        val cachedId = prefs?.getString("daily_reflection_id", null)
+
+        if (cachedDate == todayDateStr && !cachedId.isNullOrEmpty()) {
+            val cachedItem = com.example.data.util.VerifiedReflectionPool.verifiedSources.find { it.id == cachedId }
+            if (cachedItem != null) {
+                if (_dailyReflectionState.value?.id != cachedItem.id) {
+                    _dailyReflectionState.value = cachedItem
+                }
+                return cachedItem
+            }
+        }
+
+        // Need new daily selection for todayDateStr
+        val historyRaw = prefs?.getString("daily_reflection_history", "") ?: ""
+        val historyList = if (historyRaw.isNotBlank()) historyRaw.split(",").map { it.trim() }.filter { it.isNotEmpty() } else emptyList()
+
+        val allPool = com.example.data.util.VerifiedReflectionPool.verifiedSources
+        val eligible = allPool.filter { !historyList.contains(it.id) }
+
+        val selected: com.example.data.model.DailyReflectionItem
+        val newHistory: List<String>
+
+        if (eligible.isNotEmpty()) {
+            selected = eligible.first()
+            newHistory = historyList + selected.id
+        } else {
+            // Safe exhaustion handling: pool exhausted, begin a new cycle with all sources eligible
+            selected = allPool.first()
+            newHistory = listOf(selected.id)
+        }
+
+        prefs?.edit()
+            ?.putString("daily_reflection_date", todayDateStr)
+            ?.putString("daily_reflection_id", selected.id)
+            ?.putString("daily_reflection_history", newHistory.joinToString(","))
+            ?.apply()
+
+        _dailyReflectionState.value = selected
+        return selected
+    }
 
     // Quran Last Read Position
     private val initialLastRead: com.example.data.model.QuranLastRead? = run {
@@ -660,9 +707,13 @@ class AppRepository(
     }
 
     fun setHomeFeatureOrder(newOrder: List<String>) {
-        val updated = _homeFeaturesPreferences.value.copy(featureOrder = newOrder)
+        val validOrder = newOrder.map { it.uppercase() }
+            .filter { com.example.data.model.HomeFeaturesPreferences.DEFAULT_FEATURE_ORDER.contains(it) }
+        val missing = com.example.data.model.HomeFeaturesPreferences.DEFAULT_FEATURE_ORDER.filter { !validOrder.contains(it) }
+        val finalOrder = validOrder + missing
+        val updated = _homeFeaturesPreferences.value.copy(featureOrder = finalOrder)
         _homeFeaturesPreferences.value = updated
-        prefs?.edit()?.putString("home_feature_order", newOrder.joinToString(","))
+        prefs?.edit()?.putString("home_feature_order", finalOrder.joinToString(","))
             ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }

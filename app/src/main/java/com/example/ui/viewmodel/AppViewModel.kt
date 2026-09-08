@@ -280,6 +280,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
     private val _currentDateString = MutableStateFlow(repository.getTodayDateString())
     val currentDateString: StateFlow<String> = _currentDateString.asStateFlow()
 
+    // Daily Reflection State (updates deterministically whenever local calendar date changes)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val dailyReflectionState: StateFlow<com.example.data.model.DailyReflectionItem> = _currentDateString
+        .map { dateStr -> repository.getOrGenerateDailyReflection(dateStr) }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.Eagerly,
+            repository.getOrGenerateDailyReflection(repository.getTodayDateString())
+        )
+
     // Today's Prayer Log (reactively updates when currentDateString changes, e.g. at midnight)
     @OptIn(ExperimentalCoroutinesApi::class)
     val todayPrayerLog: StateFlow<PrayerLogEntity?> = _currentDateString

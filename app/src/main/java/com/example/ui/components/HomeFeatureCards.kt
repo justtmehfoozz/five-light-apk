@@ -1328,14 +1328,23 @@ fun CalendarEventMomentCard(
 
 @Composable
 fun ReflectionOfTheDayCard(
+    reflection: com.example.data.model.DailyReflectionItem? = null,
     onReflectClick: (surahNumber: Int, verseNumber: Int) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
-    // PART 3: REFLECTION OF THE DAY SWIPE TO REVEAL
-    val reflections = remember { DailyContentProvider.getReflections() }
-    var currentIndex by remember { mutableStateOf(0) }
-    var slideDirection by remember { mutableStateOf(1) } // 1 for left/next, -1 for right/prev
-    var totalDragX by remember { mutableStateOf(0f) }
+    val activeReflection = reflection ?: remember {
+        val defaultSource = com.example.data.util.VerifiedReflectionPool.verifiedSources.first()
+        com.example.data.model.DailyReflectionItem(
+            id = defaultSource.id,
+            sourceType = defaultSource.sourceType,
+            reference = defaultSource.reference,
+            sourceTextArabic = defaultSource.sourceTextArabic,
+            sourceTextTranslation = defaultSource.sourceTextTranslation,
+            aiReflectionText = defaultSource.aiReflectionText,
+            surahNumber = defaultSource.surahNumber,
+            verseNumber = defaultSource.verseNumber
+        )
+    }
 
     val isDarkTheme = MaterialTheme.colorScheme.background.run { (red * 0.299f + green * 0.587f + blue * 0.114f) < 0.5f }
     val cardBg = MaterialTheme.colorScheme.surface
@@ -1344,28 +1353,6 @@ fun ReflectionOfTheDayCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .pointerInput(reflections.size) {
-                detectHorizontalDragGestures(
-                    onDragStart = { totalDragX = 0f },
-                    onDragEnd = {
-                        if (totalDragX < -35f) {
-                            // Swipe left -> Next
-                            slideDirection = 1
-                            currentIndex = (currentIndex + 1) % reflections.size
-                        } else if (totalDragX > 35f) {
-                            // Swipe right -> Previous
-                            slideDirection = -1
-                            currentIndex = if (currentIndex - 1 < 0) reflections.size - 1 else currentIndex - 1
-                        }
-                        totalDragX = 0f
-                    },
-                    onDragCancel = { totalDragX = 0f },
-                    onHorizontalDrag = { change, dragAmount ->
-                        change.consume()
-                        totalDragX += dragAmount
-                    }
-                )
-            }
             .testTag("reflection_of_day_card"),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(
@@ -1378,6 +1365,7 @@ fun ReflectionOfTheDayCard(
         val refColor = if (isDarkTheme) Color(0xFFB8B3AD) else Color(0xFF66635E)
         val arabicColor = if (isDarkTheme) Color(0xFFD8D3CC) else Color(0xFF8D6B1E)
         val translationColor = if (isDarkTheme) Color(0xFFC8C3BC) else Color(0xFF1E1D1A)
+        val commentaryColor = if (isDarkTheme) Color(0xFF9E9A93) else Color(0xFF5A5854)
         val buttonBg = if (isDarkTheme) Color(0xFF494556) else Color(0xFF8D6B1E)
         val buttonFg = Color(0xFFFFFFFF)
 
@@ -1387,8 +1375,7 @@ fun ReflectionOfTheDayCard(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            val reflection = reflections[currentIndex]
-
+            // Card Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1412,78 +1399,68 @@ fun ReflectionOfTheDayCard(
                 }
 
                 Text(
-                    text = reflection.reference,
+                    text = activeReflection.reference,
                     fontFamily = SpaceGrotesk,
                     fontSize = 11.sp,
                     color = refColor
                 )
             }
 
-            AnimatedContent(
-                targetState = currentIndex,
-                transitionSpec = {
-                    if (slideDirection > 0) {
-                        (slideInHorizontally(tween(350)) { width -> (width * 0.2f).toInt() } + fadeIn(tween(350))) togetherWith
-                            (slideOutHorizontally(tween(350)) { width -> -(width * 0.2f).toInt() } + fadeOut(tween(350)))
-                    } else {
-                        (slideInHorizontally(tween(350)) { width -> -(width * 0.2f).toInt() } + fadeIn(tween(350))) togetherWith
-                            (slideOutHorizontally(tween(350)) { width -> (width * 0.2f).toInt() } + fadeOut(tween(350)))
-                    }
-                },
-                label = "reflection_content_transition"
-            ) { targetIdx ->
-                val activeRef = reflections[targetIdx]
-                Column(
+            // Single Reflection Content
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Authentic Arabic Text
+                ArabicText(
+                    text = activeReflection.sourceTextArabic,
+                    fontSize = 22.sp,
+                    color = arabicColor,
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ArabicText(
-                        text = activeRef.arabic,
-                        fontSize = 22.sp,
-                        color = arabicColor,
-                        modifier = Modifier.fillMaxWidth(),
-                        textAlign = TextAlign.Center
-                    )
+                    textAlign = TextAlign.Center
+                )
 
+                // Authentic Source Translation
+                Text(
+                    text = activeReflection.sourceTextTranslation,
+                    fontFamily = SerifHeaderFont,
+                    fontStyle = FontStyle.Italic,
+                    fontSize = 16.5.sp,
+                    color = translationColor,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Short AI Commentary / Reflection
+                if (activeReflection.aiReflectionText.isNotBlank()) {
                     Text(
-                        text = activeRef.translation,
-                        fontFamily = SerifHeaderFont,
-                        fontStyle = FontStyle.Italic,
-                        fontSize = 16.5.sp,
-                        color = translationColor,
+                        text = activeReflection.aiReflectionText,
+                        fontFamily = SpaceGrotesk,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Normal,
+                        color = commentaryColor,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
+                        lineHeight = 18.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp)
                     )
                 }
             }
 
+            // Action Button Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Pagination Indicator Dots
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    reflections.indices.forEach { dotIdx ->
-                        val isSelected = dotIdx == currentIndex
-                        Box(
-                            modifier = Modifier
-                                .size(if (isSelected) 6.dp else 4.5.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    if (isSelected) (if (isDarkTheme) Color(0xFF494556) else Color(0xFF8D6B1E))
-                                    else (if (isDarkTheme) Color(0xFF3A3836) else Color(0xFFD5D1C9))
-                                )
-                        )
-                    }
-                }
-
                 Surface(
                     onClick = {
-                        onReflectClick(reflection.surahNumber, reflection.verseNumber)
+                        if (activeReflection.surahNumber > 0 && activeReflection.verseNumber > 0) {
+                            onReflectClick(activeReflection.surahNumber, activeReflection.verseNumber)
+                        } else {
+                            onReflectClick(1, 1)
+                        }
                     },
                     shape = CircleShape,
                     color = buttonBg
@@ -1493,7 +1470,7 @@ fun ReflectionOfTheDayCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Reflect",
+                            text = if (activeReflection.sourceType == "QURAN") "Reflect in Quran" else "Read More",
                             fontFamily = SpaceGrotesk,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,

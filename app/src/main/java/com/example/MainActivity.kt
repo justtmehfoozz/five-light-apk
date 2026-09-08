@@ -400,7 +400,8 @@ class MainActivity : ComponentActivity() {
                                 val qadaEverAdded by viewModel.qadaEverAdded.collectAsStateWithLifecycle()
                                 val homeFeaturesPreferences by viewModel.homeFeaturesPreferences.collectAsStateWithLifecycle()
                                 val recentlyReadList by viewModel.recentlyReadList.collectAsStateWithLifecycle()
-                                val prayerJourneyNodes by viewModel.prayerJourneyNodes.collectAsStateWithLifecycle()
+                                 val prayerJourneyNodes by viewModel.prayerJourneyNodes.collectAsStateWithLifecycle()
+                                val dailyReflection by viewModel.dailyReflectionState.collectAsStateWithLifecycle()
                                 val isFriday by viewModel.isFriday.collectAsStateWithLifecycle()
 
                                 HomeScreen(
@@ -423,6 +424,7 @@ class MainActivity : ComponentActivity() {
                                     lastReadPosition = lastReadPosition,
                                     recentlyReadList = recentlyReadList,
                                     prayerJourneyNodes = prayerJourneyNodes,
+                                    dailyReflection = dailyReflection,
                                     homeFeaturesPreferences = homeFeaturesPreferences,
                                     showPrayerMode = showPrayerMode.value,
                                     isFriday = isFriday,

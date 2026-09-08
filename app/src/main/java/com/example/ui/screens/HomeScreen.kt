@@ -503,6 +503,7 @@ fun HomeScreen(
     lastReadPosition: com.example.data.model.QuranLastRead? = null,
     recentlyReadList: List<com.example.data.model.QuranLastRead> = emptyList(),
     prayerJourneyNodes: List<com.example.data.model.PrayerJourneyNode> = emptyList(),
+    dailyReflection: com.example.data.model.DailyReflectionItem? = null,
     homeFeaturesPreferences: com.example.data.model.HomeFeaturesPreferences = com.example.data.model.HomeFeaturesPreferences(),
     showPrayerMode: PrayerItem? = null,
     isFriday: Boolean = false,
@@ -645,15 +646,6 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 QuickActionChip(
-                    label = "Prayer",
-                    icon = Icons.Outlined.WbSunny,
-                    onClick = {
-                        coroutineScope.launch {
-                            listState.animateScrollToItem(3)
-                        }
-                    }
-                )
-                QuickActionChip(
                     label = "Prayer Journey",
                     icon = Icons.Filled.Explore,
                     onClick = { showPrayerJourneySheet = true }
@@ -667,11 +659,6 @@ fun HomeScreen(
                     label = "Hadith of the Day",
                     icon = Icons.AutoMirrored.Outlined.MenuBook,
                     onClick = { showHadithModal = true }
-                )
-                QuickActionChip(
-                    label = "Adhkar",
-                    icon = Icons.Outlined.RadioButtonUnchecked,
-                    onClick = { onQuickAccessNavigate(NavItem.TASBEEH) }
                 )
             }
         }
@@ -852,6 +839,7 @@ fun HomeScreen(
                             StaggeredCardEntrance(index = cIdx) {
                                 Box(modifier = Modifier.padding(horizontal = 20.dp)) {
                                     com.example.ui.components.ReflectionOfTheDayCard(
+                                        reflection = dailyReflection,
                                         onReflectClick = { surahNum, verseNum ->
                                             onNavigateToQuranSurahVerse(surahNum, verseNum)
                                         }
