@@ -694,26 +694,23 @@ fun TasbeehScreen(
         }
 
         // LaunchedEffect for smooth edge auto-scrolling when dragging chip
-        LaunchedEffect(draggingPresetId, dragOffsetX) {
+        LaunchedEffect(draggingPresetId) {
             if (draggingPresetId != null) {
-                val visibleItems = chipLazyListState.layoutInfo.visibleItemsInfo
-                val draggedItem = visibleItems.find { it.key == draggingPresetId }
-                if (draggedItem != null) {
-                    val viewportWidth = chipLazyListState.layoutInfo.viewportSize.width.toFloat()
-                    val draggedLeft = draggedItem.offset.toFloat() + dragOffsetX
-                    val draggedRight = draggedLeft + draggedItem.size.toFloat()
+                while (draggingPresetId != null) {
+                    val visibleItems = chipLazyListState.layoutInfo.visibleItemsInfo
+                    val draggedItem = visibleItems.find { it.key == draggingPresetId }
+                    if (draggedItem != null) {
+                        val viewportWidth = chipLazyListState.layoutInfo.viewportSize.width.toFloat()
+                        val draggedLeft = draggedItem.offset.toFloat()
+                        val draggedRight = draggedLeft + draggedItem.size.toFloat()
 
-                    if (draggedLeft < 40f) {
-                        while (draggingPresetId != null && chipLazyListState.canScrollBackward) {
-                            chipLazyListState.scrollBy(-12f)
-                            delay(16)
-                        }
-                    } else if (draggedRight > viewportWidth - 40f) {
-                        while (draggingPresetId != null && chipLazyListState.canScrollForward) {
-                            chipLazyListState.scrollBy(12f)
-                            delay(16)
+                        if (draggedLeft < 36f && chipLazyListState.canScrollBackward) {
+                            chipLazyListState.scrollBy(-8f)
+                        } else if (draggedRight > viewportWidth - 36f && chipLazyListState.canScrollForward) {
+                            chipLazyListState.scrollBy(8f)
                         }
                     }
+                    delay(16)
                 }
             }
         }
@@ -781,12 +778,18 @@ fun TasbeehScreen(
                     shape = RoundedCornerShape(16.dp),
                     color = pillBg,
                     border = pillBorder,
-                    shadowElevation = if (isBeingDragged) 6.dp else if (isActiveEditChip) 3.dp else 0.dp,
+                    shadowElevation = if (isBeingDragged) 4.dp else if (isActiveEditChip) 2.dp else 0.dp,
                     modifier = Modifier
-                        .animateItem(
-                            fadeInSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
-                            fadeOutSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
-                            placementSpec = spring(dampingRatio = 0.78f, stiffness = 380f)
+                        .then(
+                            if (isBeingDragged) {
+                                Modifier
+                            } else {
+                                Modifier.animateItem(
+                                    fadeInSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                                    fadeOutSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                                    placementSpec = spring(dampingRatio = 0.78f, stiffness = 380f)
+                                )
+                            }
                         )
                         .testTag("preset_${preset.id}")
                         .semantics {
@@ -796,11 +799,9 @@ fun TasbeehScreen(
                                 preset.nameEnglish
                             }
                         }
-                        .zIndex(if (isBeingDragged) 10f else if (isActiveEditChip) 5f else 1f)
                         .graphicsLayer {
                             scaleX = dragScale
                             scaleY = dragScale
-                            translationX = if (isBeingDragged) dragOffsetX else 0f
                         }
                         .then(
                             if (isActiveEditChip) {
@@ -828,41 +829,43 @@ fun TasbeehScreen(
                                             if (currentItemInfo != null) {
                                                 val currentIndex = presets.indexOfFirst { it.id == preset.id }
                                                 if (currentIndex != -1) {
-                                                    val currentCenter = currentItemInfo.offset.toFloat() + currentItemInfo.size.toFloat() / 2f + dragOffsetX
+                                                    val currentCenter = currentItemInfo.offset.toFloat() + currentItemInfo.size.toFloat() / 2f
 
                                                     if (currentIndex > 0 && dragOffsetX < 0f) {
                                                         val prevItemInfo = visibleItems.find { it.key == presets[currentIndex - 1].id }
                                                         val prevCenter = if (prevItemInfo != null) {
                                                             prevItemInfo.offset.toFloat() + prevItemInfo.size.toFloat() / 2f
                                                         } else {
-                                                            currentItemInfo.offset.toFloat() - currentItemInfo.size.toFloat() / 2f
+                                                            currentCenter - currentItemInfo.size.toFloat() - 8.dp.toPx()
                                                         }
+                                                        val stepDistance = currentCenter - prevCenter
+                                                        val reorderThreshold = stepDistance * 0.45f
 
-                                                        if (currentCenter < prevCenter) {
+                                                        if (-dragOffsetX > reorderThreshold) {
                                                             val mutableOrder = presets.map { it.id }.toMutableList()
                                                             val movedId = mutableOrder.removeAt(currentIndex)
                                                             mutableOrder.add(currentIndex - 1, movedId)
                                                             onReorderDhikrs(mutableOrder)
                                                             FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled && globalVibrationEnabled)
-                                                            val shiftSize = if (prevItemInfo != null) prevItemInfo.size.toFloat() + 8.dp.toPx() else currentItemInfo.size.toFloat()
-                                                            dragOffsetX += shiftSize
+                                                            dragOffsetX += stepDistance
                                                         }
                                                     } else if (currentIndex < presets.size - 1 && dragOffsetX > 0f) {
                                                         val nextItemInfo = visibleItems.find { it.key == presets[currentIndex + 1].id }
                                                         val nextCenter = if (nextItemInfo != null) {
                                                             nextItemInfo.offset.toFloat() + nextItemInfo.size.toFloat() / 2f
                                                         } else {
-                                                            currentItemInfo.offset.toFloat() + currentItemInfo.size.toFloat() * 1.5f
+                                                            currentCenter + currentItemInfo.size.toFloat() + 8.dp.toPx()
                                                         }
+                                                        val stepDistance = nextCenter - currentCenter
+                                                        val reorderThreshold = stepDistance * 0.45f
 
-                                                        if (currentCenter > nextCenter) {
+                                                        if (dragOffsetX > reorderThreshold) {
                                                             val mutableOrder = presets.map { it.id }.toMutableList()
                                                             val movedId = mutableOrder.removeAt(currentIndex)
                                                             mutableOrder.add(currentIndex + 1, movedId)
                                                             onReorderDhikrs(mutableOrder)
                                                             FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled && globalVibrationEnabled)
-                                                            val shiftSize = if (nextItemInfo != null) nextItemInfo.size.toFloat() + 8.dp.toPx() else currentItemInfo.size.toFloat()
-                                                            dragOffsetX -= shiftSize
+                                                            dragOffsetX -= stepDistance
                                                         }
                                                     }
                                                 }
