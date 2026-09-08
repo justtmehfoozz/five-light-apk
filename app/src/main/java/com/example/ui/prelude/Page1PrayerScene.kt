@@ -2,9 +2,7 @@ package com.example.ui.prelude
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -27,7 +25,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -39,9 +39,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -50,11 +51,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.FiveLightHaptics
 import com.example.ui.theme.InstrumentSerifItalic
+import com.example.ui.theme.LocalVibrationEnabled
 import com.example.ui.theme.SpaceGrotesk
 import com.example.ui.theme.isAppInDarkTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private data class PrayerMomentItem(
@@ -71,6 +75,8 @@ fun Page1PrayerScene(
     val isDark = isAppInDarkTheme()
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+    val view = LocalView.current
+    val isVibrationEnabled = LocalVibrationEnabled.current
 
     val headlineAlpha = remember { Animatable(if (reduceMotion) 1f else 0f) }
     val headlineOffsetY = remember { Animatable(if (reduceMotion) 0f else 8f) }
@@ -85,7 +91,8 @@ fun Page1PrayerScene(
     }
 
     var activeMilestoneIndex by remember { mutableIntStateOf(2) } // default Asr (0.5)
-    var lastHapticIndex by remember { mutableIntStateOf(-1) }
+    var hasInteracted by remember { mutableStateOf(false) }
+    var containerWidthPx by remember { mutableFloatStateOf(0f) }
 
     val prayers = remember {
         listOf(
@@ -118,6 +125,15 @@ fun Page1PrayerScene(
             }
 
             lightPointX.animateTo(0.5f, animationSpec = tween(600, easing = FastOutSlowInEasing))
+
+            // Context-Aware Interaction Cue (runs once if not interacted)
+            delay(300)
+            if (!hasInteracted) {
+                lightPointX.animateTo(0.54f, animationSpec = tween(350, easing = FastOutSlowInEasing))
+                if (!hasInteracted) {
+                    lightPointX.animateTo(0.50f, animationSpec = tween(350, easing = FastOutSlowInEasing))
+                }
+            }
         }
     }
 
@@ -186,29 +202,43 @@ fun Page1PrayerScene(
                     .background(cardBg)
                     .border(1.dp, cardBorder, RoundedCornerShape(24.dp))
                     .padding(vertical = 24.dp, horizontal = 16.dp)
-                    .pointerInput(reduceMotion) {
+                    .onSizeChanged { containerWidthPx = it.width.toFloat() }
+                    .pointerInput(reduceMotion, isVibrationEnabled) {
                         if (!reduceMotion) {
                             detectDragGestures(
+                                onDragStart = {
+                                    hasInteracted = true
+                                },
                                 onDragEnd = {
                                     scope.launch {
                                         val nearestFraction = activeMilestoneIndex * 0.25f
-                                        lightPointX.animateTo(nearestFraction, spring(stiffness = 350f))
+                                        lightPointX.animateTo(
+                                            targetValue = nearestFraction,
+                                            animationSpec = spring(
+                                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                                stiffness = Spring.StiffnessLow
+                                            )
+                                        )
                                     }
                                 },
                                 onDrag = { change, dragAmount ->
                                     change.consume()
+                                    hasInteracted = true
                                     scope.launch {
-                                        val newFrac = (lightPointX.value + dragAmount.x / 600f).coerceIn(0f, 1f)
+                                        val availableWidth = (containerWidthPx - 64f).coerceAtLeast(100f)
+                                        val deltaFrac = dragAmount.x / availableWidth
+                                        val newFrac = (lightPointX.value + deltaFrac).coerceIn(0f, 1f)
                                         lightPointX.snapTo(newFrac)
 
                                         val closestIndex = (newFrac / 0.25f).roundToInt().coerceIn(0, 4)
-                                        if (closestIndex != activeMilestoneIndex) {
-                                            activeMilestoneIndex = closestIndex
-                                        }
+                                        val closestFraction = closestIndex * 0.25f
 
-                                        if (closestIndex != lastHapticIndex) {
-                                            lastHapticIndex = closestIndex
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        // Discrete event-driven milestone crossing
+                                        if (abs(newFrac - closestFraction) < 0.08f) {
+                                            if (closestIndex != activeMilestoneIndex) {
+                                                activeMilestoneIndex = closestIndex
+                                                FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled)
+                                            }
                                         }
                                     }
                                 }

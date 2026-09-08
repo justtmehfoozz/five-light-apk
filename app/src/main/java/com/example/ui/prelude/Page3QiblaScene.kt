@@ -2,6 +2,7 @@ package com.example.ui.prelude
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -30,9 +31,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -41,7 +42,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.FiveLightHaptics
 import com.example.ui.theme.InstrumentSerifItalic
+import com.example.ui.theme.LocalVibrationEnabled
 import com.example.ui.theme.SpaceGrotesk
 import com.example.ui.theme.isAppInDarkTheme
 import kotlinx.coroutines.delay
@@ -60,6 +63,8 @@ fun Page3QiblaScene(
     val isDark = isAppInDarkTheme()
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+    val view = LocalView.current
+    val isVibrationEnabled = LocalVibrationEnabled.current
 
     val headlineAlpha = remember { Animatable(if (reduceMotion) 1f else 0f) }
     val headlineOffsetY = remember { Animatable(if (reduceMotion) 0f else 8f) }
@@ -71,6 +76,7 @@ fun Page3QiblaScene(
     val targetGlowAlpha = remember { Animatable(if (reduceMotion) 0.8f else 0f) }
 
     var wasAligned by remember { mutableStateOf(false) }
+    var hasInteracted by remember { mutableStateOf(false) }
 
     LaunchedEffect(reduceMotion) {
         if (!reduceMotion) {
@@ -90,6 +96,15 @@ fun Page3QiblaScene(
             delay(100)
             targetGlowAlpha.animateTo(0.85f, animationSpec = tween(500, easing = FastOutSlowInEasing))
             wasAligned = true
+
+            // Context-Aware Interaction Cue (runs once if not interacted)
+            delay(350)
+            if (!hasInteracted) {
+                compassRotation.animateTo(141f, animationSpec = tween(350, easing = FastOutSlowInEasing))
+                if (!hasInteracted) {
+                    compassRotation.animateTo(135f, animationSpec = tween(350, easing = FastOutSlowInEasing))
+                }
+            }
         }
     }
 
@@ -157,19 +172,29 @@ fun Page3QiblaScene(
                     .graphicsLayer {
                         alpha = compassAlpha.value
                     }
-                    .pointerInput(reduceMotion) {
+                    .pointerInput(reduceMotion, isVibrationEnabled) {
                         if (!reduceMotion) {
                             detectDragGestures(
+                                onDragStart = {
+                                    hasInteracted = true
+                                },
                                 onDragEnd = {
                                     scope.launch {
                                         val diff = abs(compassRotation.value - 135f) % 360f
-                                        if (diff < 20f || diff > 340f) {
-                                            compassRotation.animateTo(135f, spring(stiffness = 300f))
+                                        if (diff < 22f || diff > 338f) {
+                                            compassRotation.animateTo(
+                                                targetValue = 135f,
+                                                animationSpec = spring(
+                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                    stiffness = Spring.StiffnessLow
+                                                )
+                                            )
                                         }
                                     }
                                 },
-                                onDrag = { change, dragAmount ->
+                                onDrag = { change, _ ->
                                     change.consume()
+                                    hasInteracted = true
                                     scope.launch {
                                         val center = Offset(size.width / 2f, size.height / 2f)
                                         val pos = change.position
@@ -181,13 +206,13 @@ fun Page3QiblaScene(
                                         compassRotation.snapTo(angleDeg)
 
                                         val angleDiff = abs(angleDeg - 135f) % 360f
-                                        val isAligned = angleDiff < 15f || angleDiff > 345f
+                                        val isAligned = angleDiff < 14f || angleDiff > 346f
 
                                         targetGlowAlpha.snapTo(if (isAligned) 1.0f else (1f - (angleDiff / 180f)).coerceIn(0.2f, 0.7f))
 
                                         if (isAligned && !wasAligned) {
                                             wasAligned = true
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            FiveLightHaptics.performMediumTap(view, haptic, isVibrationEnabled)
                                         } else if (!isAligned && wasAligned) {
                                             wasAligned = false
                                         }

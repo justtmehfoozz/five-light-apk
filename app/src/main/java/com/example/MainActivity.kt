@@ -45,6 +45,20 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.saveable.rememberSaveable
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import com.example.data.reminder.SmartPrayerNotificationManager
+import com.example.data.util.LocationHelper
 import com.example.ui.screens.LoginBottomSheet
 import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.RegisterScreen
@@ -288,6 +302,9 @@ class MainActivity : ComponentActivity() {
                         .background(MaterialTheme.colorScheme.background)
                 ) {
                     if (hasSeenAccountPrompt && !isSetupRequired) {
+                        if (currentUser == null) {
+                            GuestPermissionOrchestrator(viewModel = viewModel)
+                        }
                         val appContentAlpha = if (isSplashFinished) 1f else splashExitProgress
                         val appContentScale = if (isSplashFinished) 1f else (0.98f + 0.02f * splashExitProgress)
 
@@ -1042,5 +1059,121 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+    }
+}
+
+@Composable
+private fun GuestPermissionOrchestrator(
+    viewModel: AppViewModel,
+    context: Context = LocalContext.current
+) {
+    val prefs = remember(context) { context.getSharedPreferences("fivelight_guest_perms", Context.MODE_PRIVATE) }
+    var hasCompletedGuestFlow by remember { mutableStateOf(prefs.getBoolean("guest_perms_completed", false)) }
+
+    if (hasCompletedGuestFlow) {
+        return
+    }
+
+    var currentStep by rememberSaveable { mutableIntStateOf(0) }
+
+    // Launcher 1: Background Delivery
+    val batteryOptimizationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        currentStep = 1
+    }
+
+    // Launcher 2: Notification Permission
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val notificationManager = SmartPrayerNotificationManager(context)
+            notificationManager.isSmartNotificationsEnabled = true
+            notificationManager.isPrayerTimeNotificationsEnabled = true
+        }
+        currentStep = 2
+    }
+
+    // Launcher 3: Location Permission
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (fineGranted || coarseGranted) {
+            val loc = LocationHelper.getLastKnownLocation(context)
+            if (loc != null) {
+                val cityLoc = LocationHelper.resolveCityLocation(context, loc)
+                viewModel.autoConfigureFromLocation(cityLoc)
+            }
+        }
+        currentStep = 3
+        prefs.edit().putBoolean("guest_perms_completed", true).apply()
+        hasCompletedGuestFlow = true
+    }
+
+    LaunchedEffect(currentStep) {
+        when (currentStep) {
+            0 -> {
+                val isExempt = SmartPrayerNotificationManager(context).isIgnoringBatteryOptimizations()
+                if (isExempt) {
+                    currentStep = 1
+                } else {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        try {
+                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                data = Uri.parse("package:${context.packageName}")
+                            }
+                            batteryOptimizationLauncher.launch(intent)
+                        } catch (_: Exception) {
+                            try {
+                                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                batteryOptimizationLauncher.launch(intent)
+                            } catch (_: Exception) {
+                                currentStep = 1
+                            }
+                        }
+                    } else {
+                        currentStep = 1
+                    }
+                }
+            }
+            1 -> {
+                val hasNotif = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+                } else {
+                    true
+                }
+                if (hasNotif) {
+                    currentStep = 2
+                } else {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        currentStep = 2
+                    }
+                }
+            }
+            2 -> {
+                val hasLoc = LocationHelper.hasLocationPermission(context)
+                if (hasLoc) {
+                    currentStep = 3
+                    prefs.edit().putBoolean("guest_perms_completed", true).apply()
+                    hasCompletedGuestFlow = true
+                } else {
+                    locationPermissionLauncher.launch(
+                        arrayOf(
+                            Manifest.permission.ACCESS_FINE_LOCATION,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        )
+                    )
+                }
+            }
+            3 -> {
+                prefs.edit().putBoolean("guest_perms_completed", true).apply()
+                hasCompletedGuestFlow = true
+            }
+        }
     }
 }

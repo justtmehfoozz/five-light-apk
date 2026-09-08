@@ -2225,6 +2225,21 @@ private fun StayOnTimeStep(
         }
     }
 
+    var hasAutoPrompted by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (!hasNotificationPermission && !hasAutoPrompted) {
+            hasAutoPrompted = true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                notificationManager.isSmartNotificationsEnabled = true
+                notificationManager.isPrayerTimeNotificationsEnabled = true
+                onPermissionUpdated(true)
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -2450,6 +2465,33 @@ private fun KeepReliableStep(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    var hasAutoPrompted by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        val status = checkBackgroundOptimization(context)
+        currentExempt = status
+        onStateUpdated(status)
+        if (!status && !hasAutoPrompted) {
+            hasAutoPrompted = true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(intent)
+                } catch (_: Exception) {
+                    try {
+                        val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+            }
+        }
     }
 
     Column(
