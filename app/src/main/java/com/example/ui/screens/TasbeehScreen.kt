@@ -222,15 +222,18 @@ fun TasbeehScreen(
     // Deletion Dialog States
     var dhikrToDelete by remember { mutableStateOf<DhikrPreset?>(null) }
     var targetToDelete by remember { mutableStateOf<Int?>(null) }
+    var showRestoreDefaultDialog by remember { mutableStateOf(false) }
 
     val tasbeehPredictiveState = rememberPredictiveBackState()
-    val isTasbeehOverlayActive = showHistorySheet || showCustomDhikrDialog || showAddTargetDialog || dhikrToDelete != null || targetToDelete != null || showFeedbackSettings || isEditMode
+    val isTasbeehOverlayActive = showHistorySheet || showCustomDhikrDialog || showAddTargetDialog || dhikrToDelete != null || targetToDelete != null || showRestoreDefaultDialog || showFeedbackSettings || isEditMode
 
     RegisterPredictiveBackHandler(
         enabled = isActiveTab && isTasbeehOverlayActive,
         backState = tasbeehPredictiveState,
         onBack = {
-            if (isEditMode) {
+            if (showRestoreDefaultDialog) {
+                showRestoreDefaultDialog = false
+            } else if (isEditMode) {
                 isEditMode = false
             } else if (showHistorySheet) {
                 showHistorySheet = false
@@ -675,8 +678,8 @@ fun TasbeehScreen(
                         }
                         TextButton(
                             onClick = {
-                                FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
-                                onRestoreDefaultDhikrs()
+                                FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
+                                showRestoreDefaultDialog = true
                             },
                             modifier = Modifier.testTag("restore_default_dhikrs_btn")
                         ) {
@@ -958,8 +961,8 @@ fun TasbeehScreen(
                 item {
                     Surface(
                         onClick = {
-                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
-                            onRestoreDefaultDhikrs()
+                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
+                            showRestoreDefaultDialog = true
                         },
                         shape = RoundedCornerShape(16.dp),
                         color = Color.semanticSurface,
@@ -1916,6 +1919,48 @@ fun TasbeehScreen(
                 TextButton(
                     onClick = { targetToDelete = null },
                     modifier = Modifier.semantics { contentDescription = "Cancel" }
+                ) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // =========================================================================
+    // SECTION 15: RESTORE DEFAULT DHIKR CONFIRMATION DIALOG
+    // =========================================================================
+    if (showRestoreDefaultDialog) {
+        AlertDialog(
+            onDismissRequest = { showRestoreDefaultDialog = false },
+            title = {
+                Text(
+                    text = "Restore default Dhikr?",
+                    fontFamily = SerifHeaderFont
+                )
+            },
+            text = {
+                Text(
+                    text = "Your custom Dhikr order and removed chips will be restored to the original list.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
+                        onRestoreDefaultDhikrs()
+                        showRestoreDefaultDialog = false
+                    },
+                    modifier = Modifier.testTag("confirm_restore_default_dhikr_btn")
+                ) {
+                    Text("Restore", color = Color.semanticPrimaryAccent, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showRestoreDefaultDialog = false },
+                    modifier = Modifier.testTag("cancel_restore_default_dhikr_btn")
                 ) {
                     Text("Cancel")
                 }
