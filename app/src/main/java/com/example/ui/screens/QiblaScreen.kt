@@ -247,9 +247,9 @@ fun QiblaScreen(
     val facingThreshold = 4f
     val isAligned = isSensorAvailable && absDiff <= facingThreshold
 
-    // Pre-alignment threshold (8°) for anticipatory Qibla-Lock Ring Pulse with 12° reset hysteresis
-    val nearQiblaThreshold = 8f
-    val nearQiblaResetThreshold = 12f
+    // Pre-alignment threshold (12°) for anticipatory Qibla-Lock Ring Pulse with 14° reset hysteresis
+    val nearQiblaThreshold = 12f
+    val nearQiblaResetThreshold = 14f
     val isNearQibla = isSensorAvailable && absDiff <= nearQiblaThreshold
 
     var wasNearQibla by remember { mutableStateOf(false) }
@@ -280,7 +280,7 @@ fun QiblaScreen(
 
     val isVibrationEnabled = LocalVibrationEnabled.current
 
-    // Hysteresis reset: re-arm near-Qibla pulse when user moves sufficiently away (>12°)
+    // Hysteresis reset: re-arm near-Qibla pulse when user moves sufficiently away (>14°)
     LaunchedEffect(absDiff, isActive) {
         if (!isActive) {
             wasNearQibla = false
@@ -292,7 +292,7 @@ fun QiblaScreen(
         }
     }
 
-    // Trigger Qibla-Lock Ring Pulse ONCE when entering near-Qibla threshold (≤ 8°)
+    // Trigger Qibla-Lock Ring Pulse ONCE when entering near-Qibla threshold (≤ 12°)
     LaunchedEffect(isNearQibla, isActive) {
         if (!isActive) {
             wasNearQibla = false

@@ -1113,8 +1113,8 @@ fun TasbeehScreen(
         }
 
         // =========================================================================
-        // SECTION 9: ACTION CONTROLS [ − / ↻ ]
-        // Decrement & Reset Controls sharing uniform height and centerline
+        // SECTION 9: ACTION CONTROLS [ − / Auto / ↻ ]
+        // Decrement, Auto Counter & Reset Controls sharing uniform height and centerline
         // =========================================================================
         Row(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -1145,6 +1145,29 @@ fun TasbeehScreen(
                 }
             }
 
+            // Compact Auto Counter Button
+            Surface(
+                onClick = { isAutoCountEnabled = !isAutoCountEnabled },
+                shape = CircleShape,
+                color = if (isAutoCountEnabled) Color.semanticPrimaryAccent.copy(alpha = 0.18f) else Color.semanticSurface,
+                border = BorderStroke(
+                    1.dp,
+                    if (isAutoCountEnabled) Color.semanticPrimaryAccent else Color.semanticBorder
+                ),
+                modifier = Modifier
+                    .size(46.dp)
+                    .testTag("autocount_switch")
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (isAutoCountEnabled) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
+                        contentDescription = if (isAutoCountEnabled) "Auto Counter on" else "Auto Counter off",
+                        tint = if (isAutoCountEnabled) Color.semanticPrimaryAccent else Color.semanticPrimaryText,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
             // Reset Button with subtle rotation feedback
             Surface(
                 onClick = triggerReset,
@@ -1170,172 +1193,54 @@ fun TasbeehScreen(
             }
         }
 
-        // =========================================================================
-        // COUNTER MODE & AUTO COUNTER CARD
-        // Core counting behavior control (Manual vs Automatic) with expandable Pace
-        // =========================================================================
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 10.dp),
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = Color.semanticSurface
-            ),
-            border = BorderStroke(
-                width = 1.dp,
-                color = if (isAutoCountEnabled) Color.semanticPrimaryAccent.copy(alpha = 0.5f) else Color.semanticBorder
-            )
+        // Compact Pace Control (Revealed unobtrusively when Auto Counter is ON)
+        AnimatedVisibility(
+            visible = isAutoCountEnabled,
+            enter = expandVertically(animationSpec = tween(250, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(250)),
+            exit = shrinkVertically(animationSpec = tween(200, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(200)),
+            modifier = Modifier.padding(top = 8.dp)
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .padding(top = 4.dp)
             ) {
-                // Section Header: Counter Mode
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Counter Mode",
-                        style = MaterialTheme.typography.titleSmall,
+                        text = "Pace",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.semanticMutedText
+                    )
+                    Text(
+                        text = "${String.format(java.util.Locale.US, "%.1f", autoCountSpeedSec)} sec",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontFamily = SpaceGrotesk,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.semanticPrimaryAccent
                     )
-
-                    // Active Mode Badge (Manual / Automatic)
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (isAutoCountEnabled) Color.semanticPrimaryAccent.copy(alpha = 0.15f) else Color.semanticControl,
-                        border = BorderStroke(
-                            width = 1.dp,
-                            color = if (isAutoCountEnabled) Color.semanticPrimaryAccent.copy(alpha = 0.3f) else Color.semanticBorder
-                        )
-                    ) {
-                        Text(
-                            text = if (isAutoCountEnabled) "Automatic" else "Manual",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontFamily = SpaceGrotesk,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (isAutoCountEnabled) Color.semanticPrimaryAccent else Color.semanticSecondaryText,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                        )
-                    }
                 }
-
-                // Auto Counter Toggle Row
-                Row(
+                Slider(
+                    value = autoCountSpeedSec,
+                    onValueChange = { autoCountSpeedSec = it },
+                    valueRange = 0.5f..5.0f,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { isAutoCountEnabled = !isAutoCountEnabled }
-                        .padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Surface(
-                            shape = CircleShape,
-                            color = if (isAutoCountEnabled) Color.semanticPrimaryAccent.copy(alpha = 0.15f) else Color.semanticControl,
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = if (isAutoCountEnabled) Icons.Outlined.Pause else Icons.Outlined.PlayArrow,
-                                    contentDescription = null,
-                                    tint = if (isAutoCountEnabled) Color.semanticPrimaryAccent else Color.semanticMutedText,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                        Column {
-                            Text(
-                                text = "Auto Counter",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = Color.semanticPrimaryText
-                            )
-                            Text(
-                                text = if (isAutoCountEnabled) "Counting automatically" else "Tap anywhere to count manually",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.semanticMutedText
-                            )
-                        }
-                    }
-
-                    Switch(
-                        checked = isAutoCountEnabled,
-                        onCheckedChange = { isAutoCountEnabled = it },
-                        modifier = Modifier.testTag("autocount_switch"),
-                        colors = androidx.compose.material3.SwitchDefaults.colors(
-                            checkedThumbColor = Color.semanticAccentForeground,
-                            checkedTrackColor = Color.semanticPrimaryAccent,
-                            checkedBorderColor = Color.Transparent,
-                            uncheckedThumbColor = Color.semanticSecondaryText,
-                            uncheckedTrackColor = Color.semanticControl,
-                            uncheckedBorderColor = Color.semanticBorder
-                        )
+                        .testTag("autocount_speed_slider"),
+                    colors = SliderDefaults.colors(
+                        thumbColor = Color.semanticPrimaryAccent,
+                        activeTrackColor = Color.semanticPrimaryAccent,
+                        inactiveTrackColor = Color.semanticControl
                     )
-                }
-
-                // Expandable Pace Control directly underneath Auto Counter
-                AnimatedVisibility(
-                    visible = isAutoCountEnabled,
-                    enter = expandVertically(animationSpec = tween(250, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(250)),
-                    exit = shrinkVertically(animationSpec = tween(200, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(200))
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        HorizontalDivider(
-                            color = Color.semanticBorder.copy(alpha = 0.6f),
-                            thickness = 1.dp
-                        )
-
-                        Spacer(modifier = Modifier.height(2.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Pace",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = Color.semanticPrimaryText
-                            )
-                            Text(
-                                text = "${String.format(java.util.Locale.US, "%.1f", autoCountSpeedSec)} sec per count",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontFamily = SpaceGrotesk,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.semanticPrimaryAccent
-                            )
-                        }
-
-                        Slider(
-                            value = autoCountSpeedSec,
-                            onValueChange = { autoCountSpeedSec = it },
-                            valueRange = 0.5f..5.0f,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("autocount_speed_slider"),
-                            colors = SliderDefaults.colors(
-                                thumbColor = Color.semanticPrimaryAccent,
-                                activeTrackColor = Color.semanticPrimaryAccent,
-                                inactiveTrackColor = Color.semanticControl
-                            )
-                        )
-                    }
-                }
+                )
             }
         }
 
