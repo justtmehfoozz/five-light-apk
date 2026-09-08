@@ -28,6 +28,8 @@ import java.util.regex.Pattern
 class AppUpdateManager(private val context: Context) {
 
     private val appContext = context.applicationContext
+    val updatePreferences = UpdatePreferences.getInstance(appContext)
+    private val notificationHelper = UpdateNotificationHelper(appContext)
 
     private val httpClient by lazy {
         OkHttpClient.Builder()
@@ -65,6 +67,15 @@ class AppUpdateManager(private val context: Context) {
         const val OFFICIAL_REPO_OWNER = "justtmehfoozz"
         const val OFFICIAL_REPO_NAME = "five-light-apk"
         const val GITHUB_API_URL = "https://api.github.com/repos/justtmehfoozz/five-light-apk/releases/latest"
+
+        @Volatile
+        private var instance: AppUpdateManager? = null
+
+        fun getInstance(context: Context): AppUpdateManager {
+            return instance ?: synchronized(this) {
+                instance ?: AppUpdateManager(context.applicationContext).also { instance = it }
+            }
+        }
     }
 
     private var rateLimitResetEpochSeconds: Long = 0L
@@ -191,6 +202,25 @@ class AppUpdateManager(private val context: Context) {
         }
 
         _updateState.value = finalState
+
+        // Update persistent state and notify if new update
+        if (finalState is UpdateState.UpdateAvailable) {
+            val rel = finalState.releaseInfo
+            updatePreferences.setUpdateAvailable(
+                isAvailable = true,
+                versionCode = rel.versionCode,
+                versionName = rel.versionName
+            )
+            val lastNotified = updatePreferences.getLastNotifiedVersionCode()
+            if (lastNotified != rel.versionCode) {
+                notificationHelper.showUpdateNotification(rel)
+                updatePreferences.setLastNotifiedVersionCode(rel.versionCode)
+            }
+        } else if (finalState is UpdateState.UpToDate) {
+            updatePreferences.clearUpdateAvailable()
+            notificationHelper.cancelUpdateNotification()
+        }
+
         finalState
     }
 

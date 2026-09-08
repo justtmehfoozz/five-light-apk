@@ -79,6 +79,12 @@ fun AppUpdatesSubScreen(
     val updateState by updateManager.updateState.collectAsState()
     var permissionDeniedNotice by remember { mutableStateOf(false) }
 
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (updateState is UpdateState.Idle) {
+            updateManager.checkForUpdates(force = false)
+        }
+    }
+
     SubScreenLayout(
         title = "App Updates",
         onBack = onBack

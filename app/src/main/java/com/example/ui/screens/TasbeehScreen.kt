@@ -118,6 +118,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -139,6 +140,7 @@ import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -269,7 +271,8 @@ fun TasbeehScreen(
     // User Feedback Preferences
     val globalVibrationEnabled = LocalVibrationEnabled.current
     var isVibrationEnabled by remember(globalVibrationEnabled) { mutableStateOf(globalVibrationEnabled) }
-    var isSoundEnabled by remember(selectedTasbeehSound) { mutableStateOf(selectedTasbeehSound != TasbeehSound.OFF) }
+    val currentSelectedSound by rememberUpdatedState(selectedTasbeehSound)
+    val isSoundEnabled = currentSelectedSound != TasbeehSound.OFF
     var isAutoCountEnabled by rememberSaveable { mutableStateOf(false) }
     var autoCountSpeedSec by rememberSaveable { mutableFloatStateOf(2.0f) }
 
@@ -278,7 +281,7 @@ fun TasbeehScreen(
     // SoundPool for Instantaneous, Zero-Latency Tap Audio Playback
     val soundPool = remember {
         val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
         SoundPool.Builder()
@@ -287,7 +290,7 @@ fun TasbeehScreen(
             .build()
     }
 
-    val soundIdMap = remember(soundPool) {
+    val soundIdMap = remember(soundPool, context) {
         val map = mutableMapOf<TasbeehSound, Int>()
         TasbeehSound.entries.forEach { sound ->
             sound.resId?.let { resId ->
@@ -314,11 +317,12 @@ fun TasbeehScreen(
     }
 
     fun playSound() {
-        if (!isSoundEnabled || selectedTasbeehSound == TasbeehSound.OFF) return
-        val soundId = soundIdMap[selectedTasbeehSound]
+        val sound = currentSelectedSound
+        if (sound == TasbeehSound.OFF) return
+        val soundId = soundIdMap[sound]
         if (soundId != null && soundId > 0) {
             try {
-                soundPool.play(soundId, 0.9f, 0.9f, 1, 0, 1.0f)
+                soundPool.play(soundId, 1.0f, 1.0f, 1, 0, 1.0f)
             } catch (_: Exception) {}
         }
     }
@@ -669,9 +673,8 @@ fun TasbeehScreen(
                         }
                         Switch(
                             checked = isSoundEnabled,
-                            onCheckedChange = {
-                                isSoundEnabled = it
-                                if (!it) {
+                            onCheckedChange = { isChecked ->
+                                if (!isChecked) {
                                     onSelectTasbeehSound(TasbeehSound.OFF)
                                 } else if (selectedTasbeehSound == TasbeehSound.OFF) {
                                     onSelectTasbeehSound(TasbeehSound.SOFT_TICK)
@@ -1729,6 +1732,7 @@ private fun ReorderableDhikrChipsRow(
     globalVibrationEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val view = LocalView.current
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
     val viewConfig = LocalViewConfiguration.current
@@ -1796,9 +1800,10 @@ private fun ReorderableDhikrChipsRow(
                 if (scrollDelta != 0f) {
                     scrollState.scrollBy(scrollDelta)
                     val draggedW = itemBounds[currentDragId]?.width ?: 0f
+                    val scaleExpansion = (draggedW * 0.03f / 2f).coerceAtLeast(0f)
                     val rawScreenLeft = (currentPointerScreenX - pointerGrabOffset)
-                    val minScreenLeft = safeInsetPx
-                    val maxScreenLeft = maxOf(safeInsetPx, viewportWidth - safeInsetPx - draggedW)
+                    val minScreenLeft = safeInsetPx + scaleExpansion
+                    val maxScreenLeft = maxOf(minScreenLeft, viewportWidth - safeInsetPx - draggedW - scaleExpansion)
                     val clampedScreenLeft = rawScreenLeft.coerceIn(minScreenLeft, maxScreenLeft)
                     val targetOffset = clampedScreenLeft + scrollState.value - currentInitialSlotX
                     dragOffset.snapTo(targetOffset)
@@ -1845,9 +1850,7 @@ private fun ReorderableDhikrChipsRow(
                     if (newTarget != targetIndex && newTarget in 0 until n) {
                         targetIndex = newTarget
                         if (isVibrationEnabled && globalVibrationEnabled) {
-                            try {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            } catch (_: Exception) {}
+                            FiveLightHaptics.performSoftTick(view, haptic, true)
                         }
                     }
                 }
@@ -2062,9 +2065,7 @@ private fun ReorderableDhikrChipsRow(
                                             currentPointerScreenX = if (viewportW > 0f) initialScreenX.coerceIn(0f, viewportW) else initialScreenX
                                             coroutineScope.launch { dragOffset.snapTo(0f) }
                                             if (isVibrationEnabled && globalVibrationEnabled) {
-                                                try {
-                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                } catch (_: Exception) {}
+                                                FiveLightHaptics.performStrongTap(view, haptic, true)
                                             }
 
                                             while (true) {
@@ -2086,27 +2087,32 @@ private fun ReorderableDhikrChipsRow(
                                                 }
 
                                                 val draggedW = itemBounds[preset.id]?.width ?: 0f
+                                                val scaleExpansion = (draggedW * 0.03f / 2f).coerceAtLeast(0f)
                                                 val rawScreenLeft = (currentPointerScreenX - pointerGrabOffset)
-                                                val leftSafeBoundary = safeInsetPx
-                                                val rightSafeBoundary = if (currentViewportW > 0f) currentViewportW - safeInsetPx else safeInsetPx + 1000f
-                                                val minScreenLeft = leftSafeBoundary
-                                                val maxScreenLeft = maxOf(leftSafeBoundary, rightSafeBoundary - draggedW)
+                                                val minScreenLeft = safeInsetPx + scaleExpansion
+                                                val maxScreenLeft = if (currentViewportW > 0f) {
+                                                    maxOf(minScreenLeft, currentViewportW - safeInsetPx - draggedW - scaleExpansion)
+                                                } else {
+                                                    minScreenLeft + 1000f
+                                                }
                                                 val clampedScreenLeft = rawScreenLeft.coerceIn(minScreenLeft, maxScreenLeft)
 
                                                 // Boundary detection & haptic
-                                                val isAtLeftBoundary = rawScreenLeft <= leftSafeBoundary
-                                                val isAtRightBoundary = (rawScreenLeft + draggedW) >= rightSafeBoundary
+                                                val isAtLeftBoundary = rawScreenLeft <= minScreenLeft
+                                                val isAtRightBoundary = if (currentViewportW > 0f) {
+                                                    (rawScreenLeft + draggedW + scaleExpansion) >= (currentViewportW - safeInsetPx)
+                                                } else {
+                                                    false
+                                                }
 
                                                 if (isAtLeftBoundary) {
                                                     if (!leftBoundaryHit) {
                                                         leftBoundaryHit = true
                                                         if (isVibrationEnabled && globalVibrationEnabled) {
-                                                            try {
-                                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                            } catch (_: Exception) {}
+                                                            FiveLightHaptics.performLightTap(view, haptic, true)
                                                         }
                                                     }
-                                                } else if (rawScreenLeft > leftSafeBoundary + hysteresisPx) {
+                                                } else if (rawScreenLeft > minScreenLeft + hysteresisPx) {
                                                     leftBoundaryHit = false
                                                 }
 
@@ -2114,12 +2120,10 @@ private fun ReorderableDhikrChipsRow(
                                                     if (!rightBoundaryHit) {
                                                         rightBoundaryHit = true
                                                         if (isVibrationEnabled && globalVibrationEnabled) {
-                                                            try {
-                                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                            } catch (_: Exception) {}
+                                                            FiveLightHaptics.performLightTap(view, haptic, true)
                                                         }
                                                     }
-                                                } else if ((rawScreenLeft + draggedW) < rightSafeBoundary - hysteresisPx) {
+                                                } else if (rawScreenLeft < maxScreenLeft - hysteresisPx) {
                                                     rightBoundaryHit = false
                                                 }
 
@@ -2169,9 +2173,7 @@ private fun ReorderableDhikrChipsRow(
                                                 if (newTarget != targetIndex && newTarget in 0 until n) {
                                                     targetIndex = newTarget
                                                     if (isVibrationEnabled && globalVibrationEnabled) {
-                                                        try {
-                                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                        } catch (_: Exception) {}
+                                                        FiveLightHaptics.performSoftTick(view, haptic, true)
                                                     }
                                                 }
                                             }
@@ -2300,42 +2302,6 @@ private fun ReorderableDhikrChipsRow(
                 )
             }
         }
-    }
-
-    // Left safe drag boundary indicator
-    AnimatedVisibility(
-        visible = draggingPresetId != null,
-        enter = fadeIn(tween(200)),
-        exit = fadeOut(tween(150)),
-        modifier = Modifier
-            .align(Alignment.CenterStart)
-            .padding(start = 4.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .width(2.dp)
-                .height(24.dp)
-                .clip(CircleShape)
-                .background(Color.semanticPrimaryAccent.copy(alpha = if (leftBoundaryHit) 0.5f else 0.25f))
-        )
-    }
-
-    // Right safe drag boundary indicator
-    AnimatedVisibility(
-        visible = draggingPresetId != null,
-        enter = fadeIn(tween(200)),
-        exit = fadeOut(tween(150)),
-        modifier = Modifier
-            .align(Alignment.CenterEnd)
-            .padding(end = 4.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .width(2.dp)
-                .height(24.dp)
-                .clip(CircleShape)
-                .background(Color.semanticPrimaryAccent.copy(alpha = if (rightBoundaryHit) 0.5f else 0.25f))
-        )
     }
 }
 }

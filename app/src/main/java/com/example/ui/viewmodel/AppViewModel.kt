@@ -91,6 +91,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
     val syncState: StateFlow<com.example.data.sync.SyncState> = syncManager.syncState
     val lastSyncedTime: StateFlow<Long?> = syncManager.lastSyncedTime
 
+    // App Updates
+    val appUpdateManager: com.example.data.updater.AppUpdateManager = com.example.data.updater.AppUpdateManager.getInstance(application)
+    val isAppUpdateAvailable: StateFlow<Boolean> = appUpdateManager.updatePreferences.isUpdateAvailable
+
     fun setHasSeenAccountPrompt(seen: Boolean = true) {
         authRepository.setHasSeenAccountPrompt(seen)
     }
@@ -662,6 +666,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
             com.example.data.backup.GoogleDriveBackupWorker.schedule(getApplication(), autoBackupFreq)
         }
 
+        // Schedule periodic and startup background update checks
+        com.example.data.updater.UpdateCheckWorker.enqueuePeriodic(getApplication())
+        com.example.data.updater.UpdateCheckWorker.enqueueOneTime(getApplication(), force = false)
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 QuranData.preload(getApplication())
@@ -798,6 +806,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
     fun onAppResume() {
         refreshPrayerTimes()
         islamicDateRepository.onAppResume()
+        com.example.data.updater.UpdateCheckWorker.enqueueOneTime(getApplication(), force = false)
     }
 
     fun refreshHijriDate() {

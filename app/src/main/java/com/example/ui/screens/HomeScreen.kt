@@ -516,6 +516,7 @@ fun HomeScreen(
     onAddPrayerToQada: (PrayerName, String) -> Unit = { _, _ -> },
     onQuickAccessNavigate: (NavItem) -> Unit,
     onOpenSettings: () -> Unit,
+    isUpdateAvailable: Boolean = false,
     isActiveTab: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -609,6 +610,18 @@ fun HomeScreen(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp)
                         )
+
+                        if (isUpdateAvailable) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = 2.dp, end = 2.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.semanticError)
+                                    .testTag("settings_update_badge")
+                            )
+                        }
                     }
                 },
                 subtitleContent = {

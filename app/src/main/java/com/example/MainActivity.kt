@@ -106,6 +106,7 @@ class MainActivity : ComponentActivity() {
                 var openQuranReadingDirectly by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
                 var isQuranReadingModeActive by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
                 var showSettingsSheet by remember { mutableStateOf(false) }
+                var initialSettingsSubScreen by remember { mutableStateOf(com.example.ui.screens.PreferencesSubScreen.MAIN) }
                 var showSearchOverlay by remember { mutableStateOf(false) }
                 var dockFifthSlotMode by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("more") }
                 var exploreSubRoute by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("main") }
@@ -169,9 +170,18 @@ class MainActivity : ComponentActivity() {
 
                 val hasSeenAccountPrompt by viewModel.hasSeenAccountPrompt.collectAsStateWithLifecycle()
                 val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+                val isAppUpdateAvailable by viewModel.isAppUpdateAvailable.collectAsStateWithLifecycle()
                 val setupCompletedEvent by viewModel.setupCompletedEvent.collectAsStateWithLifecycle()
                 val isSetupRequired = remember(currentUser, setupCompletedEvent) {
                     currentUser != null && !viewModel.isSetupCompleted(currentUser?.uid.orEmpty())
+                }
+
+                // Check intent on launch / resume for update notification click
+                androidx.compose.runtime.LaunchedEffect(intent) {
+                    if (intent?.getBooleanExtra(com.example.data.updater.UpdateNotificationHelper.EXTRA_OPEN_UPDATES, false) == true) {
+                        initialSettingsSubScreen = com.example.ui.screens.PreferencesSubScreen.APP_UPDATES
+                        showSettingsSheet = true
+                    }
                 }
 
                 androidx.compose.runtime.LaunchedEffect(isSetupRequired) {
@@ -431,7 +441,11 @@ class MainActivity : ComponentActivity() {
                                     onQuickAccessNavigate = { navItem ->
                                         navigateToPage(navItem.ordinal)
                                     },
-                                    onOpenSettings = { showSettingsSheet = true },
+                                    onOpenSettings = {
+                                        initialSettingsSubScreen = com.example.ui.screens.PreferencesSubScreen.MAIN
+                                        showSettingsSheet = true
+                                    },
+                                    isUpdateAvailable = isAppUpdateAvailable,
                                     isActiveTab = (pagerState.currentPage == 0)
                                 )
                             }
@@ -839,7 +853,12 @@ class MainActivity : ComponentActivity() {
                                 showLoginBottomSheet = true
                             },
                             onSignOut = { viewModel.signOut() },
-                            onDismiss = { showSettingsSheet = false },
+                            isUpdateAvailable = isAppUpdateAvailable,
+                            initialSubScreen = initialSettingsSubScreen,
+                            onDismiss = {
+                                showSettingsSheet = false
+                                initialSettingsSubScreen = com.example.ui.screens.PreferencesSubScreen.MAIN
+                            },
                             onSettingsChanged = { viewModel.refreshPrayerTimes() }
                         )
                     }

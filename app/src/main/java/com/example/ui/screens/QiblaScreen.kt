@@ -116,6 +116,24 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
+ * Authoritative alignment and turn-instruction states for Qibla direction.
+ */
+enum class QiblaInstructionState {
+    FACING_QIBLA,
+    TURN_SLIGHTLY_LEFT,
+    TURN_SLIGHTLY_RIGHT,
+    TURN_LEFT,
+    TURN_RIGHT,
+    STATIC_MAP;
+
+    val isSlightTurn: Boolean
+        get() = this == TURN_SLIGHTLY_LEFT || this == TURN_SLIGHTLY_RIGHT
+
+    val isExactFacing: Boolean
+        get() = this == FACING_QIBLA
+}
+
+/**
  * Minimal Circular Qibla Compass Screen for FiveLight.
  */
 @Composable
@@ -243,19 +261,26 @@ fun QiblaScreen(
         label = "raw_breathing"
     )
 
-    // Authoritative real-time angular difference from sensor heading (zero-latency)
-    val authoritativeAbsDiff = abs(shortestSignedAngle(qiblaAngle - compassHeading))
-
     // Static product thresholds:
-    // <=25° enters the Qibla approach pulse zone.
+    // <=25° enters the Qibla approach / turn slightly pulse zone.
     // <=4° represents accurate Qibla alignment.
     // >27° re-arms the one-shot pulse.
     val facingThreshold = 4f
-    val isAligned = isSensorAvailable && authoritativeAbsDiff <= facingThreshold
-
     val nearQiblaThreshold = 25f
     val nearQiblaResetThreshold = 27f
-    val isNearQibla = isSensorAvailable && authoritativeAbsDiff <= nearQiblaThreshold
+
+    // Authoritative alignment and turn-instruction state
+    val instructionState = when {
+        !isSensorAvailable -> QiblaInstructionState.STATIC_MAP
+        absDiff <= facingThreshold -> QiblaInstructionState.FACING_QIBLA
+        normalizedRelativeDelta > nearQiblaThreshold -> QiblaInstructionState.TURN_RIGHT
+        normalizedRelativeDelta in facingThreshold..nearQiblaThreshold -> QiblaInstructionState.TURN_SLIGHTLY_RIGHT
+        normalizedRelativeDelta < -nearQiblaThreshold -> QiblaInstructionState.TURN_LEFT
+        else -> QiblaInstructionState.TURN_SLIGHTLY_LEFT
+    }
+
+    val isAligned = instructionState.isExactFacing
+    val isTurnSlightly = instructionState.isSlightTurn
 
     var wasNearQibla by remember { mutableStateOf(false) }
     var wasAligned by remember { mutableStateOf(false) }
@@ -285,24 +310,24 @@ fun QiblaScreen(
     val isVibrationEnabled = LocalVibrationEnabled.current
 
     // Hysteresis reset: re-arm near-Qibla pulse when user moves sufficiently away (>27°)
-    LaunchedEffect(authoritativeAbsDiff, isActive) {
+    LaunchedEffect(absDiff, isActive) {
         if (!isActive) {
             wasNearQibla = false
             wasAligned = false
             return@LaunchedEffect
         }
-        if (authoritativeAbsDiff > nearQiblaResetThreshold) {
+        if (absDiff > nearQiblaResetThreshold) {
             wasNearQibla = false
         }
     }
 
-    // Trigger Qibla-Lock Ring Pulse ONCE immediately when entering near-Qibla threshold (≤ 25°)
-    LaunchedEffect(isNearQibla, isActive) {
+    // Trigger Qibla-Lock Ring Pulse ONCE immediately when entering turn slightly state (≤ 25°)
+    LaunchedEffect(isTurnSlightly, isActive) {
         if (!isActive) {
             wasNearQibla = false
             return@LaunchedEffect
         }
-        if (isNearQibla && !wasNearQibla) {
+        if (isTurnSlightly && !wasNearQibla) {
             wasNearQibla = true
 
             // Light anticipatory haptic tap (instant)
@@ -466,15 +491,6 @@ fun QiblaScreen(
         }
     }
 
-    val statusText = when {
-        !isSensorAvailable -> "Static Map Mode"
-        absDiff <= facingThreshold -> "Facing Qibla"
-        normalizedRelativeDelta > 35f -> "Turn Right"
-        normalizedRelativeDelta in facingThreshold..35f -> "Turn Slightly Right"
-        normalizedRelativeDelta < -35f -> "Turn Left"
-        else -> "Turn Slightly Left"
-    }
-
     // Formatted dates
     val gregorianDateStr = remember(hijriDate, System.currentTimeMillis() / 60000L) {
         SimpleDateFormat("d MMMM yyyy", Locale.ENGLISH).format(Date())
@@ -537,7 +553,7 @@ fun QiblaScreen(
                     primaryTextColor = primaryTextColor,
                     secondaryTextColor = secondaryTextColor,
                     orangeAccent = orangeAccent,
-                    isAligned = isAligned,
+                    instructionState = instructionState,
                     modifier = Modifier
                         .fillMaxWidth(0.80f)
                         .aspectRatio(1f)
@@ -548,7 +564,7 @@ fun QiblaScreen(
 
                 // 3. QIBLA STATUS (Turn Left / Turn Right / Facing Qibla)
                 QiblaStatus(
-                    statusText = statusText,
+                    instructionState = instructionState,
                     orangeAccent = orangeAccent,
                     successColor = Color.semanticSuccess
                 )
@@ -630,7 +646,7 @@ private fun SoftArcCompass(
     primaryTextColor: Color,
     secondaryTextColor: Color,
     orangeAccent: Color,
-    isAligned: Boolean,
+    instructionState: QiblaInstructionState,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -640,6 +656,7 @@ private fun SoftArcCompass(
         val badgeBgColor = Color.semanticSurface
         val kaabaBodyColor = Color.semanticPrimaryText
         val successColor = Color.semanticSuccess
+        val isAligned = instructionState.isExactFacing
         Canvas(modifier = Modifier.fillMaxSize()) {
             val center = Offset(size.width / 2f, size.height / 2f)
             val radius = size.minDimension * 0.40f
@@ -678,7 +695,7 @@ private fun SoftArcCompass(
 
             // Part 1: Qibla-Lock Ring Pulse brightness interpolation
             val baseRingAlpha = if (isDark) 0.48f else 0.38f
-            val pulseBonus = 0.32f * ringPulse
+            val pulseBonus = if (instructionState.isSlightTurn || instructionState.isExactFacing) 0.32f * ringPulse else 0f
             val ringColor = if (isDark) {
                 Color.White.copy(alpha = (baseRingAlpha + pulseBonus).coerceIn(0f, 0.85f))
             } else {
@@ -688,15 +705,22 @@ private fun SoftArcCompass(
             // A. Thin Subtle Compass Ring
             drawCompassRing(center = center, radius = radius, color = ringColor)
 
-            // Dynamic Qibla-Lock Ring Pulse Overlay (Theme accent before alignment, success color when aligned)
+            // Dynamic Qibla-Lock Ring Pulse Overlay (Priority: 1. Exact Qibla -> GREEN success, 2. Turn Slightly -> THEME ACCENT, 3. Otherwise -> null)
             if (ringPulse > 0.001f) {
-                val pulseColor = if (isAligned) successColor else orangeAccent
-                drawCircle(
-                    color = pulseColor.copy(alpha = 0.45f * ringPulse),
-                    radius = radius + (2.5.dp.toPx() * ringPulse),
-                    center = center,
-                    style = Stroke(width = (1.2 + 1.8 * ringPulse).dp.toPx())
-                )
+                val pulseColor = when (instructionState) {
+                    QiblaInstructionState.FACING_QIBLA -> successColor
+                    QiblaInstructionState.TURN_SLIGHTLY_LEFT,
+                    QiblaInstructionState.TURN_SLIGHTLY_RIGHT -> orangeAccent
+                    else -> null
+                }
+                if (pulseColor != null) {
+                    drawCircle(
+                        color = pulseColor.copy(alpha = 0.45f * ringPulse),
+                        radius = radius + (2.5.dp.toPx() * ringPulse),
+                        center = center,
+                        style = Stroke(width = (1.2 + 1.8 * ringPulse).dp.toPx())
+                    )
+                }
             }
 
             // Part 2: Motion Trail on Ring along needle path during active rotation
@@ -1125,17 +1149,25 @@ private fun DrawScope.drawSymmetricCenterArrow(
  */
 @Composable
 private fun QiblaStatus(
-    statusText: String,
+    instructionState: QiblaInstructionState,
     orangeAccent: Color,
     successColor: Color
 ) {
     Crossfade(
-        targetState = statusText,
+        targetState = instructionState,
         animationSpec = tween(180),
         label = "statusFade"
-    ) { text ->
-        val isAligned = text == "Facing Qibla"
+    ) { state ->
+        val isAligned = state.isExactFacing
         val textColor = if (isAligned) successColor else Color.semanticPrimaryText
+        val text = when (state) {
+            QiblaInstructionState.STATIC_MAP -> "Static Map Mode"
+            QiblaInstructionState.FACING_QIBLA -> "Facing Qibla"
+            QiblaInstructionState.TURN_SLIGHTLY_RIGHT -> "Turn Slightly Right"
+            QiblaInstructionState.TURN_SLIGHTLY_LEFT -> "Turn Slightly Left"
+            QiblaInstructionState.TURN_RIGHT -> "Turn Right"
+            QiblaInstructionState.TURN_LEFT -> "Turn Left"
+        }
         
         Row(
             modifier = Modifier

@@ -181,19 +181,21 @@ fun SettingsBottomSheet(
     onDeleteAccount: suspend (passwordForReauth: String?) -> Result<Unit> = { _ -> Result.failure(Exception("Not implemented")) },
     onOpenLoginSheet: () -> Unit = {},
     onSignOut: () -> Unit = {},
+    isUpdateAvailable: Boolean = false,
+    initialSubScreen: PreferencesSubScreen = PreferencesSubScreen.MAIN,
     onDismiss: () -> Unit,
     onSettingsChanged: () -> Unit = {}
 ) {
-    var activeSubScreen by remember { mutableStateOf(PreferencesSubScreen.MAIN) }
+    var activeSubScreen by remember(initialSubScreen) { mutableStateOf(initialSubScreen) }
     val context = LocalContext.current
-    val updateManager = remember(context) { com.example.data.updater.AppUpdateManager(context) }
+    val updateManager = remember(context) { com.example.data.updater.AppUpdateManager.getInstance(context) }
 
     val loadedSoundIds = remember { mutableSetOf<Int>() }
     var pendingPreviewSound by remember { mutableStateOf<TasbeehSound?>(null) }
 
     val soundPool = remember {
         val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_MEDIA)
+            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
         SoundPool.Builder()
@@ -334,6 +336,7 @@ fun SettingsBottomSheet(
                             currentUser = currentUser,
                             onOpenLoginSheet = onOpenLoginSheet,
                             onSignOut = onSignOut,
+                            isUpdateAvailable = isUpdateAvailable,
                             onNavigateTo = { activeSubScreen = it },
                             onDismiss = onDismiss
                         )
@@ -631,7 +634,7 @@ fun SettingsBottomSheet(
                                             .clip(RoundedCornerShape(12.dp))
                                             .clickable {
                                                 onSelectTasbeehSound(sound)
-                                                playAudioAndHapticPreview(sound, vibrationEnabled)
+                                                playAudioAndHapticPreview(sound, isVibEnabled = false)
                                             }
                                             .padding(vertical = 12.dp, horizontal = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
@@ -657,20 +660,6 @@ fun SettingsBottomSheet(
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
-                                        }
-                                        if (sound.resId != null) {
-                                            IconButton(
-                                                onClick = {
-                                                    onSelectTasbeehSound(sound)
-                                                    playAudioAndHapticPreview(sound, vibrationEnabled)
-                                                }
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.PlayCircle,
-                                                    contentDescription = "Preview ${sound.displayName}",
-                                                    tint = MaterialTheme.colorScheme.primary
-                                                )
-                                            }
                                         }
                                     }
                                 }
@@ -979,6 +968,7 @@ fun MainPreferencesView(
     currentUser: FirebaseUser? = null,
     onOpenLoginSheet: () -> Unit = {},
     onSignOut: () -> Unit = {},
+    isUpdateAvailable: Boolean = false,
     onNavigateTo: (PreferencesSubScreen) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -1237,6 +1227,7 @@ fun MainPreferencesView(
                         label = "App Updates",
                         value = "v${com.example.BuildConfig.VERSION_NAME} (Build ${com.example.BuildConfig.VERSION_CODE})",
                         onClick = { onNavigateTo(PreferencesSubScreen.APP_UPDATES) },
+                        hasBadge = isUpdateAvailable,
                         testTag = "pref_row_app_updates"
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -1359,6 +1350,7 @@ fun GroupedMenuRow(
     label: String,
     value: String,
     onClick: () -> Unit,
+    hasBadge: Boolean = false,
     testTag: String = ""
 ) {
     Row(
@@ -1371,12 +1363,24 @@ fun GroupedMenuRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (hasBadge) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .clip(CircleShape)
+                            .background(Color.semanticError)
+                            .testTag("menu_row_badge")
+                    )
+                }
+            }
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodySmall,
