@@ -237,16 +237,17 @@ fun QiblaScreen(
 
     // Static product thresholds for Qibla proximity and alignment
     val facingThreshold = 4f
-    val nearQiblaStartThreshold = 15f
     val nearQiblaThreshold = 25f
     val nearQiblaResetThreshold = 27f
 
     // Progressive Qibla-Lock Ring Pulse Intensity:
-    // > 15° away -> 0.0 (normal/static Kaaba marker, no accent pulse)
-    // 15° -> 4° -> continuous linear interpolation 0.0 to 1.0
-    // <= 4° -> 1.0 (full pulse size, green target acquired state)
-    val targetGlowIntensity = if (absDiff <= nearQiblaStartThreshold) {
-        ((nearQiblaStartThreshold - absDiff) / (nearQiblaStartThreshold - facingThreshold)).coerceIn(0f, 1f)
+    // Synchronized strictly with existing Turn Slightly Left / Turn Slightly Right state (facingThreshold..nearQiblaThreshold).
+    // - Outside nearQiblaThreshold (> 25° away): 0.0 (Turn Left/Right state -> no accent pulse)
+    // - Entry at nearQiblaThreshold (25° away): Starts at 0.0 (small/subtle accent pulse)
+    // - Interpolates continuously from nearQiblaThreshold (25°) down to facingThreshold (4°): 0.0 -> 1.0
+    // - <= 4° (Facing Qibla): 1.0 (full pulse size, green target acquired state)
+    val targetGlowIntensity = if (absDiff <= nearQiblaThreshold) {
+        ((nearQiblaThreshold - absDiff) / (nearQiblaThreshold - facingThreshold)).coerceIn(0f, 1f)
     } else {
         0f
     }
