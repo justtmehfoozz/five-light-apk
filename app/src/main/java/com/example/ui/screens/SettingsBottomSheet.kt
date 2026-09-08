@@ -189,53 +189,7 @@ fun SettingsBottomSheet(
     var activeSubScreen by remember(initialSubScreen) { mutableStateOf(initialSubScreen) }
     val context = LocalContext.current
     val updateManager = remember(context) { com.example.data.updater.AppUpdateManager.getInstance(context) }
-
-    val loadedSoundIds = remember { mutableSetOf<Int>() }
-    var pendingPreviewSound by remember { mutableStateOf<TasbeehSound?>(null) }
-
-    val soundPool = remember {
-        val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-        SoundPool.Builder()
-            .setMaxStreams(4)
-            .setAudioAttributes(audioAttributes)
-            .build()
-    }
-
-    val soundIdMap = remember(soundPool, context) {
-        val map = mutableMapOf<TasbeehSound, Int>()
-        TasbeehSound.entries.forEach { sound ->
-            sound.resId?.let { resId ->
-                try {
-                    val soundId = soundPool.load(context, resId, 1)
-                    map[sound] = soundId
-                } catch (_: Exception) {}
-            }
-        }
-        map
-    }
-
-    DisposableEffect(soundPool) {
-        soundPool.setOnLoadCompleteListener { _, sampleId, status ->
-            if (status == 0) {
-                loadedSoundIds.add(sampleId)
-                val currentPending = pendingPreviewSound
-                if (currentPending != null && soundIdMap[currentPending] == sampleId) {
-                    try {
-                        soundPool.play(sampleId, 0.9f, 0.9f, 1, 0, 1.0f)
-                    } catch (_: Exception) {}
-                    pendingPreviewSound = null
-                }
-            }
-        }
-        onDispose {
-            try {
-                soundPool.release()
-            } catch (_: Exception) {}
-        }
-    }
+    val tasbeehAudioPlayer = remember(context) { com.example.data.audio.TasbeehAudioPlayer.getInstance(context) }
 
     val haptic = LocalHapticFeedback.current
     val vibrator = remember(context) {
@@ -249,22 +203,7 @@ fun SettingsBottomSheet(
     }
 
     fun playAudioAndHapticPreview(sound: TasbeehSound, isVibEnabled: Boolean) {
-        try {
-            soundPool.autoPause()
-            if (sound != TasbeehSound.OFF) {
-                val soundId = soundIdMap[sound]
-                if (soundId != null && soundId > 0) {
-                    if (loadedSoundIds.contains(soundId)) {
-                        pendingPreviewSound = null
-                        soundPool.play(soundId, 0.9f, 0.9f, 1, 0, 1.0f)
-                    } else {
-                        pendingPreviewSound = sound
-                    }
-                }
-            } else {
-                pendingPreviewSound = null
-            }
-        } catch (_: Exception) {}
+        tasbeehAudioPlayer.playPreview(sound, 1.0f)
 
         if (sound != TasbeehSound.OFF && isVibEnabled) {
             try {

@@ -276,55 +276,10 @@ fun TasbeehScreen(
     var isAutoCountEnabled by rememberSaveable { mutableStateOf(false) }
     var autoCountSpeedSec by rememberSaveable { mutableFloatStateOf(2.0f) }
 
-    val loadedSoundIds = remember { mutableSetOf<Int>() }
-
-    // SoundPool for Instantaneous, Zero-Latency Tap Audio Playback
-    val soundPool = remember {
-        val audioAttributes = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-        SoundPool.Builder()
-            .setMaxStreams(4)
-            .setAudioAttributes(audioAttributes)
-            .build()
-    }
-
-    val soundIdMap = remember(soundPool, context) {
-        val map = mutableMapOf<TasbeehSound, Int>()
-        TasbeehSound.entries.forEach { sound ->
-            sound.resId?.let { resId ->
-                try {
-                    val soundId = soundPool.load(context, resId, 1)
-                    map[sound] = soundId
-                } catch (_: Exception) {}
-            }
-        }
-        map
-    }
-
-    DisposableEffect(soundPool) {
-        soundPool.setOnLoadCompleteListener { _, sampleId, status ->
-            if (status == 0) {
-                loadedSoundIds.add(sampleId)
-            }
-        }
-        onDispose {
-            try {
-                soundPool.release()
-            } catch (_: Exception) {}
-        }
-    }
+    val tasbeehAudioPlayer = remember(context) { com.example.data.audio.TasbeehAudioPlayer.getInstance(context) }
 
     fun playSound() {
-        val sound = currentSelectedSound
-        if (sound == TasbeehSound.OFF) return
-        val soundId = soundIdMap[sound]
-        if (soundId != null && soundId > 0) {
-            try {
-                soundPool.play(soundId, 1.0f, 1.0f, 1, 0, 1.0f)
-            } catch (_: Exception) {}
-        }
+        tasbeehAudioPlayer.playSound(currentSelectedSound, 1.0f)
     }
 
     fun triggerVibration(isCompletion: Boolean) {

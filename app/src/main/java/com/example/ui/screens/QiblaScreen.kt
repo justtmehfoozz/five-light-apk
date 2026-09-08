@@ -232,10 +232,21 @@ fun QiblaScreen(
     // Current normalized angular delta [-180°, 180°]: Positive = Turn Right, Negative = Turn Left
     val normalizedRelativeDelta = shortestSignedAngle(animatedDelta)
 
-    // Progressive Kaaba Glow Intensity driven by absolute angular difference (30° threshold)
+    // Absolute angular difference between current heading and Qibla
     val absDiff = abs(normalizedRelativeDelta)
-    val targetGlowIntensity = if (absDiff < 30f) {
-        ((30f - absDiff) / 30f).coerceIn(0f, 1f)
+
+    // Static product thresholds for Qibla proximity and alignment
+    val facingThreshold = 4f
+    val nearQiblaStartThreshold = 15f
+    val nearQiblaThreshold = 25f
+    val nearQiblaResetThreshold = 27f
+
+    // Progressive Qibla-Lock Ring Pulse Intensity:
+    // > 15° away -> 0.0 (normal/static Kaaba marker, no accent pulse)
+    // 15° -> 4° -> continuous linear interpolation 0.0 to 1.0
+    // <= 4° -> 1.0 (full pulse size, green target acquired state)
+    val targetGlowIntensity = if (absDiff <= nearQiblaStartThreshold) {
+        ((nearQiblaStartThreshold - absDiff) / (nearQiblaStartThreshold - facingThreshold)).coerceIn(0f, 1f)
     } else {
         0f
     }
@@ -243,7 +254,7 @@ fun QiblaScreen(
     val animatedGlowIntensity by animateFloatAsState(
         targetValue = targetGlowIntensity,
         animationSpec = tween(
-            durationMillis = 200,
+            durationMillis = 150,
             easing = FastOutSlowInEasing
         ),
         label = "animated_kaaba_glow"
@@ -260,14 +271,6 @@ fun QiblaScreen(
         ),
         label = "raw_breathing"
     )
-
-    // Static product thresholds:
-    // <=25° enters the Qibla approach / turn slightly pulse zone.
-    // <=4° represents accurate Qibla alignment.
-    // >27° re-arms the one-shot pulse.
-    val facingThreshold = 4f
-    val nearQiblaThreshold = 25f
-    val nearQiblaResetThreshold = 27f
 
     // Authoritative alignment and turn-instruction state
     val instructionState = when {
@@ -1041,7 +1044,7 @@ private fun DrawScope.drawKaabaTargetMarker(
         color = badgeBorderColor,
         radius = badgeRadius,
         center = kaabaCenter,
-        style = Stroke(width = (1.5 + glowIntensity * 1.5).dp.toPx())
+        style = Stroke(width = 1.5.dp.toPx())
     )
 
     // 3. Upright Minimal Kaaba Icon (Always upright, never rotated)

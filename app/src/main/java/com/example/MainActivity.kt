@@ -92,6 +92,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Pre-warm audio engine for instant Tasbeeh sound playback
+        com.example.data.audio.TasbeehAudioPlayer.getInstance(this)
+
 
         setContent {
             val appearanceMode by viewModel.appearanceMode.collectAsStateWithLifecycle()
