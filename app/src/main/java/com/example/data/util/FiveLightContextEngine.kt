@@ -90,10 +90,18 @@ object FiveLightContextEngine {
         val lastThirdStartStr = tahajjudWindow.startFormatted
         val tahajjudWindowStr = tahajjudWindow.windowFormatted
 
+        val fajr = fardPrayers.find { it.name == PrayerName.FAJR } ?: return null
+        val isha = fardPrayers.find { it.name == PrayerName.ISHA } ?: return null
+        val maghrib = fardPrayers.find { it.name == PrayerName.MAGHRIB }
+
         val isLastThirdActive = tahajjudWindow.isCurrent
         val isIshaActive = nowMillis >= nightIshaMillis && nowMillis < lastThirdStartMillis
         val isFajrActive = nowMillis >= nightFajrMillis && nowMillis < (nightFajrMillis + 90 * 60 * 1000L)
-        val isNightActive = nowMillis >= (nightIshaMillis - 2 * 3600 * 1000L) || nowMillis < nightFajrMillis
+
+        val todayMaghribMillis = maghrib?.timeMillis ?: (isha.timeMillis - 90 * 60 * 1000L)
+        val nightStartMillis = minOf(todayMaghribMillis, isha.timeMillis - 2 * 3600 * 1000L)
+
+        val isNightActive = (nowMillis < fajr.timeMillis) || (nowMillis >= nightStartMillis)
 
         val headerTitle = if (isLastThirdActive) "The Last Third Has Begun" else "The Last Third Is Approaching"
         val subtitleText = if (isLastThirdActive) "A blessed time for Qiyam al-Layl." else "A blessed time for Qiyam al-Layl is near."

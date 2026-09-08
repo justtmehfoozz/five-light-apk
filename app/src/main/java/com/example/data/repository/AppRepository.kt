@@ -176,7 +176,9 @@ class AppRepository(
     // Home Features Preferences
     private val savedFeatureOrderStr = prefs?.getString("home_feature_order", null)
     private val initialFeatureOrder = if (!savedFeatureOrderStr.isNullOrEmpty()) {
-        val parsed = savedFeatureOrderStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        val parsed = savedFeatureOrderStr.split(",")
+            .map { it.trim().uppercase() }
+            .filter { it.isNotEmpty() && it != "RIGHT_NOW" && it != "NEXT_OPPORTUNITY" }
         val missing = com.example.data.model.HomeFeaturesPreferences.DEFAULT_FEATURE_ORDER.filter { !parsed.contains(it) }
         parsed + missing
     } else {
@@ -196,6 +198,7 @@ class AppRepository(
         recentlyReadEnabled = prefs?.getBoolean("feat_recently_read", true) ?: true,
         quranLensEnabled = prefs?.getBoolean("feat_quran_lens", true) ?: true,
         nightIsComingEnabled = prefs?.getBoolean("feat_night_is_coming", true) ?: true,
+        reflectionEnabled = prefs?.getBoolean("feat_reflection", true) ?: true,
         featureOrder = initialFeatureOrder
     )
     private val _homeFeaturesPreferences = MutableStateFlow(initialHomeFeatures)
@@ -539,7 +542,8 @@ class AppRepository(
         prayerJourney: Boolean = _homeFeaturesPreferences.value.prayerJourneyEnabled,
         recentlyRead: Boolean = _homeFeaturesPreferences.value.recentlyReadEnabled,
         quranLens: Boolean = _homeFeaturesPreferences.value.quranLensEnabled,
-        nightIsComing: Boolean = _homeFeaturesPreferences.value.nightIsComingEnabled
+        nightIsComing: Boolean = _homeFeaturesPreferences.value.nightIsComingEnabled,
+        reflection: Boolean = _homeFeaturesPreferences.value.reflectionEnabled
     ) {
         val updated = com.example.data.model.HomeFeaturesPreferences(
             continueReadingEnabled = continueReading,
@@ -554,6 +558,7 @@ class AppRepository(
             recentlyReadEnabled = recentlyRead,
             quranLensEnabled = quranLens,
             nightIsComingEnabled = nightIsComing,
+            reflectionEnabled = reflection,
             featureOrder = _homeFeaturesPreferences.value.featureOrder
         )
         _homeFeaturesPreferences.value = updated
@@ -570,6 +575,7 @@ class AppRepository(
             ?.putBoolean("feat_recently_read", recentlyRead)
             ?.putBoolean("feat_quran_lens", quranLens)
             ?.putBoolean("feat_night_is_coming", nightIsComing)
+            ?.putBoolean("feat_reflection", reflection)
             ?.putLong("preferences_updated_at", System.currentTimeMillis())
             ?.apply()
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()

@@ -818,8 +818,8 @@ class MainActivity : ComponentActivity() {
                             naflPreferences = naflPreferences,
                             onUpdateNaflPreference = { t, i, d, a -> viewModel.setNaflPreference(t, i, d, a) },
                             homeFeaturesPreferences = homeFeaturesPreferences,
-                            onUpdateHomeFeaturesPreference = { cr, rn, tn, no, pp, wo, mo, qm, pj, rr, ql, nc ->
-                                viewModel.setHomeFeaturesPreference(cr, rn, tn, no, pp, wo, mo, qm, pj, rr, ql, nc)
+                            onUpdateHomeFeaturesPreference = { cr, rn, tn, no, pp, wo, mo, qm, pj, rr, ql, nc, rf ->
+                                viewModel.setHomeFeaturesPreference(cr, rn, tn, no, pp, wo, mo, qm, pj, rr, ql, nc, rf)
                             },
                             onUpdateHomeFeatureOrder = { order -> viewModel.setHomeFeatureOrder(order) },
                             onResetHomeFeatureOrder = { viewModel.resetHomeFeatureOrder() },

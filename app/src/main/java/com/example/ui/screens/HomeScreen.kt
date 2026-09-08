@@ -767,38 +767,19 @@ fun HomeScreen(
         homeFeaturesPreferences.featureOrder.forEach { featureKey ->
             when (featureKey.uppercase()) {
                 "PRAYER_PREP" -> {
-                    if (contextState.prayerPrep != null && homeFeaturesPreferences.prayerPrepEnabled) {
-                        val cIdx = cardIndex++
-                        item(key = "feature_prayer_prep") {
-                            StaggeredCardEntrance(index = cIdx) {
-                                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                    com.example.ui.components.PrayerPrepCard(
-                                        prep = contextState.prayerPrep,
-                                        onQiblaClick = { onQuickAccessNavigate(NavItem.QIBLA) }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                "RIGHT_NOW" -> {
-                    if (rightNowItem != null && homeFeaturesPreferences.rightNowEnabled) {
-                        val cIdx = cardIndex++
-                        item(key = "feature_right_now") {
-                            StaggeredCardEntrance(index = cIdx) {
-                                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                    RightNowCard(
-                                        item = rightNowItem,
-                                        onActionClick = {
-                                            when (rightNowItem.actionType) {
-                                                RightNowActionType.OPEN_ADHKAR -> onQuickAccessNavigate(NavItem.TASBEEH)
-                                                RightNowActionType.OPEN_QURAN -> onQuickAccessNavigate(NavItem.QURAN)
-                                                RightNowActionType.VIEW_PRAYER -> {
-                                                    rightNowItem.naflType?.let { activeEvidenceNaflType = it }
-                                                }
-                                            }
-                                        }
-                                    )
+                    if (homeFeaturesPreferences.prayerPrepEnabled) {
+                        val candidateNextPrayer = if (nextPrayer != null && nextPrayer.name != PrayerName.SUNRISE) nextPrayer else prayerTimes.find { it.isNext && it.name != PrayerName.SUNRISE }
+                        if (contextState.prayerPrep != null || candidateNextPrayer != null) {
+                            val cIdx = cardIndex++
+                            item(key = "feature_prayer_prep") {
+                                StaggeredCardEntrance(index = cIdx) {
+                                    Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                                        com.example.ui.components.PrayerPrepCard(
+                                            prep = contextState.prayerPrep,
+                                            nextPrayer = candidateNextPrayer,
+                                            onQiblaClick = { onQuickAccessNavigate(NavItem.QIBLA) }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -824,37 +805,14 @@ fun HomeScreen(
                         }
                     }
                 }
-                "NEXT_OPPORTUNITY" -> {
-                    if (showNextOpportunity != null && homeFeaturesPreferences.nextOpportunityEnabled) {
+                "NAFL_PRAYERS" -> {
+                    if (naflPreferences.isAnyEnabled && naflPrayerItems.isNotEmpty()) {
                         val cIdx = cardIndex++
-                        item(key = "feature_next_opportunity") {
+                        item(key = "feature_nafl_prayers") {
                             StaggeredCardEntrance(index = cIdx) {
-                                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                                    com.example.ui.components.NextOpportunityCard(
-                                        item = showNextOpportunity,
-                                        onActionClick = {
-                                            when (showNextOpportunity.actionType) {
-                                                RightNowActionType.OPEN_ADHKAR -> onQuickAccessNavigate(NavItem.TASBEEH)
-                                                RightNowActionType.OPEN_QURAN -> onQuickAccessNavigate(NavItem.QURAN)
-                                                else -> onQuickAccessNavigate(NavItem.HOME)
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                "RECENTLY_READ" -> {
-                    if (recentlyReadList.isNotEmpty() && homeFeaturesPreferences.recentlyReadEnabled) {
-                        val cIdx = cardIndex++
-                        item(key = "feature_recently_read") {
-                            StaggeredCardEntrance(index = cIdx) {
-                                com.example.ui.components.RecentlyReadSection(
-                                    recentlyReadList = recentlyReadList,
-                                    onSelectReadItem = { surah, verseIdx ->
-                                        onNavigateToQuranSurahVerse(surah, verseIdx + 1)
-                                    }
+                                NaflPrayersSection(
+                                    naflPrayerItems = naflPrayerItems,
+                                    onOpenEvidence = { type -> activeEvidenceNaflType = type }
                                 )
                             }
                         }
@@ -870,6 +828,37 @@ fun HomeScreen(
                                         tonight = contextState.tonight
                                     )
                                 }
+                            }
+                        }
+                    }
+                }
+                "REFLECTION" -> {
+                    if (homeFeaturesPreferences.reflectionEnabled) {
+                        val cIdx = cardIndex++
+                        item(key = "feature_reflection_of_day") {
+                            StaggeredCardEntrance(index = cIdx) {
+                                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
+                                    com.example.ui.components.ReflectionOfTheDayCard(
+                                        onReflectClick = { surahNum, verseNum ->
+                                            onNavigateToQuranSurahVerse(surahNum, verseNum)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                "RECENTLY_READ" -> {
+                    if (filteredRecentlyRead.isNotEmpty() && homeFeaturesPreferences.recentlyReadEnabled) {
+                        val cIdx = cardIndex++
+                        item(key = "feature_recently_read") {
+                            StaggeredCardEntrance(index = cIdx) {
+                                com.example.ui.components.RecentlyReadSection(
+                                    recentlyReadList = filteredRecentlyRead,
+                                    onSelectReadItem = { surah, verseIdx ->
+                                        onNavigateToQuranSurahVerse(surah, verseIdx + 1)
+                                    }
+                                )
                             }
                         }
                     }
@@ -921,19 +910,6 @@ fun HomeScreen(
                         }
                     }
                 }
-                "NAFL_PRAYERS" -> {
-                    if (naflPreferences.isAnyEnabled && naflPrayerItems.isNotEmpty()) {
-                        val cIdx = cardIndex++
-                        item(key = "feature_nafl_prayers") {
-                            StaggeredCardEntrance(index = cIdx) {
-                                NaflPrayersSection(
-                                    naflPrayerItems = naflPrayerItems,
-                                    onOpenEvidence = { type -> activeEvidenceNaflType = type }
-                                )
-                            }
-                        }
-                    }
-                }
             }
         }
 
@@ -947,20 +923,6 @@ fun HomeScreen(
                             eventMoment = contextState.calendarMoment
                         )
                     }
-                }
-            }
-        }
-
-        // REFLECTION OF THE DAY CARD
-        val refIdx = cardIndex++
-        item(key = "feature_reflection_of_day") {
-            StaggeredCardEntrance(index = refIdx) {
-                Box(modifier = Modifier.padding(horizontal = 20.dp)) {
-                    com.example.ui.components.ReflectionOfTheDayCard(
-                        onReflectClick = { surahNum, verseNum ->
-                            onNavigateToQuranSurahVerse(surahNum, verseNum)
-                        }
-                    )
                 }
             }
         }

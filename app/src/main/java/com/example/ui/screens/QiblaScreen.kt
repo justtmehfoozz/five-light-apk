@@ -176,12 +176,21 @@ fun QiblaScreen(
     }
 
     // Continuous shortest-path angle tracking for smooth, zero-latency rotation without 360° flips
-    // 1. Continuous Delta: Shortest angular difference from current heading to Qibla (delta = qiblaAngle - heading)
+    // Synchronized update for both device heading and Qibla delta to ensure dial and needle move in lockstep
+    var continuousHeading by remember { mutableFloatStateOf(compassHeading) }
     var continuousDelta by remember { mutableFloatStateOf(shortestSignedAngle(qiblaAngle - compassHeading)) }
+
     LaunchedEffect(qiblaAngle, compassHeading) {
         val targetDelta = shortestSignedAngle(qiblaAngle - compassHeading)
-        val step = shortestSignedAngle(targetDelta - continuousDelta)
-        continuousDelta += step
+        val stepHeading = shortestSignedAngle(compassHeading - continuousHeading)
+        val stepDelta = shortestSignedAngle(targetDelta - continuousDelta)
+
+        // Micro-noise threshold (0.08°): ignores sub-decimal hardware jitter when device is resting,
+        // while updating both dial and needle in 100% synchronous lockstep during physical movement.
+        if (kotlin.math.abs(stepHeading) >= 0.08f || kotlin.math.abs(stepDelta) >= 0.08f) {
+            continuousHeading += stepHeading
+            continuousDelta += stepDelta
+        }
     }
 
     val animatedDelta by animateFloatAsState(
@@ -192,13 +201,6 @@ fun QiblaScreen(
         ),
         label = "animated_delta"
     )
-
-    // 2. Continuous Device Heading: For smooth rotation of compass dial ticks and cardinal directions
-    var continuousHeading by remember { mutableFloatStateOf(compassHeading) }
-    LaunchedEffect(compassHeading) {
-        val step = shortestSignedAngle(compassHeading - continuousHeading)
-        continuousHeading += step
-    }
 
     val animatedHeading by animateFloatAsState(
         targetValue = continuousHeading,
@@ -244,6 +246,13 @@ fun QiblaScreen(
     // Alignment status text with ±4° tolerance threshold
     val facingThreshold = 4f
     val isAligned = isSensorAvailable && absDiff <= facingThreshold
+
+    // Pre-alignment threshold (8°) for anticipatory Qibla-Lock Ring Pulse with 12° reset hysteresis
+    val nearQiblaThreshold = 8f
+    val nearQiblaResetThreshold = 12f
+    val isNearQibla = isSensorAvailable && absDiff <= nearQiblaThreshold
+
+    var wasNearQibla by remember { mutableStateOf(false) }
     var wasAligned by remember { mutableStateOf(false) }
 
     // Subtle 200ms alignment settle hold state
@@ -271,22 +280,28 @@ fun QiblaScreen(
 
     val isVibrationEnabled = LocalVibrationEnabled.current
 
-    // Edge-triggered haptic feedback, Ring Pulse & Glow Settle: Triggered ONCE upon entering alignment threshold
-    LaunchedEffect(isAligned, isActive) {
+    // Hysteresis reset: re-arm near-Qibla pulse when user moves sufficiently away (>12°)
+    LaunchedEffect(absDiff, isActive) {
         if (!isActive) {
+            wasNearQibla = false
             wasAligned = false
-            isSettleHolding = false
             return@LaunchedEffect
         }
-        if (isAligned && !wasAligned) {
-            // Trigger 150-250ms visual settle hold for ambient glow
-            coroutineScope.launch {
-                isSettleHolding = true
-                delay(200)
-                isSettleHolding = false
-            }
+        if (absDiff > nearQiblaResetThreshold) {
+            wasNearQibla = false
+        }
+    }
 
-            // Trigger Ring pulse animation
+    // Trigger Qibla-Lock Ring Pulse ONCE when entering near-Qibla threshold (≤ 8°)
+    LaunchedEffect(isNearQibla, isActive) {
+        if (!isActive) {
+            wasNearQibla = false
+            return@LaunchedEffect
+        }
+        if (isNearQibla && !wasNearQibla) {
+            wasNearQibla = true
+
+            // Trigger Ring pulse animation (140ms attack, 260ms decay)
             coroutineScope.launch {
                 ringPulseAnim.snapTo(0f)
                 ringPulseAnim.animateTo(
@@ -297,6 +312,32 @@ fun QiblaScreen(
                     targetValue = 0f,
                     animationSpec = tween(260, easing = FastOutSlowInEasing)
                 )
+            }
+
+            // Light anticipatory haptic tap
+            if (isVibrationEnabled && !isAligned) {
+                try {
+                    FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
+                } catch (_: Exception) { }
+            }
+        }
+    }
+
+    // Edge-triggered haptic feedback & Glow Settle: Triggered ONCE upon entering exact alignment threshold (≤ 4°)
+    LaunchedEffect(isAligned, isActive) {
+        if (!isActive) {
+            wasAligned = false
+            isSettleHolding = false
+            return@LaunchedEffect
+        }
+        if (isAligned && !wasAligned) {
+            wasAligned = true
+
+            // Trigger 150-250ms visual settle hold for ambient glow
+            coroutineScope.launch {
+                isSettleHolding = true
+                delay(200)
+                isSettleHolding = false
             }
 
             // Trigger alignment haptic
@@ -311,8 +352,9 @@ fun QiblaScreen(
                     FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
                 }
             }
+        } else if (!isAligned) {
+            wasAligned = false
         }
-        wasAligned = isAligned
     }
 
     // Part 3: Haptic Tick at Cardinal Crossings (N:0°, E:90°, S:180°, W:270°)
@@ -642,6 +684,17 @@ private fun SoftArcCompass(
 
             // A. Thin Subtle Compass Ring
             drawCompassRing(center = center, radius = radius, color = ringColor)
+
+            // Dynamic Qibla-Lock Ring Pulse Overlay (Theme accent before alignment, success color when aligned)
+            if (ringPulse > 0.001f) {
+                val pulseColor = if (isAligned) successColor else orangeAccent
+                drawCircle(
+                    color = pulseColor.copy(alpha = 0.45f * ringPulse),
+                    radius = radius + (2.5.dp.toPx() * ringPulse),
+                    center = center,
+                    style = Stroke(width = (1.2 + 1.8 * ringPulse).dp.toPx())
+                )
+            }
 
             // Part 2: Motion Trail on Ring along needle path during active rotation
             if (abs(trailSweep) > 0.5f && trailAlpha > 0.005f) {

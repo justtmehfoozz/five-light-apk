@@ -26,16 +26,16 @@ data class HomeFeaturesPreferences(
     val recentlyReadEnabled: Boolean = true,
     val quranLensEnabled: Boolean = true,
     val nightIsComingEnabled: Boolean = true,
+    val reflectionEnabled: Boolean = true,
     val featureOrder: List<String> = DEFAULT_FEATURE_ORDER
 ) {
     companion object {
         val DEFAULT_FEATURE_ORDER = listOf(
-            "RIGHT_NOW",
-            "NEXT_OPPORTUNITY",
             "PRAYER_PREP",
+            "CONTINUE_READING",
             "NAFL_PRAYERS",
             "TONIGHT",
-            "CONTINUE_READING",
+            "REFLECTION",
             "RECENTLY_READ",
             "MOMENTS",
             "WEEKLY_OVERVIEW"

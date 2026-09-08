@@ -22,6 +22,7 @@ import com.example.ui.theme.semanticWarning
 
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.material3.TextButton
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -356,120 +357,275 @@ fun ContinueReadingCard(
 
 @Composable
 fun PrayerPrepCard(
-    prep: PrayerPrepItem,
+    prep: PrayerPrepItem?,
+    nextPrayer: PrayerItem? = null,
     onQiblaClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isDark = MaterialTheme.colorScheme.background.run { (red * 0.299f + green * 0.587f + blue * 0.114f) < 0.5f }
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag("prayer_prep_card"),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-    ) {
-        Column(
-            modifier = Modifier
+
+    if (prep != null) {
+        var showSteps by remember { mutableStateOf(false) }
+
+        Card(
+            modifier = modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .testTag("prayer_prep_card"),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Outlined.Schedule,
+                            contentDescription = null,
+                            tint = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Prayer Preparation",
+                            fontFamily = SpaceGrotesk,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = "${prep.prayerName.displayName} in ${prep.minutesRemaining} min",
+                            fontFamily = SpaceGrotesk,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+
+                Text(
+                    text = "Prepare yourself for ${prep.prayerName.displayName} (${prep.formattedTime})",
+                    fontFamily = SerifHeaderFont,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                AnimatedVisibility(
+                    visible = showSteps,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(top = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        prep.steps.forEach { step ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "• ",
+                                    fontFamily = SpaceGrotesk,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = step,
+                                    fontFamily = SpaceGrotesk,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = { showSteps = !showSteps },
+                        contentPadding = PaddingValues(horizontal = 0.dp)
+                    ) {
+                        Text(
+                            text = if (showSteps) "Hide checklist ↑" else "Show prep checklist (${prep.steps.size}) ↓",
+                            fontFamily = SpaceGrotesk,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    Surface(
+                        onClick = onQiblaClick,
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.CompassCalibration,
+                                contentDescription = null,
+                                tint = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Qibla Direction →",
+                                fontFamily = SpaceGrotesk,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    } else if (nextPrayer != null) {
+        Card(
+            modifier = modifier
+                .fillMaxWidth()
+                .testTag("prayer_prep_next_action"),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Outlined.Schedule,
                         contentDescription = null,
                         tint = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Prayer Preparation",
-                        fontFamily = SpaceGrotesk,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary
-                    )
-                }
-
-                Surface(
-                    shape = CircleShape,
-                    color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                ) {
-                    Text(
-                        text = "${prep.prayerName.displayName} in ${prep.minutesRemaining} min",
-                        fontFamily = SpaceGrotesk,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                    )
-                }
-            }
-
-            Text(
-                text = "Prepare yourself for ${prep.prayerName.displayName} (${prep.formattedTime})",
-                fontFamily = SerifHeaderFont,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                prep.steps.forEach { step ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column {
                         Text(
-                            text = "• ",
+                            text = "Next Worship · ${nextPrayer.name.displayName}",
                             fontFamily = SpaceGrotesk,
-                            fontSize = 14.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = step,
-                            fontFamily = SpaceGrotesk,
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "${nextPrayer.name.displayName} at ${nextPrayer.timeFormatted}",
+                            fontFamily = SerifHeaderFont,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }
-            }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
                 Surface(
                     onClick = onQiblaClick,
                     shape = RoundedCornerShape(12.dp),
-                    color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary
+                    color = if (isDark) Color(0xFF3A3845) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.CompassCalibration,
                             contentDescription = null,
-                            tint = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(16.dp)
+                            tint = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "Qibla Direction →",
+                            text = "Qibla →",
                             fontFamily = SpaceGrotesk,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.onPrimary
+                            color = if (isDark) Color(0xFFFFFFFF) else MaterialTheme.colorScheme.primary
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TonightCompactCard(
+    tonight: TonightSummary,
+    modifier: Modifier = Modifier
+) {
+    val isDark = MaterialTheme.colorScheme.background.run { (red * 0.299f + green * 0.587f + blue * 0.114f) < 0.5f }
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("tonight_compact_card"),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.NightsStay,
+                    contentDescription = null,
+                    tint = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Column {
+                    Text(
+                        text = "Night Worship Ahead",
+                        fontFamily = SerifHeaderFont,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Last Third starts at ${tonight.lastThirdStartFormatted} • Fajr at ${tonight.fajrTimeFormatted}",
+                        fontFamily = SpaceGrotesk,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

@@ -166,8 +166,9 @@ fun SettingsBottomSheet(
         prayerJourney: Boolean,
         recentlyRead: Boolean,
         quranLens: Boolean,
-        nightIsComing: Boolean
-    ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _ -> },
+        nightIsComing: Boolean,
+        reflection: Boolean
+    ) -> Unit = { _, _, _, _, _, _, _, _, _, _, _, _, _ -> },
     onUpdateHomeFeatureOrder: (List<String>) -> Unit = {},
     onResetHomeFeatureOrder: () -> Unit = {},
     onUpdateNaflOrder: (List<String>) -> Unit = {},
@@ -769,22 +770,10 @@ fun SettingsBottomSheet(
                     PreferencesSubScreen.HOME_FEATURES -> {
                         val homeFeatureItems = homeFeaturesPreferences.featureOrder.map { featId ->
                             when (featId.uppercase()) {
-                                "RIGHT_NOW" -> com.example.ui.components.ReorderableItemData(
-                                    id = "RIGHT_NOW",
-                                    title = "Right Now",
-                                    subtitle = "Current worship focus",
-                                    isEnabled = homeFeaturesPreferences.rightNowEnabled
-                                )
-                                "NEXT_OPPORTUNITY" -> com.example.ui.components.ReorderableItemData(
-                                    id = "NEXT_OPPORTUNITY",
-                                    title = "Next Worship Opportunity",
-                                    subtitle = "Upcoming voluntary worship windows",
-                                    isEnabled = homeFeaturesPreferences.nextOpportunityEnabled
-                                )
                                 "PRAYER_PREP" -> com.example.ui.components.ReorderableItemData(
                                     id = "PRAYER_PREP",
-                                    title = "Prayer Preparation",
-                                    subtitle = "Preparation checklist before prayer",
+                                    title = "Contextual Next Action & Prep",
+                                    subtitle = "Upcoming prayer guidance and Qibla shortcut",
                                     isEnabled = homeFeaturesPreferences.prayerPrepEnabled
                                 )
                                 "NAFL_PRAYERS" -> com.example.ui.components.ReorderableItemData(
@@ -805,10 +794,16 @@ fun SettingsBottomSheet(
                                     subtitle = "Resume Quran reading position",
                                     isEnabled = homeFeaturesPreferences.continueReadingEnabled
                                 )
+                                "REFLECTION" -> com.example.ui.components.ReorderableItemData(
+                                    id = "REFLECTION",
+                                    title = "Reflection of the Day",
+                                    subtitle = "Daily spiritual verse reflection",
+                                    isEnabled = homeFeaturesPreferences.reflectionEnabled
+                                )
                                 "RECENTLY_READ" -> com.example.ui.components.ReorderableItemData(
                                     id = "RECENTLY_READ",
                                     title = "Recently Read History",
-                                    subtitle = "Last 7 read Quran locations",
+                                    subtitle = "Horizontal chips of recent Quran locations",
                                     isEnabled = homeFeaturesPreferences.recentlyReadEnabled
                                 )
                                 "MOMENTS" -> com.example.ui.components.ReorderableItemData(
@@ -870,15 +865,7 @@ fun SettingsBottomSheet(
                                                 homeFeaturesPreferences.weeklyOverviewEnabled, homeFeaturesPreferences.momentsEnabled,
                                                 homeFeaturesPreferences.quietModeEnabled, homeFeaturesPreferences.prayerJourneyEnabled,
                                                 homeFeaturesPreferences.recentlyReadEnabled, homeFeaturesPreferences.quranLensEnabled,
-                                                homeFeaturesPreferences.nightIsComingEnabled
-                                            )
-                                            "RIGHT_NOW" -> onUpdateHomeFeaturesPreference(
-                                                homeFeaturesPreferences.continueReadingEnabled, isChecked, homeFeaturesPreferences.tonightEnabled,
-                                                homeFeaturesPreferences.nextOpportunityEnabled, homeFeaturesPreferences.prayerPrepEnabled,
-                                                homeFeaturesPreferences.weeklyOverviewEnabled, homeFeaturesPreferences.momentsEnabled,
-                                                homeFeaturesPreferences.quietModeEnabled, homeFeaturesPreferences.prayerJourneyEnabled,
-                                                homeFeaturesPreferences.recentlyReadEnabled, homeFeaturesPreferences.quranLensEnabled,
-                                                homeFeaturesPreferences.nightIsComingEnabled
+                                                homeFeaturesPreferences.nightIsComingEnabled, homeFeaturesPreferences.reflectionEnabled
                                             )
                                             "TONIGHT" -> onUpdateHomeFeaturesPreference(
                                                 homeFeaturesPreferences.continueReadingEnabled, homeFeaturesPreferences.rightNowEnabled, isChecked,
@@ -886,15 +873,7 @@ fun SettingsBottomSheet(
                                                 homeFeaturesPreferences.weeklyOverviewEnabled, homeFeaturesPreferences.momentsEnabled,
                                                 homeFeaturesPreferences.quietModeEnabled, homeFeaturesPreferences.prayerJourneyEnabled,
                                                 homeFeaturesPreferences.recentlyReadEnabled, homeFeaturesPreferences.quranLensEnabled,
-                                                homeFeaturesPreferences.nightIsComingEnabled
-                                            )
-                                            "NEXT_OPPORTUNITY" -> onUpdateHomeFeaturesPreference(
-                                                homeFeaturesPreferences.continueReadingEnabled, homeFeaturesPreferences.rightNowEnabled, homeFeaturesPreferences.tonightEnabled,
-                                                isChecked, homeFeaturesPreferences.prayerPrepEnabled,
-                                                homeFeaturesPreferences.weeklyOverviewEnabled, homeFeaturesPreferences.momentsEnabled,
-                                                homeFeaturesPreferences.quietModeEnabled, homeFeaturesPreferences.prayerJourneyEnabled,
-                                                homeFeaturesPreferences.recentlyReadEnabled, homeFeaturesPreferences.quranLensEnabled,
-                                                homeFeaturesPreferences.nightIsComingEnabled
+                                                isChecked, homeFeaturesPreferences.reflectionEnabled
                                             )
                                             "PRAYER_PREP" -> onUpdateHomeFeaturesPreference(
                                                 homeFeaturesPreferences.continueReadingEnabled, homeFeaturesPreferences.rightNowEnabled, homeFeaturesPreferences.tonightEnabled,
@@ -902,7 +881,15 @@ fun SettingsBottomSheet(
                                                 homeFeaturesPreferences.weeklyOverviewEnabled, homeFeaturesPreferences.momentsEnabled,
                                                 homeFeaturesPreferences.quietModeEnabled, homeFeaturesPreferences.prayerJourneyEnabled,
                                                 homeFeaturesPreferences.recentlyReadEnabled, homeFeaturesPreferences.quranLensEnabled,
-                                                homeFeaturesPreferences.nightIsComingEnabled
+                                                homeFeaturesPreferences.nightIsComingEnabled, homeFeaturesPreferences.reflectionEnabled
+                                            )
+                                            "REFLECTION" -> onUpdateHomeFeaturesPreference(
+                                                homeFeaturesPreferences.continueReadingEnabled, homeFeaturesPreferences.rightNowEnabled, homeFeaturesPreferences.tonightEnabled,
+                                                homeFeaturesPreferences.nextOpportunityEnabled, homeFeaturesPreferences.prayerPrepEnabled,
+                                                homeFeaturesPreferences.weeklyOverviewEnabled, homeFeaturesPreferences.momentsEnabled,
+                                                homeFeaturesPreferences.quietModeEnabled, homeFeaturesPreferences.prayerJourneyEnabled,
+                                                homeFeaturesPreferences.recentlyReadEnabled, homeFeaturesPreferences.quranLensEnabled,
+                                                homeFeaturesPreferences.nightIsComingEnabled, isChecked
                                             )
                                             "NAFL_PRAYERS" -> {
                                                 onUpdateNaflPreference(isChecked, isChecked, isChecked, isChecked)
@@ -913,7 +900,7 @@ fun SettingsBottomSheet(
                                                 isChecked, homeFeaturesPreferences.momentsEnabled,
                                                 homeFeaturesPreferences.quietModeEnabled, homeFeaturesPreferences.prayerJourneyEnabled,
                                                 homeFeaturesPreferences.recentlyReadEnabled, homeFeaturesPreferences.quranLensEnabled,
-                                                homeFeaturesPreferences.nightIsComingEnabled
+                                                homeFeaturesPreferences.nightIsComingEnabled, homeFeaturesPreferences.reflectionEnabled
                                             )
                                             "MOMENTS" -> onUpdateHomeFeaturesPreference(
                                                 homeFeaturesPreferences.continueReadingEnabled, homeFeaturesPreferences.rightNowEnabled, homeFeaturesPreferences.tonightEnabled,
@@ -921,7 +908,7 @@ fun SettingsBottomSheet(
                                                 homeFeaturesPreferences.weeklyOverviewEnabled, isChecked,
                                                 homeFeaturesPreferences.quietModeEnabled, homeFeaturesPreferences.prayerJourneyEnabled,
                                                 homeFeaturesPreferences.recentlyReadEnabled, homeFeaturesPreferences.quranLensEnabled,
-                                                homeFeaturesPreferences.nightIsComingEnabled
+                                                homeFeaturesPreferences.nightIsComingEnabled, homeFeaturesPreferences.reflectionEnabled
                                             )
                                             "RECENTLY_READ" -> onUpdateHomeFeaturesPreference(
                                                 homeFeaturesPreferences.continueReadingEnabled, homeFeaturesPreferences.rightNowEnabled, homeFeaturesPreferences.tonightEnabled,
@@ -929,11 +916,11 @@ fun SettingsBottomSheet(
                                                 homeFeaturesPreferences.weeklyOverviewEnabled, homeFeaturesPreferences.momentsEnabled,
                                                 homeFeaturesPreferences.quietModeEnabled, homeFeaturesPreferences.prayerJourneyEnabled,
                                                 isChecked, homeFeaturesPreferences.quranLensEnabled,
-                                                homeFeaturesPreferences.nightIsComingEnabled
+                                                homeFeaturesPreferences.nightIsComingEnabled, homeFeaturesPreferences.reflectionEnabled
                                             )
                                         }
                                     },
-                                     onReorderComplete = { newOrder ->
+                                    onReorderComplete = { newOrder ->
                                         onUpdateHomeFeatureOrder(newOrder)
                                     }
                                 )

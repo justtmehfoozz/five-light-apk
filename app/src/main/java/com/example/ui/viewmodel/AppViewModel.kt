@@ -282,14 +282,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         .flatMapLatest { date -> repository.getPrayerLogForDateFlow(date) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    private val _minuteTicker = MutableStateFlow(System.currentTimeMillis() / 60000L)
+
     // Centralized FiveLight Context State
     val contextState: StateFlow<com.example.data.model.FiveLightContextState> = combine(
         prayerTimes,
         timeFormat,
         hijriDate,
         weeklyPrayerLogs,
-        rightNowItem
-    ) { fard, tf, hijri, weeklyLogs, rightNow ->
+        rightNowItem,
+        _minuteTicker
+    ) { args ->
+        @Suppress("UNCHECKED_CAST")
+        val fard = args[0] as List<com.example.data.model.PrayerItem>
+        val tf = args[1] as com.example.data.model.TimeFormat
+        val hijri = args[2] as com.example.data.model.HijriDate
+        @Suppress("UNCHECKED_CAST")
+        val weeklyLogs = args[3] as Map<String, com.example.data.db.PrayerLogEntity>
+        val rightNow = args[4] as com.example.data.model.RightNowItem?
         com.example.data.util.FiveLightContextEngine.computeContextState(
             fardPrayers = fard,
             is24Hour = tf.is24Hour,
@@ -565,7 +575,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         prayerJourney: Boolean = homeFeaturesPreferences.value.prayerJourneyEnabled,
         recentlyRead: Boolean = homeFeaturesPreferences.value.recentlyReadEnabled,
         quranLens: Boolean = homeFeaturesPreferences.value.quranLensEnabled,
-        nightIsComing: Boolean = homeFeaturesPreferences.value.nightIsComingEnabled
+        nightIsComing: Boolean = homeFeaturesPreferences.value.nightIsComingEnabled,
+        reflection: Boolean = homeFeaturesPreferences.value.reflectionEnabled
     ) {
         repository.setHomeFeaturesPreference(
             continueReading = continueReading,
@@ -579,7 +590,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
             prayerJourney = prayerJourney,
             recentlyRead = recentlyRead,
             quranLens = quranLens,
-            nightIsComing = nightIsComing
+            nightIsComing = nightIsComing,
+            reflection = reflection
         )
     }
 
@@ -810,6 +822,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         tickerJob = viewModelScope.launch {
             while (isActive) {
                 val now = System.currentTimeMillis()
+                val currentMinute = now / 60000L
+                if (currentMinute != _minuteTicker.value) {
+                    _minuteTicker.value = currentMinute
+                }
                 // Check if calendar date changed (e.g. midnight rollover)
                 val todayDate = repository.getTodayDateString()
                 if (todayDate != _currentDateString.value) {
