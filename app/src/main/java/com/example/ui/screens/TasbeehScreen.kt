@@ -26,8 +26,11 @@ import android.os.VibratorManager
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -44,8 +47,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
@@ -71,9 +74,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
@@ -82,6 +85,7 @@ import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Vibration
 import androidx.compose.material3.AlertDialog
@@ -101,6 +105,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -122,13 +127,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -147,14 +153,15 @@ import com.example.ui.theme.QuietEmptyState
 import com.example.ui.theme.LocalVibrationEnabled
 import com.example.ui.components.PageHeader
 import com.example.ui.theme.ArabicText
-import androidx.compose.foundation.ExperimentalFoundationApi
 import com.example.ui.theme.SerifHeaderFont
 import com.example.ui.theme.SpaceGrotesk
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.runtime.mutableIntStateOf
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TasbeehScreen(
     presets: List<DhikrPreset>,
@@ -165,6 +172,9 @@ fun TasbeehScreen(
     dhikrHistory: List<DhikrHistoryEntity>,
     selectedTasbeehSound: TasbeehSound,
     onSelectPreset: (DhikrPreset) -> Unit,
+    onReorderPresets: (List<DhikrPreset>) -> Unit = {},
+    onDeleteDhikr: (String) -> Unit = {},
+    onRestoreDefaultDhikrs: () -> Unit = {},
     onSetTarget: (Int) -> Unit,
     onAddCustomTarget: (Int) -> Unit = {},
     onDeleteCustomTarget: (Int) -> Unit = {},
@@ -174,9 +184,6 @@ fun TasbeehScreen(
     onAddCustomDhikr: (transliteration: String, arabicText: String, meaning: String, target: Int) -> Unit = { _, _, _, _ -> },
     onUpdateCustomDhikr: (DhikrPreset) -> Unit = {},
     onDeleteCustomDhikr: (String) -> Unit = {},
-    onReorderDhikrs: (List<String>) -> Unit = {},
-    onRemoveDhikr: (String) -> Unit = {},
-    onRestoreDefaultDhikrs: () -> Unit = {},
     onToggleVibration: (Boolean) -> Unit = {},
     onSelectTasbeehSound: (TasbeehSound) -> Unit = {},
     isActiveTab: Boolean = true,
@@ -185,16 +192,8 @@ fun TasbeehScreen(
     val context = LocalContext.current
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
-    val view = LocalView.current
     val coroutineScope = rememberCoroutineScope()
     val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
-
-    // Dhikr Customization Edit Mode State
-    var activeEditChipId by remember { mutableStateOf<String?>(null) }
-    val isEditMode = activeEditChipId != null
-    var draggingPresetId by remember { mutableStateOf<String?>(null) }
-    var dragOffsetX by remember { mutableFloatStateOf(0f) }
-    val chipLazyListState = rememberLazyListState()
 
     // Vibrator Service Reference
     val vibrator = remember(context) {
@@ -214,7 +213,45 @@ fun TasbeehScreen(
     // Modal & Sheet States
     var showHistorySheet by remember { mutableStateOf(false) }
     var showFeedbackSettings by remember { mutableStateOf(false) }
+    var showRestoreDefaultDialog by remember { mutableStateOf(false) }
     val historySheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    // Dhikr Customization & Reorder States
+    var activeEditDhikrId by rememberSaveable { mutableStateOf<String?>(null) }
+    var draggingPresetId by remember { mutableStateOf<String?>(null) }
+    var dragOffsetX by remember { mutableFloatStateOf(0f) }
+    val lazyRowState = rememberLazyListState()
+    var localPresets by remember(presets) { mutableStateOf(presets) }
+
+    LaunchedEffect(presets) {
+        if (draggingPresetId == null) {
+            localPresets = presets
+        }
+    }
+
+    // Edge auto-scroll during drag
+    LaunchedEffect(draggingPresetId) {
+        if (draggingPresetId == null) return@LaunchedEffect
+        val edgeThresholdPx = with(density) { 40.dp.toPx() }
+        while (isActive && draggingPresetId != null) {
+            val visible = lazyRowState.layoutInfo.visibleItemsInfo
+            val draggedItem = visible.find { it.key == draggingPresetId }
+            if (draggedItem != null) {
+                val visualLeft = draggedItem.offset + dragOffsetX
+                val visualRight = visualLeft + draggedItem.size
+                val viewportWidth = lazyRowState.layoutInfo.viewportSize.width
+
+                if (visualLeft < edgeThresholdPx && lazyRowState.canScrollBackward) {
+                    val speed = ((edgeThresholdPx - visualLeft) / edgeThresholdPx).coerceIn(0.1f, 1f) * 10f
+                    lazyRowState.scrollBy(-speed)
+                } else if (visualRight > viewportWidth - edgeThresholdPx && lazyRowState.canScrollForward) {
+                    val speed = ((visualRight - (viewportWidth - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0.1f, 1f) * 10f
+                    lazyRowState.scrollBy(speed)
+                }
+            }
+            delay(16)
+        }
+    }
 
     // Separate Dialog States: Dhikr Dialog vs Target Dialog
     var showCustomDhikrDialog by remember { mutableStateOf(false) }
@@ -225,20 +262,17 @@ fun TasbeehScreen(
     // Deletion Dialog States
     var dhikrToDelete by remember { mutableStateOf<DhikrPreset?>(null) }
     var targetToDelete by remember { mutableStateOf<Int?>(null) }
-    var showRestoreDefaultDialog by remember { mutableStateOf(false) }
 
     val tasbeehPredictiveState = rememberPredictiveBackState()
-    val isTasbeehOverlayActive = showHistorySheet || showCustomDhikrDialog || showAddTargetDialog || dhikrToDelete != null || targetToDelete != null || showRestoreDefaultDialog || showFeedbackSettings || isEditMode
+    val isTasbeehOverlayActive = showHistorySheet || showCustomDhikrDialog || showAddTargetDialog ||
+            dhikrToDelete != null || targetToDelete != null || showFeedbackSettings ||
+            showRestoreDefaultDialog || activeEditDhikrId != null
 
     RegisterPredictiveBackHandler(
         enabled = isActiveTab && isTasbeehOverlayActive,
         backState = tasbeehPredictiveState,
         onBack = {
-            if (showRestoreDefaultDialog) {
-                showRestoreDefaultDialog = false
-            } else if (isEditMode) {
-                activeEditChipId = null
-            } else if (showHistorySheet) {
+            if (showHistorySheet) {
                 showHistorySheet = false
             } else if (showCustomDhikrDialog) {
                 showCustomDhikrDialog = false
@@ -248,8 +282,12 @@ fun TasbeehScreen(
                 dhikrToDelete = null
             } else if (targetToDelete != null) {
                 targetToDelete = null
+            } else if (showRestoreDefaultDialog) {
+                showRestoreDefaultDialog = false
             } else if (showFeedbackSettings) {
                 showFeedbackSettings = false
+            } else if (activeEditDhikrId != null) {
+                activeEditDhikrId = null
             }
         }
     )
@@ -527,6 +565,14 @@ fun TasbeehScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(scrollState)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                if (activeEditDhikrId != null) {
+                    activeEditDhikrId = null
+                }
+            }
     ) {
         // SECTION 1: Unified Top Header & Action Buttons
         PageHeader(
@@ -669,81 +715,83 @@ fun TasbeehScreen(
                         )
                     }
 
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        color = Color.semanticBorder
+                    )
+
+                    // Restore Default Dhikrs Action
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                showRestoreDefaultDialog = true
+                            }
+                            .padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.semanticPrimaryAccent)
+                            Icon(
+                                Icons.Outlined.RestartAlt,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = Color.semanticPrimaryAccent
+                            )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Restore Default Dhikrs", style = MaterialTheme.typography.bodyMedium, color = Color.semanticPrimaryText)
+                            Column {
+                                Text(
+                                    "Restore Default Dhikr",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.semanticPrimaryText
+                                )
+                                Text(
+                                    "Reset Dhikr chips and order to defaults",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.semanticMutedText
+                                )
+                            }
                         }
-                        TextButton(
-                            onClick = {
-                                FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
-                                showRestoreDefaultDialog = true
-                            },
-                            modifier = Modifier.testTag("restore_default_dhikrs_btn")
-                        ) {
-                            Text("Restore", style = MaterialTheme.typography.labelMedium, color = Color.semanticPrimaryAccent, fontWeight = FontWeight.SemiBold)
-                        }
+                        Icon(
+                            Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = Color.semanticMutedText
+                        )
                     }
-                }
-            }
-        }
-
-        // LaunchedEffect for smooth edge auto-scrolling when dragging chip
-        LaunchedEffect(draggingPresetId) {
-            if (draggingPresetId != null) {
-                while (draggingPresetId != null) {
-                    val visibleItems = chipLazyListState.layoutInfo.visibleItemsInfo
-                    val draggedItem = visibleItems.find { it.key == draggingPresetId }
-                    if (draggedItem != null) {
-                        val viewportWidth = chipLazyListState.layoutInfo.viewportSize.width.toFloat()
-                        val draggedLeft = draggedItem.offset.toFloat()
-                        val draggedRight = draggedLeft + draggedItem.size.toFloat()
-
-                        if (draggedLeft < 36f && chipLazyListState.canScrollBackward) {
-                            chipLazyListState.scrollBy(-8f)
-                        } else if (draggedRight > viewportWidth - 36f && chipLazyListState.canScrollForward) {
-                            chipLazyListState.scrollBy(8f)
-                        }
-                    }
-                    delay(16)
                 }
             }
         }
 
         // =========================================================================
         // SECTION 2 & 3: DHIKR SELECTOR + STANDALONE DHIKR "+" BUTTON
-        // Which Dhikr is being recited. Horizontally scrollable row + standalone '+'
+        // Press & hold to reorder Dhikrs or show X delete control.
         // =========================================================================
-        AnimatedVisibility(
-            visible = isEditMode,
-            enter = fadeIn(tween(180)) + expandVertically(tween(180)),
-            exit = fadeOut(tween(150)) + shrinkVertically(tween(150))
-        ) {
-            Text(
-                text = "Drag chips to reorder · Tap × to remove",
-                style = MaterialTheme.typography.labelSmall,
-                color = Color.semanticMutedText,
-                modifier = Modifier.padding(bottom = 2.dp)
-            )
-        }
-
         LazyRow(
-            state = chipLazyListState,
+            state = lazyRowState,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize()
         ) {
-            items(presets, key = { it.id }) { preset ->
+            items(localPresets, key = { it.id }) { preset ->
+                val isDraggingThis = draggingPresetId == preset.id
+                val isActiveEdit = activeEditDhikrId == preset.id
                 val isSelected = preset.id == selectedPreset.id
-                val isActiveEditChip = activeEditChipId == preset.id
-                val isBeingDragged = draggingPresetId == preset.id
-                val showDeleteX = isActiveEditChip && presets.size > 1
+                val canDelete = localPresets.size > 1
 
+                val itemScale by animateFloatAsState(
+                    targetValue = if (isDraggingThis) 1.04f else 1.0f,
+                    animationSpec = spring(dampingRatio = 0.75f, stiffness = 600f),
+                    label = "chipScale_${preset.id}"
+                )
+                val itemElevation by animateDpAsState(
+                    targetValue = if (isDraggingThis) 8.dp else 0.dp,
+                    animationSpec = spring(dampingRatio = 0.75f, stiffness = 600f),
+                    label = "chipElevation_${preset.id}"
+                )
                 val pillBg by animateColorAsState(
                     targetValue = if (isSelected) {
                         Color.semanticPrimaryAccent
@@ -751,7 +799,7 @@ fun TasbeehScreen(
                         Color.semanticSurface
                     },
                     animationSpec = tween(180),
-                    label = "pillBg"
+                    label = "pillBg_${preset.id}"
                 )
                 val pillText by animateColorAsState(
                     targetValue = if (isSelected) {
@@ -760,7 +808,7 @@ fun TasbeehScreen(
                         Color.semanticSecondaryText
                     },
                     animationSpec = tween(180),
-                    label = "pillText"
+                    label = "pillText_${preset.id}"
                 )
                 val pillBorder = if (isSelected) {
                     BorderStroke(1.2.dp, Color.semanticPrimaryAccent)
@@ -768,197 +816,243 @@ fun TasbeehScreen(
                     BorderStroke(1.dp, Color.semanticBorder)
                 }
 
-                val dragScale by animateFloatAsState(
-                    targetValue = if (isBeingDragged) 1.03f else if (isActiveEditChip) 1.02f else 1.0f,
-                    animationSpec = spring(stiffness = 400f, dampingRatio = 0.8f),
-                    label = "dragScale"
-                )
-
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = pillBg,
-                    border = pillBorder,
-                    shadowElevation = if (isBeingDragged) 4.dp else if (isActiveEditChip) 2.dp else 0.dp,
+                Box(
                     modifier = Modifier
-                        .then(
-                            if (isBeingDragged) {
-                                Modifier
-                            } else {
-                                Modifier.animateItem(
-                                    fadeInSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
-                                    fadeOutSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
-                                    placementSpec = spring(dampingRatio = 0.78f, stiffness = 380f)
-                                )
-                            }
+                        .animateItem(
+                            placementSpec = spring(dampingRatio = 0.8f, stiffness = 400f),
+                            fadeInSpec = tween(200),
+                            fadeOutSpec = tween(200)
                         )
-                        .testTag("preset_${preset.id}")
-                        .semantics {
-                            contentDescription = if (isActiveEditChip) {
-                                "${preset.nameEnglish}, active edit mode, drag to reorder, tap X to remove"
-                            } else {
-                                preset.nameEnglish
-                            }
-                        }
+                        .zIndex(if (isDraggingThis) 10f else 1f)
                         .graphicsLayer {
-                            scaleX = dragScale
-                            scaleY = dragScale
+                            translationX = if (isDraggingThis) dragOffsetX else 0f
+                            scaleX = itemScale
+                            scaleY = itemScale
+                            shadowElevation = itemElevation.toPx()
+                            shape = RoundedCornerShape(16.dp)
+                            clip = false
                         }
-                        .then(
-                            if (isActiveEditChip) {
-                                Modifier.pointerInput(preset.id) {
-                                    detectHorizontalDragGestures(
-                                        onDragStart = {
-                                            draggingPresetId = preset.id
-                                            dragOffsetX = 0f
-                                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
-                                        },
-                                        onDragEnd = {
-                                            draggingPresetId = null
-                                            dragOffsetX = 0f
-                                        },
-                                        onDragCancel = {
-                                            draggingPresetId = null
-                                            dragOffsetX = 0f
-                                        },
-                                        onHorizontalDrag = { change, dragAmount ->
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = pillBg,
+                        border = pillBorder,
+                        modifier = Modifier
+                            .testTag("preset_${preset.id}")
+                            .semantics {
+                                contentDescription = if (isActiveEdit) {
+                                    "${preset.nameEnglish}, edit mode active"
+                                } else {
+                                    preset.nameEnglish
+                                }
+                                if (isSelected) stateDescription = "selected"
+                            }
+                            .pointerInput(preset.id) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val downTime = System.currentTimeMillis()
+                                    val downPos = down.position
+                                    val longPressTimeout = viewConfiguration.longPressTimeoutMillis
+                                    var isLongPress = false
+                                    var hasMovedBeyondSlop = false
+
+                                    while (true) {
+                                        val remaining = (longPressTimeout - (System.currentTimeMillis() - downTime)).coerceAtLeast(1L)
+                                        val event = withTimeoutOrNull(remaining) {
+                                            awaitPointerEvent(PointerEventPass.Main)
+                                        }
+
+                                        if (event == null) {
+                                            // Long press timeout reached!
+                                            isLongPress = true
+                                            break
+                                        }
+
+                                        val change = event.changes.firstOrNull { it.id == down.id }
+                                        if (change == null || !change.pressed) {
+                                            // Lifted before long press timeout -> short tap!
+                                            if (!hasMovedBeyondSlop) {
+                                                onSelectPreset(preset)
+                                                isAutoCountEnabled = false
+                                                if (activeEditDhikrId != null && activeEditDhikrId != preset.id) {
+                                                    activeEditDhikrId = null
+                                                }
+                                            }
+                                            return@awaitEachGesture
+                                        }
+
+                                        val dist = (change.position - downPos).getDistance()
+                                        if (dist > viewConfiguration.touchSlop) {
+                                            // Scrolling horizontally -> let LazyRow scroll naturally
+                                            hasMovedBeyondSlop = true
+                                            return@awaitEachGesture
+                                        }
+                                    }
+
+                                    if (isLongPress) {
+                                        activeEditDhikrId = preset.id
+                                        draggingPresetId = preset.id
+                                        dragOffsetX = 0f
+                                        if (isVibrationEnabled && globalVibrationEnabled) {
+                                            try {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            } catch (_: Exception) {}
+                                        }
+
+                                        while (true) {
+                                            val event = awaitPointerEvent(PointerEventPass.Main)
+                                            val change = event.changes.firstOrNull { it.id == down.id }
+                                            if (change == null || !change.pressed) {
+                                                // Drag ended/released
+                                                val currentOrder = localPresets.toList()
+                                                draggingPresetId = null
+                                                dragOffsetX = 0f
+                                                onReorderPresets(currentOrder)
+                                                break
+                                            }
+
+                                            val dragDelta = change.positionChange()
                                             change.consume()
-                                            dragOffsetX += dragAmount
+                                            val deltaX = dragDelta.x
+                                            dragOffsetX += deltaX
 
-                                            val visibleItems = chipLazyListState.layoutInfo.visibleItemsInfo
-                                            val currentItemInfo = visibleItems.find { it.key == preset.id }
-                                            if (currentItemInfo != null) {
-                                                val currentIndex = presets.indexOfFirst { it.id == preset.id }
-                                                if (currentIndex != -1) {
-                                                    val currentCenter = currentItemInfo.offset.toFloat() + currentItemInfo.size.toFloat() / 2f
+                                            // Reorder swap calculation based on item midpoints
+                                            val currentIndex = localPresets.indexOfFirst { it.id == preset.id }
+                                            if (currentIndex != -1) {
+                                                val visible = lazyRowState.layoutInfo.visibleItemsInfo
+                                                val currentItemInfo = visible.find { it.key == preset.id }
+                                                if (currentItemInfo != null) {
+                                                    val currentCenter = currentItemInfo.offset + (currentItemInfo.size / 2f) + dragOffsetX
 
-                                                    if (currentIndex > 0 && dragOffsetX < 0f) {
-                                                        val prevItemInfo = visibleItems.find { it.key == presets[currentIndex - 1].id }
-                                                        val prevCenter = if (prevItemInfo != null) {
-                                                            prevItemInfo.offset.toFloat() + prevItemInfo.size.toFloat() / 2f
-                                                        } else {
-                                                            currentCenter - currentItemInfo.size.toFloat() - 8.dp.toPx()
-                                                        }
-                                                        val stepDistance = currentCenter - prevCenter
-                                                        val reorderThreshold = stepDistance * 0.45f
-
-                                                        if (-dragOffsetX > reorderThreshold) {
-                                                            val mutableOrder = presets.map { it.id }.toMutableList()
-                                                            val movedId = mutableOrder.removeAt(currentIndex)
-                                                            mutableOrder.add(currentIndex - 1, movedId)
-                                                            onReorderDhikrs(mutableOrder)
-                                                            FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled && globalVibrationEnabled)
-                                                            dragOffsetX += stepDistance
-                                                        }
-                                                    } else if (currentIndex < presets.size - 1 && dragOffsetX > 0f) {
-                                                        val nextItemInfo = visibleItems.find { it.key == presets[currentIndex + 1].id }
+                                                    if (dragOffsetX > 0 && currentIndex < localPresets.lastIndex) {
+                                                        val nextPreset = localPresets[currentIndex + 1]
+                                                        val nextItemInfo = visible.find { it.key == nextPreset.id }
                                                         val nextCenter = if (nextItemInfo != null) {
-                                                            nextItemInfo.offset.toFloat() + nextItemInfo.size.toFloat() / 2f
+                                                            nextItemInfo.offset + (nextItemInfo.size / 2f)
                                                         } else {
-                                                            currentCenter + currentItemInfo.size.toFloat() + 8.dp.toPx()
+                                                            currentItemInfo.offset + currentItemInfo.size + 10f
                                                         }
-                                                        val stepDistance = nextCenter - currentCenter
-                                                        val reorderThreshold = stepDistance * 0.45f
 
-                                                        if (dragOffsetX > reorderThreshold) {
-                                                            val mutableOrder = presets.map { it.id }.toMutableList()
-                                                            val movedId = mutableOrder.removeAt(currentIndex)
-                                                            mutableOrder.add(currentIndex + 1, movedId)
-                                                            onReorderDhikrs(mutableOrder)
-                                                            FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled && globalVibrationEnabled)
-                                                            dragOffsetX -= stepDistance
+                                                        if (currentCenter > nextCenter) {
+                                                            val mutable = localPresets.toMutableList()
+                                                            val item = mutable.removeAt(currentIndex)
+                                                            mutable.add(currentIndex + 1, item)
+                                                            localPresets = mutable
+
+                                                            val shift = if (nextItemInfo != null) {
+                                                                (nextItemInfo.size + with(density) { 8.dp.toPx() })
+                                                            } else {
+                                                                (currentItemInfo.size + with(density) { 8.dp.toPx() })
+                                                            }
+                                                            dragOffsetX -= shift
+
+                                                            if (isVibrationEnabled && globalVibrationEnabled) {
+                                                                try {
+                                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                                } catch (_: Exception) {}
+                                                            }
+                                                        }
+                                                    } else if (dragOffsetX < 0 && currentIndex > 0) {
+                                                        val prevPreset = localPresets[currentIndex - 1]
+                                                        val prevItemInfo = visible.find { it.key == prevPreset.id }
+                                                        val prevCenter = if (prevItemInfo != null) {
+                                                            prevItemInfo.offset + (prevItemInfo.size / 2f)
+                                                        } else {
+                                                            currentItemInfo.offset - 10f
+                                                        }
+
+                                                        if (currentCenter < prevCenter) {
+                                                            val mutable = localPresets.toMutableList()
+                                                            val item = mutable.removeAt(currentIndex)
+                                                            mutable.add(currentIndex - 1, item)
+                                                            localPresets = mutable
+
+                                                            val shift = if (prevItemInfo != null) {
+                                                                (prevItemInfo.size + with(density) { 8.dp.toPx() })
+                                                            } else {
+                                                                (currentItemInfo.size + with(density) { 8.dp.toPx() })
+                                                            }
+                                                            dragOffsetX += shift
+
+                                                            if (isVibrationEnabled && globalVibrationEnabled) {
+                                                                try {
+                                                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                                } catch (_: Exception) {}
+                                                            }
                                                         }
                                                     }
                                                 }
                                             }
                                         }
-                                    )
-                                }
-                            } else {
-                                Modifier.combinedClickable(
-                                    onClick = {
-                                        onSelectPreset(preset)
-                                        isAutoCountEnabled = false
-                                        if (isEditMode) {
-                                            activeEditChipId = null
-                                        }
-                                    },
-                                    onLongClick = {
-                                        activeEditChipId = preset.id
-                                        FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
                                     }
-                                )
-                            }
-                        )
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .then(
-                                if (isActiveEditChip) {
-                                    Modifier.clickable(
-                                        interactionSource = remember { MutableInteractionSource() },
-                                        indication = null,
-                                        onClick = {
-                                            onSelectPreset(preset)
-                                            isAutoCountEnabled = false
-                                            activeEditChipId = null
-                                        }
-                                    )
-                                } else {
-                                    Modifier
                                 }
-                            )
-                            .padding(
+                            }
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(
                                 start = 14.dp,
-                                end = if (showDeleteX) 6.dp else 14.dp,
+                                end = if (isActiveEdit && canDelete) 6.dp else 14.dp,
                                 top = 8.dp,
                                 bottom = 8.dp
                             )
-                    ) {
-                        Text(
-                            text = preset.nameEnglish,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = pillText
-                        )
-
-                        AnimatedVisibility(
-                            visible = showDeleteX,
-                            enter = fadeIn(tween(220)) + expandHorizontally(tween(220)),
-                            exit = fadeOut(tween(200)) + shrinkHorizontally(tween(200))
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .size(20.dp)
-                                        .clip(CircleShape)
-                                        .background(
-                                            if (isSelected) {
-                                                (if (isDarkTheme) Color(0xFFFFFFFF) else Color.semanticAccentForeground).copy(alpha = 0.25f)
+                            Text(
+                                text = preset.nameEnglish,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = pillText
+                            )
+
+                            AnimatedVisibility(
+                                visible = isActiveEdit && canDelete,
+                                enter = fadeIn(tween(180)) + expandHorizontally(tween(180), expandFrom = Alignment.Start),
+                                exit = fadeOut(tween(150)) + shrinkHorizontally(tween(150), shrinkTowards = Alignment.Start)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (isSelected) {
+                                                    if (isDarkTheme) Color.White.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.35f)
+                                                } else {
+                                                    if (isDarkTheme) Color.White.copy(alpha = 0.15f) else Color.Black.copy(alpha = 0.08f)
+                                                }
+                                            )
+                                            .clickable(
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                indication = ripple(bounded = true, radius = 11.dp)
+                                            ) {
+                                                if (canDelete) {
+                                                    if (isVibrationEnabled && globalVibrationEnabled) {
+                                                        try {
+                                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        } catch (_: Exception) {}
+                                                    }
+                                                    onDeleteDhikr(preset.id)
+                                                    if (activeEditDhikrId == preset.id) {
+                                                        activeEditDhikrId = null
+                                                    }
+                                                }
+                                            }
+                                            .semantics { contentDescription = "Delete ${preset.nameEnglish}" }
+                                            .testTag("delete_dhikr_${preset.id}"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Close,
+                                            contentDescription = "Delete ${preset.nameEnglish}",
+                                            tint = if (isSelected) {
+                                                if (isDarkTheme) Color.White else Color.semanticAccentForeground
                                             } else {
-                                                Color.semanticBorder.copy(alpha = 0.8f)
-                                            }
+                                                Color.semanticPrimaryText
+                                            },
+                                            modifier = Modifier.size(12.dp)
                                         )
-                                        .clickable {
-                                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
-                                            onRemoveDhikr(preset.id)
-                                            if (activeEditChipId == preset.id) {
-                                                activeEditChipId = null
-                                            }
-                                        },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Close,
-                                        contentDescription = "Remove ${preset.nameEnglish}",
-                                        tint = if (isSelected) {
-                                            if (isDarkTheme) Color(0xFFFFFFFF) else Color.semanticAccentForeground
-                                        } else {
-                                            Color.semanticPrimaryText
-                                        },
-                                        modifier = Modifier.size(11.dp)
-                                    )
+                                    }
                                 }
                             }
                         }
@@ -967,7 +1061,7 @@ fun TasbeehScreen(
             }
 
             // Standalone "+" Icon Button to Add Custom Dhikr
-            item {
+            item(key = "add_custom_dhikr_button") {
                 Surface(
                     onClick = {
                         editingCustomDhikr = null
@@ -991,72 +1085,6 @@ fun TasbeehScreen(
                             tint = Color.semanticPrimaryAccent,
                             modifier = Modifier.size(17.dp)
                         )
-                    }
-                }
-            }
-
-            // Restore Defaults & Done Actions shown when in Edit Mode
-            if (isEditMode) {
-                item {
-                    Surface(
-                        onClick = {
-                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
-                            showRestoreDefaultDialog = true
-                        },
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color.semanticSurface,
-                        border = BorderStroke(1.dp, Color.semanticBorder),
-                        modifier = Modifier.height(34.dp).testTag("restore_defaults_chip_btn")
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 12.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Refresh,
-                                contentDescription = "Restore Defaults",
-                                tint = Color.semanticPrimaryAccent,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Restore Defaults",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.semanticPrimaryAccent,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
-                }
-
-                item {
-                    Surface(
-                        onClick = {
-                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
-                            activeEditChipId = null
-                        },
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color.semanticPrimaryAccent,
-                        modifier = Modifier.height(34.dp).testTag("done_edit_dhikr_btn")
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 14.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Check,
-                                contentDescription = "Done editing",
-                                tint = if (isDarkTheme) Color(0xFFFFFFFF) else Color.semanticAccentForeground,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Done",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (isDarkTheme) Color(0xFFFFFFFF) else Color.semanticAccentForeground,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
                     }
                 }
             }
@@ -1966,20 +1994,20 @@ fun TasbeehScreen(
     }
 
     // =========================================================================
-    // SECTION 15: RESTORE DEFAULT DHIKR CONFIRMATION DIALOG
+    // SECTION 15: RESTORE DEFAULT DHIKRS DIALOG
     // =========================================================================
     if (showRestoreDefaultDialog) {
         AlertDialog(
             onDismissRequest = { showRestoreDefaultDialog = false },
             title = {
                 Text(
-                    text = "Restore default Dhikr?",
+                    text = "Restore Default Dhikrs?",
                     fontFamily = SerifHeaderFont
                 )
             },
             text = {
                 Text(
-                    text = "Your custom Dhikr order and removed chips will be restored to the original list.",
+                    text = "This will restore the original Dhikr presets and reset their order. Your Dhikr count history will not be affected.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1987,11 +2015,12 @@ fun TasbeehScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
                         onRestoreDefaultDhikrs()
                         showRestoreDefaultDialog = false
                     },
-                    modifier = Modifier.testTag("confirm_restore_default_dhikr_btn")
+                    modifier = Modifier
+                        .testTag("confirm_restore_defaults_btn")
+                        .semantics { contentDescription = "Restore default Dhikr presets" }
                 ) {
                     Text("Restore", color = Color.semanticPrimaryAccent, fontWeight = FontWeight.Bold)
                 }
@@ -1999,7 +2028,7 @@ fun TasbeehScreen(
             dismissButton = {
                 TextButton(
                     onClick = { showRestoreDefaultDialog = false },
-                    modifier = Modifier.testTag("cancel_restore_default_dhikr_btn")
+                    modifier = Modifier.semantics { contentDescription = "Cancel" }
                 ) {
                     Text("Cancel")
                 }

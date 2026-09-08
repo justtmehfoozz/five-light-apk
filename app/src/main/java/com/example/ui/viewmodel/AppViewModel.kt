@@ -1765,37 +1765,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         }
     }
 
+    fun reorderDhikrs(newOrder: List<DhikrPreset>) {
+        if (newOrder.isEmpty()) return
+        repository.setAllDhikrs(newOrder)
+    }
+
+    fun deleteDhikr(presetId: String) {
+        if (allDhikrs.value.size <= 1) return // Last chip protection
+        val wasSelected = _selectedDhikr.value.id == presetId
+        repository.deleteDhikr(presetId)
+        if (wasSelected) {
+            val remaining = repository.allDhikrs.value
+            val fallback = remaining.firstOrNull() ?: repository.DHIKR_PRESETS[0]
+            selectDhikrPreset(fallback)
+        }
+    }
+
     fun deleteCustomDhikr(presetId: String) {
-        val wasSelected = _selectedDhikr.value.id == presetId
-        repository.deleteCustomDhikr(presetId)
-        if (wasSelected) {
-            val remaining = repository.allDhikrs.value
-            if (remaining.isNotEmpty()) {
-                selectDhikrPreset(remaining[0])
-            }
-        }
-    }
-
-    fun reorderDhikrs(newOrderIds: List<String>) {
-        repository.reorderDhikrs(newOrderIds)
-    }
-
-    fun removeDhikr(presetId: String) {
-        val wasSelected = _selectedDhikr.value.id == presetId
-        repository.removeDhikr(presetId)
-        if (wasSelected) {
-            val remaining = repository.allDhikrs.value
-            if (remaining.isNotEmpty()) {
-                selectDhikrPreset(remaining[0])
-            }
-        }
+        deleteDhikr(presetId)
     }
 
     fun restoreDefaultDhikrs() {
-        repository.restoreDefaultDhikrs()
-        val remaining = repository.allDhikrs.value
-        if (remaining.isNotEmpty() && remaining.none { it.id == _selectedDhikr.value.id }) {
-            selectDhikrPreset(remaining[0])
+        val restored = repository.restoreDefaultDhikrs()
+        if (restored.none { it.id == _selectedDhikr.value.id }) {
+            selectDhikrPreset(restored[0])
         }
     }
 
