@@ -1763,12 +1763,12 @@ private fun ReorderableDhikrChipsRow(
                 val viewportWidth = scrollState.viewportSize
 
                 if (visualScreenLeft < edgeThresholdPx && scrollState.value > 0) {
-                    val speed = ((edgeThresholdPx - visualScreenLeft) / edgeThresholdPx).coerceIn(0.1f, 1f) * 12f
+                    val speed = ((edgeThresholdPx - visualScreenLeft) / edgeThresholdPx).coerceIn(0.1f, 1f) * 10f
                     val actualScroll = -minOf(speed, scrollState.value.toFloat())
                     scrollState.scrollBy(actualScroll)
                     dragOffset.snapTo(dragOffset.value + actualScroll)
                 } else if (visualScreenRight > viewportWidth - edgeThresholdPx && scrollState.value < scrollState.maxValue) {
-                    val speed = ((visualScreenRight - (viewportWidth - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0.1f, 1f) * 12f
+                    val speed = ((visualScreenRight - (viewportWidth - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0.1f, 1f) * 10f
                     val maxCanScroll = (scrollState.maxValue - scrollState.value).toFloat()
                     val actualScroll = minOf(speed, maxCanScroll)
                     scrollState.scrollBy(actualScroll)
@@ -1788,19 +1788,20 @@ private fun ReorderableDhikrChipsRow(
         ) {
             isSettling = true
             val draggedW = itemBounds[currentDragId]?.width ?: 0f
-            val initialSlotBounds = itemBounds[currentDragId]
-            val targetSlotBounds = itemBounds[localList[toIdx].id]
+            val initialSlotX = itemBounds[currentDragId]?.x ?: 0f
+            val targetItem = localList[toIdx]
+            val targetBounds = itemBounds[targetItem.id]
 
-            val targetSlotX = if (targetSlotBounds != null && initialSlotBounds != null) {
+            val targetSlotX = if (targetBounds != null) {
                 if (toIdx > fromIdx) {
-                    targetSlotBounds.x + targetSlotBounds.width - draggedW
+                    targetBounds.x + targetBounds.width - draggedW
                 } else {
-                    targetSlotBounds.x
+                    targetBounds.x
                 }
             } else {
-                initialSlotBounds?.x ?: 0f
+                initialSlotX
             }
-            val settleDelta = targetSlotX - (initialSlotBounds?.x ?: 0f)
+            val settleDelta = targetSlotX - initialSlotX
 
             coroutineScope.launch {
                 dragOffset.animateTo(
@@ -1837,7 +1838,7 @@ private fun ReorderableDhikrChipsRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .horizontalScroll(scrollState),
+            .horizontalScroll(scrollState, enabled = draggingPresetId == null),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1910,6 +1911,127 @@ private fun ReorderableDhikrChipsRow(
                                 width = coords.size.width.toFloat()
                             )
                         }
+                        .pointerInput(preset.id) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val downTime = System.currentTimeMillis()
+                                val downPos = down.position
+                                val longPressTimeout = viewConfig.longPressTimeoutMillis
+                                var isLongPress = false
+                                var hasMovedBeyondSlop = false
+
+                                while (true) {
+                                    val remaining = (longPressTimeout - (System.currentTimeMillis() - downTime)).coerceAtLeast(1L)
+                                    val event = withTimeoutOrNull(remaining) {
+                                        awaitPointerEvent(PointerEventPass.Main)
+                                    }
+
+                                    if (event == null) {
+                                        isLongPress = true
+                                        break
+                                    }
+
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                    if (change == null || !change.pressed) {
+                                        if (!hasMovedBeyondSlop && !isSettling && draggingPresetId == null) {
+                                            onSelectPreset(preset)
+                                            if (activeEditDhikrId != null && activeEditDhikrId != preset.id) {
+                                                onEditActiveDhikrChange(null)
+                                            }
+                                        }
+                                        return@awaitEachGesture
+                                    }
+
+                                    val dist = (change.position - downPos).getDistance()
+                                    if (dist > viewConfig.touchSlop) {
+                                        hasMovedBeyondSlop = true
+                                        return@awaitEachGesture
+                                    }
+                                }
+
+                                if (isLongPress && !isSettling) {
+                                    onEditActiveDhikrChange(preset.id)
+                                    val currIdx = localList.indexOfFirst { it.id == preset.id }
+                                    if (currIdx != -1) {
+                                        draggingPresetId = preset.id
+                                        initialIndex = currIdx
+                                        targetIndex = currIdx
+                                        coroutineScope.launch { dragOffset.snapTo(0f) }
+                                        if (isVibrationEnabled && globalVibrationEnabled) {
+                                            try {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            } catch (_: Exception) {}
+                                        }
+
+                                        while (true) {
+                                            val event = awaitPointerEvent(PointerEventPass.Main)
+                                            val change = event.changes.firstOrNull { it.id == down.id }
+                                            if (change == null || !change.pressed) {
+                                                finishDrag()
+                                                break
+                                            }
+
+                                            val dragDelta = change.positionChange()
+                                            change.consume()
+                                            val deltaX = dragDelta.x
+                                            val currentVal = dragOffset.value + deltaX
+                                            coroutineScope.launch {
+                                                dragOffset.snapTo(currentVal)
+                                            }
+
+                                            val draggedW = itemBounds[preset.id]?.width ?: 0f
+                                            val initialSlotX = itemBounds[preset.id]?.x ?: 0f
+                                            val initialSlotCenter = initialSlotX + (draggedW / 2f)
+                                            val visualCenter = initialSlotCenter + currentVal
+
+                                            fun getTargetSlotX(idx: Int): Float {
+                                                if (idx == currIdx) return initialSlotX
+                                                val targetItem = localList.getOrNull(idx) ?: return initialSlotX
+                                                val targetBounds = itemBounds[targetItem.id] ?: return initialSlotX
+                                                return if (idx > currIdx) {
+                                                    targetBounds.x + targetBounds.width - draggedW
+                                                } else {
+                                                    targetBounds.x
+                                                }
+                                            }
+
+                                            fun getTargetSlotCenter(idx: Int): Float = getTargetSlotX(idx) + (draggedW / 2f)
+
+                                            val n = localList.size
+                                            var newTarget = currIdx
+                                            for (k in 0 until n) {
+                                                val centerK = getTargetSlotCenter(k)
+                                                if (k == 0 && visualCenter <= centerK) {
+                                                    newTarget = 0
+                                                    break
+                                                }
+                                                if (k == n - 1 && visualCenter >= centerK) {
+                                                    newTarget = n - 1
+                                                    break
+                                                }
+                                                if (k < n - 1) {
+                                                    val centerNext = getTargetSlotCenter(k + 1)
+                                                    val mid = (centerK + centerNext) / 2f
+                                                    if (visualCenter < mid) {
+                                                        newTarget = k
+                                                        break
+                                                    }
+                                                }
+                                            }
+
+                                            if (newTarget != targetIndex) {
+                                                targetIndex = newTarget
+                                                if (isVibrationEnabled && globalVibrationEnabled) {
+                                                    try {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    } catch (_: Exception) {}
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         .zIndex(if (isThisDragging) 100f else 1f)
                         .graphicsLayer {
                             translationX = if (isThisDragging) dragOffset.value else animatedShiftX
@@ -1933,114 +2055,6 @@ private fun ReorderableDhikrChipsRow(
                                     preset.nameEnglish
                                 }
                                 if (isSelected) stateDescription = "selected"
-                            }
-                            .pointerInput(preset.id) {
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                    val downTime = System.currentTimeMillis()
-                                    val downPos = down.position
-                                    val longPressTimeout = viewConfig.longPressTimeoutMillis
-                                    var isLongPress = false
-                                    var hasMovedBeyondSlop = false
-
-                                    while (true) {
-                                        val remaining = (longPressTimeout - (System.currentTimeMillis() - downTime)).coerceAtLeast(1L)
-                                        val event = withTimeoutOrNull(remaining) {
-                                            awaitPointerEvent(PointerEventPass.Main)
-                                        }
-
-                                        if (event == null) {
-                                            isLongPress = true
-                                            break
-                                        }
-
-                                        val change = event.changes.firstOrNull { it.id == down.id }
-                                        if (change == null || !change.pressed) {
-                                            if (!hasMovedBeyondSlop && !isSettling && draggingPresetId == null) {
-                                                onSelectPreset(preset)
-                                                if (activeEditDhikrId != null && activeEditDhikrId != preset.id) {
-                                                    onEditActiveDhikrChange(null)
-                                                }
-                                            }
-                                            return@awaitEachGesture
-                                        }
-
-                                        val dist = (change.position - downPos).getDistance()
-                                        if (dist > viewConfig.touchSlop) {
-                                            hasMovedBeyondSlop = true
-                                            return@awaitEachGesture
-                                        }
-                                    }
-
-                                    if (isLongPress && !isSettling) {
-                                        onEditActiveDhikrChange(preset.id)
-                                        val currIdx = localList.indexOfFirst { it.id == preset.id }
-                                        if (currIdx != -1) {
-                                            draggingPresetId = preset.id
-                                            initialIndex = currIdx
-                                            targetIndex = currIdx
-                                            coroutineScope.launch { dragOffset.snapTo(0f) }
-                                            if (isVibrationEnabled && globalVibrationEnabled) {
-                                                try {
-                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                } catch (_: Exception) {}
-                                            }
-
-                                            while (true) {
-                                                val event = awaitPointerEvent(PointerEventPass.Main)
-                                                val change = event.changes.firstOrNull { it.id == down.id }
-                                                if (change == null || !change.pressed) {
-                                                    finishDrag()
-                                                    break
-                                                }
-
-                                                val dragDelta = change.positionChange()
-                                                change.consume()
-                                                val deltaX = dragDelta.x
-                                                val currentVal = dragOffset.value + deltaX
-                                                coroutineScope.launch {
-                                                    dragOffset.snapTo(currentVal)
-                                                }
-
-                                                // Update targetIndex
-                                                val draggedBounds = itemBounds[preset.id]
-                                                if (draggedBounds != null) {
-                                                    val visualCenter = draggedBounds.x + currentVal + (draggedBounds.width / 2f)
-
-                                                    var newTarget = 0
-                                                    for (j in 0 until localList.size) {
-                                                        val currCenter = itemBounds[localList[j].id]?.let { it.x + it.width / 2f } ?: (j * 100f)
-                                                        if (j == 0 && visualCenter <= currCenter) {
-                                                            newTarget = 0
-                                                            break
-                                                        }
-                                                        if (j == localList.lastIndex && visualCenter >= currCenter) {
-                                                            newTarget = localList.lastIndex
-                                                            break
-                                                        }
-                                                        if (j < localList.lastIndex) {
-                                                            val nextCenter = itemBounds[localList[j + 1].id]?.let { it.x + it.width / 2f } ?: ((j + 1) * 100f)
-                                                            val midpoint = (currCenter + nextCenter) / 2f
-                                                            if (visualCenter < midpoint) {
-                                                                newTarget = j
-                                                                break
-                                                            }
-                                                        }
-                                                    }
-
-                                                    if (newTarget != targetIndex) {
-                                                        targetIndex = newTarget
-                                                        if (isVibrationEnabled && globalVibrationEnabled) {
-                                                            try {
-                                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                            } catch (_: Exception) {}
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
                             }
                     ) {
                         Row(
