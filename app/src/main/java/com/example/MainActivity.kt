@@ -172,6 +172,7 @@ class MainActivity : ComponentActivity() {
                 val authPredictiveState = rememberPredictiveBackState()
 
                 val hasSeenAccountPrompt by viewModel.hasSeenAccountPrompt.collectAsStateWithLifecycle()
+                val hasSeenFiveLightPrelude by viewModel.hasSeenFiveLightPrelude.collectAsStateWithLifecycle()
                 val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
                 val isAppUpdateAvailable by viewModel.isAppUpdateAvailable.collectAsStateWithLifecycle()
                 val setupCompletedEvent by viewModel.setupCompletedEvent.collectAsStateWithLifecycle()
@@ -870,17 +871,52 @@ class MainActivity : ComponentActivity() {
                     } // end inner Box
                     } // end if (hasSeenAccountPrompt)
 
-                    if (isSplashFinished && (!hasSeenAccountPrompt || authRouteState != "NONE" || isSetupRequired)) {
-                        if (!hasSeenAccountPrompt && authRouteState == "NONE" && currentUser == null) {
-                            PreLoginPromptScreen(
-                                onLoginOrRegister = {
-                                    showLoginBottomSheet = true
-                                },
-                                onContinueAsGuest = {
-                                    viewModel.setHasSeenAccountPrompt(true)
-                                },
-                                modifier = Modifier.fillMaxSize()
-                            )
+                    if (isSplashFinished && (!hasSeenAccountPrompt || authRouteState != "NONE" || isSetupRequired || !hasSeenFiveLightPrelude)) {
+                        val currentStartupOverlayState = remember(hasSeenFiveLightPrelude, hasSeenAccountPrompt, authRouteState, currentUser) {
+                            if (!hasSeenFiveLightPrelude && !hasSeenAccountPrompt && authRouteState == "NONE" && currentUser == null) {
+                                "PRELUDE"
+                            } else if (!hasSeenAccountPrompt && authRouteState == "NONE" && currentUser == null) {
+                                "PRE_LOGIN_PROMPT"
+                            } else {
+                                "NONE"
+                            }
+                        }
+
+                        AnimatedContent(
+                            targetState = currentStartupOverlayState,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(500, easing = FastOutSlowInEasing)) togetherWith
+                                        fadeOut(animationSpec = tween(400, easing = FastOutSlowInEasing))
+                            },
+                            label = "preludeToAuthTransition"
+                        ) { overlayState ->
+                            when (overlayState) {
+                                "PRELUDE" -> {
+                                    com.example.ui.prelude.PreludeScreen(
+                                        onComplete = {
+                                            viewModel.setHasSeenFiveLightPrelude(true)
+                                        },
+                                        onSkip = {
+                                            viewModel.setHasSeenFiveLightPrelude(true)
+                                        },
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                                "PRE_LOGIN_PROMPT" -> {
+                                    PreLoginPromptScreen(
+                                        onLoginOrRegister = {
+                                            showLoginBottomSheet = true
+                                        },
+                                        onContinueAsGuest = {
+                                            viewModel.setHasSeenAccountPrompt(true)
+                                        },
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                                else -> {
+                                    // Empty container when no startup overlay active
+                                }
+                            }
                         }
 
                         AnimatedContent(

@@ -81,6 +81,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
     // Account & Auth State
     val currentUser: StateFlow<FirebaseUser?> = authRepository.currentUser
     val hasSeenAccountPrompt: StateFlow<Boolean> = authRepository.hasSeenAccountPrompt
+    val hasSeenFiveLightPrelude: StateFlow<Boolean> = authRepository.hasSeenFiveLightPrelude
 
     // Firestore Synchronization
     val syncManager: com.example.data.sync.FirestoreSyncManager = com.example.data.sync.FirestoreSyncManager.getInstance(
@@ -97,6 +98,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
 
     fun setHasSeenAccountPrompt(seen: Boolean = true) {
         authRepository.setHasSeenAccountPrompt(seen)
+    }
+
+    fun setHasSeenFiveLightPrelude(seen: Boolean = true) {
+        authRepository.setHasSeenFiveLightPrelude(seen)
     }
 
     val setupCompletedEvent: StateFlow<Int> = authRepository.setupCompletedEvent

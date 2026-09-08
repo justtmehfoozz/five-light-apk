@@ -51,6 +51,11 @@ class AuthRepository(private val context: Context) {
     )
     val hasSeenAccountPrompt: StateFlow<Boolean> = _hasSeenAccountPrompt.asStateFlow()
 
+    private val _hasSeenFiveLightPrelude = MutableStateFlow(
+        prefs.getBoolean("has_seen_fivelight_prelude", false)
+    )
+    val hasSeenFiveLightPrelude: StateFlow<Boolean> = _hasSeenFiveLightPrelude.asStateFlow()
+
     private val _currentUser = MutableStateFlow<FirebaseUser?>(
         try {
             com.example.FiveLightApp.ensureFirebaseInitialized(context)
@@ -75,6 +80,11 @@ class AuthRepository(private val context: Context) {
     fun setHasSeenAccountPrompt(seen: Boolean = true) {
         _hasSeenAccountPrompt.value = seen
         prefs.edit().putBoolean("has_seen_account_prompt", seen).apply()
+    }
+
+    fun setHasSeenFiveLightPrelude(seen: Boolean = true) {
+        _hasSeenFiveLightPrelude.value = seen
+        prefs.edit().putBoolean("has_seen_fivelight_prelude", seen).apply()
     }
 
     private val _setupCompletedEvent = MutableStateFlow(0)
