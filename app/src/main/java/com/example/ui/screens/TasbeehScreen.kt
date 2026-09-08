@@ -1746,9 +1746,21 @@ private fun ReorderableDhikrChipsRow(
     var pointerGrabOffset by remember { mutableFloatStateOf(0f) }
     var currentInitialSlotX by remember { mutableFloatStateOf(0f) }
 
+    val safeInsetPx = with(density) { 12.dp.toPx() }
+    val hysteresisPx = with(density) { 8.dp.toPx() }
+    var leftBoundaryHit by remember { mutableStateOf(false) }
+    var rightBoundaryHit by remember { mutableStateOf(false) }
+
     LaunchedEffect(presets) {
         if (draggingPresetId == null && !isSettling) {
             localList = presets
+        }
+    }
+
+    LaunchedEffect(draggingPresetId) {
+        if (draggingPresetId == null) {
+            leftBoundaryHit = false
+            rightBoundaryHit = false
         }
     }
 
@@ -1783,11 +1795,15 @@ private fun ReorderableDhikrChipsRow(
 
                 if (scrollDelta != 0f) {
                     scrollState.scrollBy(scrollDelta)
-                    val targetOffset = (currentPointerScreenX - pointerGrabOffset) + scrollState.value - currentInitialSlotX
+                    val draggedW = itemBounds[currentDragId]?.width ?: 0f
+                    val rawScreenLeft = (currentPointerScreenX - pointerGrabOffset)
+                    val minScreenLeft = safeInsetPx
+                    val maxScreenLeft = maxOf(safeInsetPx, viewportWidth - safeInsetPx - draggedW)
+                    val clampedScreenLeft = rawScreenLeft.coerceIn(minScreenLeft, maxScreenLeft)
+                    val targetOffset = clampedScreenLeft + scrollState.value - currentInitialSlotX
                     dragOffset.snapTo(targetOffset)
 
                     // Dynamically recalculate targetIndex as new content is scrolled into view
-                    val draggedW = itemBounds[currentDragId]?.width ?: 0f
                     val initialSlotCenter = currentInitialSlotX + (draggedW / 2f)
                     val visualCenter = initialSlotCenter + targetOffset
 
@@ -1903,238 +1919,276 @@ private fun ReorderableDhikrChipsRow(
         }
     }
 
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .horizontalScroll(scrollState, enabled = draggingPresetId == null),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        localList.forEachIndexed { i, preset ->
-            key(preset.id) {
-                val isThisDragging = draggingPresetId == preset.id
-                val isActiveEdit = activeEditDhikrId == preset.id
-                val isSelected = preset.id == selectedPreset.id
-                val canDelete = localList.size > 1
+    Box(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(scrollState, enabled = draggingPresetId == null),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            localList.forEachIndexed { i, preset ->
+                key(preset.id) {
+                    val isThisDragging = draggingPresetId == preset.id
+                    val isActiveEdit = activeEditDhikrId == preset.id
+                    val isSelected = preset.id == selectedPreset.id
+                    val canDelete = localList.size > 1
 
-                val shiftAnim = remember(preset.id) { Animatable(0f) }
-                DisposableEffect(preset.id) {
-                    itemShiftAnims[preset.id] = shiftAnim
-                    onDispose {
-                        itemShiftAnims.remove(preset.id)
+                    val shiftAnim = remember(preset.id) { Animatable(0f) }
+                    DisposableEffect(preset.id) {
+                        itemShiftAnims[preset.id] = shiftAnim
+                        onDispose {
+                            itemShiftAnims.remove(preset.id)
+                        }
                     }
-                }
 
-                val targetShiftX = if (draggingPresetId != null && !isThisDragging && initialIndex != -1 && targetIndex != -1) {
-                    val draggedWidth = (itemBounds[draggingPresetId]?.width ?: 0f) + spacingPx
-                    if (targetIndex > initialIndex && i > initialIndex && i <= targetIndex) {
-                        -draggedWidth
-                    } else if (targetIndex < initialIndex && i >= targetIndex && i < initialIndex) {
-                        +draggedWidth
+                    val targetShiftX = if (draggingPresetId != null && !isThisDragging && initialIndex != -1 && targetIndex != -1) {
+                        val draggedWidth = (itemBounds[draggingPresetId]?.width ?: 0f) + spacingPx
+                        if (targetIndex > initialIndex && i > initialIndex && i <= targetIndex) {
+                            -draggedWidth
+                        } else if (targetIndex < initialIndex && i >= targetIndex && i < initialIndex) {
+                            +draggedWidth
+                        } else {
+                            0f
+                        }
                     } else {
                         0f
                     }
-                } else {
-                    0f
-                }
 
-                LaunchedEffect(targetShiftX, draggingPresetId) {
-                    if (draggingPresetId != null) {
-                        shiftAnim.animateTo(
-                            targetValue = targetShiftX,
-                            animationSpec = spring(dampingRatio = 0.82f, stiffness = 450f)
-                        )
-                    } else if (!isSettling) {
-                        shiftAnim.snapTo(0f)
-                    }
-                }
-
-                val itemScale by animateFloatAsState(
-                    targetValue = if (isThisDragging) 1.03f else 1.0f,
-                    animationSpec = spring(dampingRatio = 0.8f, stiffness = 500f),
-                    label = "chipScale_${preset.id}"
-                )
-                val itemElevation by animateDpAsState(
-                    targetValue = if (isThisDragging) 8.dp else 0.dp,
-                    animationSpec = spring(dampingRatio = 0.8f, stiffness = 500f),
-                    label = "chipElevation_${preset.id}"
-                )
-                val pillBg by animateColorAsState(
-                    targetValue = if (isSelected) {
-                        Color.semanticPrimaryAccent
-                    } else {
-                        Color.semanticSurface
-                    },
-                    animationSpec = tween(180),
-                    label = "pillBg_${preset.id}"
-                )
-                val pillText by animateColorAsState(
-                    targetValue = if (isSelected) {
-                        if (isDarkTheme) Color(0xFFFFFFFF) else Color.semanticAccentForeground
-                    } else {
-                        Color.semanticSecondaryText
-                    },
-                    animationSpec = tween(180),
-                    label = "pillText_${preset.id}"
-                )
-                val pillBorder = if (isSelected) {
-                    BorderStroke(1.2.dp, Color.semanticPrimaryAccent)
-                } else {
-                    BorderStroke(1.dp, Color.semanticBorder)
-                }
-
-                Box(
-                    modifier = Modifier
-                        .onGloballyPositioned { coords ->
-                            val pos = coords.positionInParent()
-                            itemBounds[preset.id] = DhikrChipBounds(
-                                x = pos.x,
-                                width = coords.size.width.toFloat()
+                    LaunchedEffect(targetShiftX, draggingPresetId) {
+                        if (draggingPresetId != null) {
+                            shiftAnim.animateTo(
+                                targetValue = targetShiftX,
+                                animationSpec = spring(dampingRatio = 0.82f, stiffness = 450f)
                             )
+                        } else if (!isSettling) {
+                            shiftAnim.snapTo(0f)
                         }
-                        .pointerInput(preset.id) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false)
-                                val downTime = System.currentTimeMillis()
-                                val downPos = down.position
-                                val longPressTimeout = viewConfig.longPressTimeoutMillis
-                                var isLongPress = false
-                                var hasMovedBeyondSlop = false
+                    }
 
-                                while (true) {
-                                    val remaining = (longPressTimeout - (System.currentTimeMillis() - downTime)).coerceAtLeast(1L)
-                                    val event = withTimeoutOrNull(remaining) {
-                                        awaitPointerEvent(PointerEventPass.Main)
-                                    }
+                    val itemScale by animateFloatAsState(
+                        targetValue = if (isThisDragging) 1.03f else 1.0f,
+                        animationSpec = spring(dampingRatio = 0.8f, stiffness = 500f),
+                        label = "chipScale_${preset.id}"
+                    )
+                    val itemElevation by animateDpAsState(
+                        targetValue = if (isThisDragging) 8.dp else 0.dp,
+                        animationSpec = spring(dampingRatio = 0.8f, stiffness = 500f),
+                        label = "chipElevation_${preset.id}"
+                    )
+                    val pillBg by animateColorAsState(
+                        targetValue = if (isSelected) {
+                            Color.semanticPrimaryAccent
+                        } else {
+                            Color.semanticSurface
+                        },
+                        animationSpec = tween(180),
+                        label = "pillBg_${preset.id}"
+                    )
+                    val pillText by animateColorAsState(
+                        targetValue = if (isSelected) {
+                            if (isDarkTheme) Color(0xFFFFFFFF) else Color.semanticAccentForeground
+                        } else {
+                            Color.semanticSecondaryText
+                        },
+                        animationSpec = tween(180),
+                        label = "pillText_${preset.id}"
+                    )
+                    val pillBorder = if (isSelected) {
+                        BorderStroke(1.2.dp, Color.semanticPrimaryAccent)
+                    } else {
+                        BorderStroke(1.dp, Color.semanticBorder)
+                    }
 
-                                    if (event == null) {
-                                        isLongPress = true
-                                        break
-                                    }
+                    Box(
+                        modifier = Modifier
+                            .onGloballyPositioned { coords ->
+                                val pos = coords.positionInParent()
+                                itemBounds[preset.id] = DhikrChipBounds(
+                                    x = pos.x,
+                                    width = coords.size.width.toFloat()
+                                )
+                            }
+                            .pointerInput(preset.id) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val downTime = System.currentTimeMillis()
+                                    val downPos = down.position
+                                    val longPressTimeout = viewConfig.longPressTimeoutMillis
+                                    var isLongPress = false
+                                    var hasMovedBeyondSlop = false
 
-                                    val change = event.changes.firstOrNull { it.id == down.id }
-                                    if (change == null || !change.pressed) {
-                                        if (!hasMovedBeyondSlop && !isSettling && draggingPresetId == null) {
-                                            onSelectPreset(preset)
-                                            if (activeEditDhikrId != null && activeEditDhikrId != preset.id) {
-                                                onEditActiveDhikrChange(null)
-                                            }
+                                    while (true) {
+                                        val remaining = (longPressTimeout - (System.currentTimeMillis() - downTime)).coerceAtLeast(1L)
+                                        val event = withTimeoutOrNull(remaining) {
+                                            awaitPointerEvent(PointerEventPass.Main)
                                         }
-                                        return@awaitEachGesture
-                                    }
 
-                                    val dist = (change.position - downPos).getDistance()
-                                    if (dist > viewConfig.touchSlop) {
-                                        hasMovedBeyondSlop = true
-                                        return@awaitEachGesture
-                                    }
-                                }
-
-                                if (isLongPress && !isSettling) {
-                                    onEditActiveDhikrChange(preset.id)
-                                    val currIdx = localList.indexOfFirst { it.id == preset.id }
-                                    if (currIdx != -1) {
-                                        draggingPresetId = preset.id
-                                        initialIndex = currIdx
-                                        targetIndex = currIdx
-                                        val initialSlotX = itemBounds[preset.id]?.x ?: 0f
-                                        currentInitialSlotX = initialSlotX
-                                        pointerGrabOffset = downPos.x
-                                        val initialScreenX = initialSlotX - scrollState.value + downPos.x
-                                        val viewportW = scrollState.viewportSize.toFloat()
-                                        currentPointerScreenX = if (viewportW > 0f) initialScreenX.coerceIn(0f, viewportW) else initialScreenX
-                                        coroutineScope.launch { dragOffset.snapTo(0f) }
-                                        if (isVibrationEnabled && globalVibrationEnabled) {
-                                            try {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            } catch (_: Exception) {}
+                                        if (event == null) {
+                                            isLongPress = true
+                                            break
                                         }
 
-                                        while (true) {
-                                            val event = awaitPointerEvent(PointerEventPass.Main)
-                                            val change = event.changes.firstOrNull { it.id == down.id }
-                                            if (change == null || !change.pressed) {
-                                                finishDrag()
-                                                break
+                                        val change = event.changes.firstOrNull { it.id == down.id }
+                                        if (change == null || !change.pressed) {
+                                            if (!hasMovedBeyondSlop && !isSettling && draggingPresetId == null) {
+                                                onSelectPreset(preset)
+                                                if (activeEditDhikrId != null && activeEditDhikrId != preset.id) {
+                                                    onEditActiveDhikrChange(null)
+                                                }
+                                            }
+                                            return@awaitEachGesture
+                                        }
+
+                                        val dist = (change.position - downPos).getDistance()
+                                        if (dist > viewConfig.touchSlop) {
+                                            hasMovedBeyondSlop = true
+                                            return@awaitEachGesture
+                                        }
+                                    }
+
+                                    if (isLongPress && !isSettling) {
+                                        onEditActiveDhikrChange(preset.id)
+                                        val currIdx = localList.indexOfFirst { it.id == preset.id }
+                                        if (currIdx != -1) {
+                                            draggingPresetId = preset.id
+                                            initialIndex = currIdx
+                                            targetIndex = currIdx
+                                            val initialSlotX = itemBounds[preset.id]?.x ?: 0f
+                                            currentInitialSlotX = initialSlotX
+                                            pointerGrabOffset = downPos.x
+                                            val initialScreenX = initialSlotX - scrollState.value + downPos.x
+                                            val viewportW = scrollState.viewportSize.toFloat()
+                                            currentPointerScreenX = if (viewportW > 0f) initialScreenX.coerceIn(0f, viewportW) else initialScreenX
+                                            coroutineScope.launch { dragOffset.snapTo(0f) }
+                                            if (isVibrationEnabled && globalVibrationEnabled) {
+                                                try {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                } catch (_: Exception) {}
                                             }
 
-                                            val dragDelta = change.positionChange()
-                                            change.consume()
-                                            val deltaX = dragDelta.x
-                                            val currentViewportW = scrollState.viewportSize.toFloat()
-                                            currentPointerScreenX = if (currentViewportW > 0f) {
-                                                (currentPointerScreenX + deltaX).coerceIn(0f, currentViewportW)
-                                            } else {
-                                                currentPointerScreenX + deltaX
-                                            }
+                                            while (true) {
+                                                val event = awaitPointerEvent(PointerEventPass.Main)
+                                                val change = event.changes.firstOrNull { it.id == down.id }
+                                                if (change == null || !change.pressed) {
+                                                    finishDrag()
+                                                    break
+                                                }
 
-                                            val targetOffset = (currentPointerScreenX - pointerGrabOffset) + scrollState.value - currentInitialSlotX
-                                            coroutineScope.launch {
-                                                dragOffset.snapTo(targetOffset)
-                                            }
-
-                                            val draggedW = itemBounds[preset.id]?.width ?: 0f
-                                            val initialSlotCenter = initialSlotX + (draggedW / 2f)
-                                            val visualCenter = initialSlotCenter + targetOffset
-
-                                            fun getTargetSlotX(idx: Int): Float {
-                                                if (idx == currIdx) return initialSlotX
-                                                val targetItem = localList.getOrNull(idx) ?: return initialSlotX
-                                                val targetBounds = itemBounds[targetItem.id] ?: return initialSlotX
-                                                return if (idx > currIdx) {
-                                                    targetBounds.x + targetBounds.width - draggedW
+                                                val dragDelta = change.positionChange()
+                                                change.consume()
+                                                val deltaX = dragDelta.x
+                                                val currentViewportW = scrollState.viewportSize.toFloat()
+                                                currentPointerScreenX = if (currentViewportW > 0f) {
+                                                    (currentPointerScreenX + deltaX).coerceIn(0f, currentViewportW)
                                                 } else {
-                                                    targetBounds.x
+                                                    currentPointerScreenX + deltaX
                                                 }
-                                            }
 
-                                            fun getTargetSlotCenter(idx: Int): Float = getTargetSlotX(idx) + (draggedW / 2f)
+                                                val draggedW = itemBounds[preset.id]?.width ?: 0f
+                                                val rawScreenLeft = (currentPointerScreenX - pointerGrabOffset)
+                                                val leftSafeBoundary = safeInsetPx
+                                                val rightSafeBoundary = if (currentViewportW > 0f) currentViewportW - safeInsetPx else safeInsetPx + 1000f
+                                                val minScreenLeft = leftSafeBoundary
+                                                val maxScreenLeft = maxOf(leftSafeBoundary, rightSafeBoundary - draggedW)
+                                                val clampedScreenLeft = rawScreenLeft.coerceIn(minScreenLeft, maxScreenLeft)
 
-                                            val n = localList.size
-                                            var newTarget = currIdx
-                                            for (k in 0 until n) {
-                                                val centerK = getTargetSlotCenter(k)
-                                                if (k == 0 && visualCenter <= centerK) {
-                                                    newTarget = 0
-                                                    break
+                                                // Boundary detection & haptic
+                                                val isAtLeftBoundary = rawScreenLeft <= leftSafeBoundary
+                                                val isAtRightBoundary = (rawScreenLeft + draggedW) >= rightSafeBoundary
+
+                                                if (isAtLeftBoundary) {
+                                                    if (!leftBoundaryHit) {
+                                                        leftBoundaryHit = true
+                                                        if (isVibrationEnabled && globalVibrationEnabled) {
+                                                            try {
+                                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                            } catch (_: Exception) {}
+                                                        }
+                                                    }
+                                                } else if (rawScreenLeft > leftSafeBoundary + hysteresisPx) {
+                                                    leftBoundaryHit = false
                                                 }
-                                                if (k == n - 1 && visualCenter >= centerK) {
-                                                    newTarget = n - 1
-                                                    break
+
+                                                if (isAtRightBoundary) {
+                                                    if (!rightBoundaryHit) {
+                                                        rightBoundaryHit = true
+                                                        if (isVibrationEnabled && globalVibrationEnabled) {
+                                                            try {
+                                                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                            } catch (_: Exception) {}
+                                                        }
+                                                    }
+                                                } else if ((rawScreenLeft + draggedW) < rightSafeBoundary - hysteresisPx) {
+                                                    rightBoundaryHit = false
                                                 }
-                                                if (k < n - 1) {
-                                                    val centerNext = getTargetSlotCenter(k + 1)
-                                                    val mid = (centerK + centerNext) / 2f
-                                                    if (visualCenter < mid) {
-                                                        newTarget = k
-                                                        break
+
+                                                val targetOffset = clampedScreenLeft + scrollState.value - currentInitialSlotX
+                                                coroutineScope.launch {
+                                                    dragOffset.snapTo(targetOffset)
+                                                }
+
+                                                val initialSlotCenter = initialSlotX + (draggedW / 2f)
+                                                val visualCenter = initialSlotCenter + targetOffset
+
+                                                fun getTargetSlotX(idx: Int): Float {
+                                                    if (idx == currIdx) return initialSlotX
+                                                    val targetItem = localList.getOrNull(idx) ?: return initialSlotX
+                                                    val targetBounds = itemBounds[targetItem.id] ?: return initialSlotX
+                                                    return if (idx > currIdx) {
+                                                        targetBounds.x + targetBounds.width - draggedW
+                                                    } else {
+                                                        targetBounds.x
                                                     }
                                                 }
-                                            }
 
-                                            if (newTarget != targetIndex && newTarget in 0 until n) {
-                                                targetIndex = newTarget
-                                                if (isVibrationEnabled && globalVibrationEnabled) {
-                                                    try {
-                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                    } catch (_: Exception) {}
+                                                fun getTargetSlotCenter(idx: Int): Float = getTargetSlotX(idx) + (draggedW / 2f)
+
+                                                val n = localList.size
+                                                var newTarget = currIdx
+                                                for (k in 0 until n) {
+                                                    val centerK = getTargetSlotCenter(k)
+                                                    if (k == 0 && visualCenter <= centerK) {
+                                                        newTarget = 0
+                                                        break
+                                                    }
+                                                    if (k == n - 1 && visualCenter >= centerK) {
+                                                        newTarget = n - 1
+                                                        break
+                                                    }
+                                                    if (k < n - 1) {
+                                                        val centerNext = getTargetSlotCenter(k + 1)
+                                                        val mid = (centerK + centerNext) / 2f
+                                                        if (visualCenter < mid) {
+                                                            newTarget = k
+                                                            break
+                                                        }
+                                                    }
+                                                }
+
+                                                if (newTarget != targetIndex && newTarget in 0 until n) {
+                                                    targetIndex = newTarget
+                                                    if (isVibrationEnabled && globalVibrationEnabled) {
+                                                        try {
+                                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                        } catch (_: Exception) {}
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
                             }
-                        }
-                        .zIndex(if (isThisDragging) 100f else 1f)
-                        .graphicsLayer {
-                            translationX = if (isThisDragging) dragOffset.value else shiftAnim.value
-                            scaleX = itemScale
-                            scaleY = itemScale
-                            shadowElevation = itemElevation.toPx()
-                            shape = RoundedCornerShape(16.dp)
-                            clip = false
-                        }
-                ) {
+                            .zIndex(if (isThisDragging) 100f else 1f)
+                            .graphicsLayer {
+                                translationX = if (isThisDragging) dragOffset.value else shiftAnim.value
+                                scaleX = itemScale
+                                scaleY = itemScale
+                                shadowElevation = itemElevation.toPx()
+                                shape = RoundedCornerShape(16.dp)
+                                clip = false
+                            }
+                    ) {
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = pillBg,
@@ -2247,4 +2301,41 @@ private fun ReorderableDhikrChipsRow(
             }
         }
     }
+
+    // Left safe drag boundary indicator
+    AnimatedVisibility(
+        visible = draggingPresetId != null,
+        enter = fadeIn(tween(200)),
+        exit = fadeOut(tween(150)),
+        modifier = Modifier
+            .align(Alignment.CenterStart)
+            .padding(start = 4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(2.dp)
+                .height(24.dp)
+                .clip(CircleShape)
+                .background(Color.semanticPrimaryAccent.copy(alpha = if (leftBoundaryHit) 0.5f else 0.25f))
+        )
+    }
+
+    // Right safe drag boundary indicator
+    AnimatedVisibility(
+        visible = draggingPresetId != null,
+        enter = fadeIn(tween(200)),
+        exit = fadeOut(tween(150)),
+        modifier = Modifier
+            .align(Alignment.CenterEnd)
+            .padding(end = 4.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(2.dp)
+                .height(24.dp)
+                .clip(CircleShape)
+                .background(Color.semanticPrimaryAccent.copy(alpha = if (rightBoundaryHit) 0.5f else 0.25f))
+        )
+    }
+}
 }
