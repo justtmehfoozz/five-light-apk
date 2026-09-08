@@ -188,7 +188,8 @@ fun TasbeehScreen(
     val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
 
     // Dhikr Customization Edit Mode State
-    var isEditMode by remember { mutableStateOf(false) }
+    var activeEditChipId by remember { mutableStateOf<String?>(null) }
+    val isEditMode = activeEditChipId != null
     var draggingPresetId by remember { mutableStateOf<String?>(null) }
     var dragOffsetX by remember { mutableFloatStateOf(0f) }
     val chipLazyListState = rememberLazyListState()
@@ -234,7 +235,7 @@ fun TasbeehScreen(
             if (showRestoreDefaultDialog) {
                 showRestoreDefaultDialog = false
             } else if (isEditMode) {
-                isEditMode = false
+                activeEditChipId = null
             } else if (showHistorySheet) {
                 showHistorySheet = false
             } else if (showCustomDhikrDialog) {
@@ -740,7 +741,9 @@ fun TasbeehScreen(
         ) {
             items(presets, key = { it.id }) { preset ->
                 val isSelected = preset.id == selectedPreset.id
+                val isActiveEditChip = activeEditChipId == preset.id
                 val isBeingDragged = draggingPresetId == preset.id
+                val showDeleteX = isActiveEditChip && presets.size > 1
 
                 val pillBg by animateColorAsState(
                     targetValue = if (isSelected) {
@@ -767,7 +770,7 @@ fun TasbeehScreen(
                 }
 
                 val dragScale by animateFloatAsState(
-                    targetValue = if (isBeingDragged) 1.04f else 1.0f,
+                    targetValue = if (isBeingDragged) 1.03f else if (isActiveEditChip) 1.02f else 1.0f,
                     animationSpec = spring(stiffness = 400f, dampingRatio = 0.8f),
                     label = "dragScale"
                 )
@@ -776,86 +779,107 @@ fun TasbeehScreen(
                     shape = RoundedCornerShape(16.dp),
                     color = pillBg,
                     border = pillBorder,
-                    shadowElevation = if (isBeingDragged) 6.dp else 0.dp,
+                    shadowElevation = if (isBeingDragged) 6.dp else if (isActiveEditChip) 3.dp else 0.dp,
                     modifier = Modifier
+                        .animateItem(
+                            fadeInSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                            fadeOutSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                            placementSpec = spring(dampingRatio = 0.78f, stiffness = 380f)
+                        )
                         .testTag("preset_${preset.id}")
                         .semantics {
-                            contentDescription = if (isEditMode) {
-                                "${preset.nameEnglish}, draggable, tap X to remove"
+                            contentDescription = if (isActiveEditChip) {
+                                "${preset.nameEnglish}, active edit mode, drag to reorder, tap X to remove"
                             } else {
                                 preset.nameEnglish
                             }
                         }
-                        .zIndex(if (isBeingDragged) 10f else 1f)
+                        .zIndex(if (isBeingDragged) 10f else if (isActiveEditChip) 5f else 1f)
                         .graphicsLayer {
                             scaleX = dragScale
                             scaleY = dragScale
                             translationX = if (isBeingDragged) dragOffsetX else 0f
                         }
-                        .pointerInput(preset.id, isEditMode, presets) {
+                        .pointerInput(preset.id, isEditMode, activeEditChipId) {
                             if (isEditMode) {
-                                detectHorizontalDragGestures(
-                                    onDragStart = {
-                                        draggingPresetId = preset.id
-                                        dragOffsetX = 0f
-                                        FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
-                                    },
-                                    onDragEnd = {
-                                        draggingPresetId = null
-                                        dragOffsetX = 0f
-                                    },
-                                    onDragCancel = {
-                                        draggingPresetId = null
-                                        dragOffsetX = 0f
-                                    },
-                                    onHorizontalDrag = { change, dragAmount ->
-                                        change.consume()
-                                        dragOffsetX += dragAmount
+                                if (isActiveEditChip) {
+                                    detectHorizontalDragGestures(
+                                        onDragStart = {
+                                            draggingPresetId = preset.id
+                                            dragOffsetX = 0f
+                                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
+                                        },
+                                        onDragEnd = {
+                                            draggingPresetId = null
+                                            dragOffsetX = 0f
+                                        },
+                                        onDragCancel = {
+                                            draggingPresetId = null
+                                            dragOffsetX = 0f
+                                        },
+                                        onHorizontalDrag = { change, dragAmount ->
+                                            change.consume()
+                                            dragOffsetX += dragAmount
 
-                                        val visibleItems = chipLazyListState.layoutInfo.visibleItemsInfo
-                                        val currentItemInfo = visibleItems.find { it.key == preset.id }
-                                        if (currentItemInfo != null) {
-                                            val currentIndex = presets.indexOfFirst { it.id == preset.id }
-                                            if (currentIndex != -1) {
-                                                val currentCenter = currentItemInfo.offset.toFloat() + currentItemInfo.size.toFloat() / 2f + dragOffsetX
+                                            val visibleItems = chipLazyListState.layoutInfo.visibleItemsInfo
+                                            val currentItemInfo = visibleItems.find { it.key == preset.id }
+                                            if (currentItemInfo != null) {
+                                                val currentIndex = presets.indexOfFirst { it.id == preset.id }
+                                                if (currentIndex != -1) {
+                                                    val currentCenter = currentItemInfo.offset.toFloat() + currentItemInfo.size.toFloat() / 2f + dragOffsetX
 
-                                                if (currentIndex > 0 && dragOffsetX < 0f) {
-                                                    val prevItemInfo = visibleItems.find { it.key == presets[currentIndex - 1].id }
-                                                    val prevCenter = if (prevItemInfo != null) {
-                                                        prevItemInfo.offset.toFloat() + prevItemInfo.size.toFloat() / 2f
-                                                    } else {
-                                                        currentItemInfo.offset.toFloat() - currentItemInfo.size.toFloat() / 2f
-                                                    }
+                                                    if (currentIndex > 0 && dragOffsetX < 0f) {
+                                                        val prevItemInfo = visibleItems.find { it.key == presets[currentIndex - 1].id }
+                                                        val prevCenter = if (prevItemInfo != null) {
+                                                            prevItemInfo.offset.toFloat() + prevItemInfo.size.toFloat() / 2f
+                                                        } else {
+                                                            currentItemInfo.offset.toFloat() - currentItemInfo.size.toFloat() / 2f
+                                                        }
 
-                                                    if (currentCenter < prevCenter) {
-                                                        val mutableOrder = presets.map { it.id }.toMutableList()
-                                                        val movedId = mutableOrder.removeAt(currentIndex)
-                                                        mutableOrder.add(currentIndex - 1, movedId)
-                                                        onReorderDhikrs(mutableOrder)
-                                                        FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled)
-                                                        dragOffsetX += currentItemInfo.size.toFloat()
-                                                    }
-                                                } else if (currentIndex < presets.size - 1 && dragOffsetX > 0f) {
-                                                    val nextItemInfo = visibleItems.find { it.key == presets[currentIndex + 1].id }
-                                                    val nextCenter = if (nextItemInfo != null) {
-                                                        nextItemInfo.offset.toFloat() + nextItemInfo.size.toFloat() / 2f
-                                                    } else {
-                                                        currentItemInfo.offset.toFloat() + currentItemInfo.size.toFloat() * 1.5f
-                                                    }
+                                                        if (currentCenter < prevCenter) {
+                                                            val mutableOrder = presets.map { it.id }.toMutableList()
+                                                            val movedId = mutableOrder.removeAt(currentIndex)
+                                                            mutableOrder.add(currentIndex - 1, movedId)
+                                                            onReorderDhikrs(mutableOrder)
+                                                            FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled && globalVibrationEnabled)
+                                                            val shiftSize = if (prevItemInfo != null) prevItemInfo.size.toFloat() + 8.dp.toPx() else currentItemInfo.size.toFloat()
+                                                            dragOffsetX += shiftSize
+                                                        }
+                                                    } else if (currentIndex < presets.size - 1 && dragOffsetX > 0f) {
+                                                        val nextItemInfo = visibleItems.find { it.key == presets[currentIndex + 1].id }
+                                                        val nextCenter = if (nextItemInfo != null) {
+                                                            nextItemInfo.offset.toFloat() + nextItemInfo.size.toFloat() / 2f
+                                                        } else {
+                                                            currentItemInfo.offset.toFloat() + currentItemInfo.size.toFloat() * 1.5f
+                                                        }
 
-                                                    if (currentCenter > nextCenter) {
-                                                        val mutableOrder = presets.map { it.id }.toMutableList()
-                                                        val movedId = mutableOrder.removeAt(currentIndex)
-                                                        mutableOrder.add(currentIndex + 1, movedId)
-                                                        onReorderDhikrs(mutableOrder)
-                                                        FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled)
-                                                        dragOffsetX -= currentItemInfo.size.toFloat()
+                                                        if (currentCenter > nextCenter) {
+                                                            val mutableOrder = presets.map { it.id }.toMutableList()
+                                                            val movedId = mutableOrder.removeAt(currentIndex)
+                                                            mutableOrder.add(currentIndex + 1, movedId)
+                                                            onReorderDhikrs(mutableOrder)
+                                                            FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled && globalVibrationEnabled)
+                                                            val shiftSize = if (nextItemInfo != null) nextItemInfo.size.toFloat() + 8.dp.toPx() else currentItemInfo.size.toFloat()
+                                                            dragOffsetX -= shiftSize
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
-                                    }
-                                )
+                                    )
+                                } else {
+                                    detectTapGestures(
+                                        onTap = {
+                                            onSelectPreset(preset)
+                                            isAutoCountEnabled = false
+                                            activeEditChipId = null
+                                        },
+                                        onLongPress = {
+                                            activeEditChipId = preset.id
+                                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
+                                        }
+                                    )
+                                }
                             } else {
                                 detectTapGestures(
                                     onTap = {
@@ -863,8 +887,8 @@ fun TasbeehScreen(
                                         isAutoCountEnabled = false
                                     },
                                     onLongPress = {
-                                        isEditMode = true
-                                        FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
+                                        activeEditChipId = preset.id
+                                        FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
                                     }
                                 )
                             }
@@ -872,12 +896,21 @@ fun TasbeehScreen(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(
-                            start = 14.dp,
-                            end = if (isEditMode && presets.size > 1) 6.dp else 14.dp,
-                            top = 8.dp,
-                            bottom = 8.dp
-                        )
+                        modifier = Modifier
+                            .clickable(
+                                enabled = isEditMode && isActiveEditChip,
+                                onClick = {
+                                    onSelectPreset(preset)
+                                    isAutoCountEnabled = false
+                                    activeEditChipId = null
+                                }
+                            )
+                            .padding(
+                                start = 14.dp,
+                                end = if (showDeleteX) 6.dp else 14.dp,
+                                top = 8.dp,
+                                bottom = 8.dp
+                            )
                     ) {
                         Text(
                             text = preset.nameEnglish,
@@ -887,7 +920,7 @@ fun TasbeehScreen(
                         )
 
                         AnimatedVisibility(
-                            visible = isEditMode && presets.size > 1,
+                            visible = showDeleteX,
                             enter = fadeIn(tween(220)) + expandHorizontally(tween(220)),
                             exit = fadeOut(tween(200)) + shrinkHorizontally(tween(200))
                         ) {
@@ -905,8 +938,11 @@ fun TasbeehScreen(
                                             }
                                         )
                                         .clickable {
-                                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
+                                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
                                             onRemoveDhikr(preset.id)
+                                            if (activeEditChipId == preset.id) {
+                                                activeEditChipId = null
+                                            }
                                         },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -993,8 +1029,8 @@ fun TasbeehScreen(
                 item {
                     Surface(
                         onClick = {
-                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
-                            isEditMode = false
+                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled && globalVibrationEnabled)
+                            activeEditChipId = null
                         },
                         shape = RoundedCornerShape(16.dp),
                         color = Color.semanticPrimaryAccent,
