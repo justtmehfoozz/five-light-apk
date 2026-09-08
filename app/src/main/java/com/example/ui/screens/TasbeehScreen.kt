@@ -28,6 +28,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -1741,6 +1742,10 @@ private fun ReorderableDhikrChipsRow(
     val dragOffset = remember { Animatable(0f) }
     var isSettling by remember { mutableStateOf(false) }
 
+    var currentPointerScreenX by remember { mutableFloatStateOf(0f) }
+    var pointerGrabOffset by remember { mutableFloatStateOf(0f) }
+    var currentInitialSlotX by remember { mutableFloatStateOf(0f) }
+
     LaunchedEffect(presets) {
         if (draggingPresetId == null && !isSettling) {
             localList = presets
@@ -1748,31 +1753,87 @@ private fun ReorderableDhikrChipsRow(
     }
 
     val itemBounds = remember { mutableStateMapOf<String, DhikrChipBounds>() }
+    val itemShiftAnims = remember { mutableStateMapOf<String, Animatable<Float, AnimationVector1D>>() }
     val spacingPx = with(density) { 8.dp.toPx() }
 
-    // Edge auto-scroll during drag
+    // Edge auto-scroll during active drag
     LaunchedEffect(draggingPresetId, isSettling) {
         val currentDragId = draggingPresetId
         if (currentDragId == null || isSettling) return@LaunchedEffect
-        val edgeThresholdPx = with(density) { 48.dp.toPx() }
-        while (isActive && draggingPresetId == currentDragId && !isSettling) {
-            val draggedBounds = itemBounds[currentDragId]
-            if (draggedBounds != null) {
-                val visualScreenLeft = draggedBounds.x + dragOffset.value - scrollState.value
-                val visualScreenRight = visualScreenLeft + draggedBounds.width
-                val viewportWidth = scrollState.viewportSize
+        val edgeThresholdPx = with(density) { 60.dp.toPx() }
+        val maxSpeedPx = with(density) { 14.dp.toPx() }
+        val minSpeedPx = with(density) { 2.dp.toPx() }
 
-                if (visualScreenLeft < edgeThresholdPx && scrollState.value > 0) {
-                    val speed = ((edgeThresholdPx - visualScreenLeft) / edgeThresholdPx).coerceIn(0.1f, 1f) * 10f
-                    val actualScroll = -minOf(speed, scrollState.value.toFloat())
-                    scrollState.scrollBy(actualScroll)
-                    dragOffset.snapTo(dragOffset.value + actualScroll)
-                } else if (visualScreenRight > viewportWidth - edgeThresholdPx && scrollState.value < scrollState.maxValue) {
-                    val speed = ((visualScreenRight - (viewportWidth - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0.1f, 1f) * 10f
+        while (isActive && draggingPresetId == currentDragId && !isSettling) {
+            val viewportWidth = scrollState.viewportSize.toFloat()
+            if (viewportWidth > 0f) {
+                val pX = currentPointerScreenX
+                var scrollDelta = 0f
+
+                if (pX < edgeThresholdPx && scrollState.value > 0) {
+                    val proximity = ((edgeThresholdPx - pX) / edgeThresholdPx).coerceIn(0f, 1f)
+                    val speed = minSpeedPx + (maxSpeedPx - minSpeedPx) * proximity
+                    scrollDelta = -minOf(speed, scrollState.value.toFloat())
+                } else if (pX > viewportWidth - edgeThresholdPx && scrollState.value < scrollState.maxValue) {
+                    val proximity = ((pX - (viewportWidth - edgeThresholdPx)) / edgeThresholdPx).coerceIn(0f, 1f)
+                    val speed = minSpeedPx + (maxSpeedPx - minSpeedPx) * proximity
                     val maxCanScroll = (scrollState.maxValue - scrollState.value).toFloat()
-                    val actualScroll = minOf(speed, maxCanScroll)
-                    scrollState.scrollBy(actualScroll)
-                    dragOffset.snapTo(dragOffset.value + actualScroll)
+                    scrollDelta = minOf(speed, maxCanScroll)
+                }
+
+                if (scrollDelta != 0f) {
+                    scrollState.scrollBy(scrollDelta)
+                    val targetOffset = (currentPointerScreenX - pointerGrabOffset) + scrollState.value - currentInitialSlotX
+                    dragOffset.snapTo(targetOffset)
+
+                    // Dynamically recalculate targetIndex as new content is scrolled into view
+                    val draggedW = itemBounds[currentDragId]?.width ?: 0f
+                    val initialSlotCenter = currentInitialSlotX + (draggedW / 2f)
+                    val visualCenter = initialSlotCenter + targetOffset
+
+                    fun getTargetSlotX(idx: Int): Float {
+                        if (idx == initialIndex) return currentInitialSlotX
+                        val targetItem = localList.getOrNull(idx) ?: return currentInitialSlotX
+                        val targetBounds = itemBounds[targetItem.id] ?: return currentInitialSlotX
+                        return if (idx > initialIndex) {
+                            targetBounds.x + targetBounds.width - draggedW
+                        } else {
+                            targetBounds.x
+                        }
+                    }
+
+                    fun getTargetSlotCenter(idx: Int): Float = getTargetSlotX(idx) + (draggedW / 2f)
+
+                    val n = localList.size
+                    var newTarget = initialIndex
+                    for (k in 0 until n) {
+                        val centerK = getTargetSlotCenter(k)
+                        if (k == 0 && visualCenter <= centerK) {
+                            newTarget = 0
+                            break
+                        }
+                        if (k == n - 1 && visualCenter >= centerK) {
+                            newTarget = n - 1
+                            break
+                        }
+                        if (k < n - 1) {
+                            val centerNext = getTargetSlotCenter(k + 1)
+                            val mid = (centerK + centerNext) / 2f
+                            if (visualCenter < mid) {
+                                newTarget = k
+                                break
+                            }
+                        }
+                    }
+
+                    if (newTarget != targetIndex && newTarget in 0 until n) {
+                        targetIndex = newTarget
+                        if (isVibrationEnabled && globalVibrationEnabled) {
+                            try {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            } catch (_: Exception) {}
+                        }
+                    }
                 }
             }
             delay(16)
@@ -1814,7 +1875,11 @@ private fun ReorderableDhikrChipsRow(
                 localList = updated
                 onReorderPresets(updated)
 
+                // Simultaneously snap all offsets to 0 alongside list reorder
                 dragOffset.snapTo(0f)
+                itemShiftAnims.values.forEach { anim ->
+                    anim.snapTo(0f)
+                }
                 draggingPresetId = null
                 initialIndex = -1
                 targetIndex = -1
@@ -1827,6 +1892,9 @@ private fun ReorderableDhikrChipsRow(
                     targetValue = 0f,
                     animationSpec = spring(dampingRatio = 0.82f, stiffness = 450f)
                 )
+                itemShiftAnims.values.forEach { anim ->
+                    anim.snapTo(0f)
+                }
                 draggingPresetId = null
                 initialIndex = -1
                 targetIndex = -1
@@ -1849,6 +1917,14 @@ private fun ReorderableDhikrChipsRow(
                 val isSelected = preset.id == selectedPreset.id
                 val canDelete = localList.size > 1
 
+                val shiftAnim = remember(preset.id) { Animatable(0f) }
+                DisposableEffect(preset.id) {
+                    itemShiftAnims[preset.id] = shiftAnim
+                    onDispose {
+                        itemShiftAnims.remove(preset.id)
+                    }
+                }
+
                 val targetShiftX = if (draggingPresetId != null && !isThisDragging && initialIndex != -1 && targetIndex != -1) {
                     val draggedWidth = (itemBounds[draggingPresetId]?.width ?: 0f) + spacingPx
                     if (targetIndex > initialIndex && i > initialIndex && i <= targetIndex) {
@@ -1862,11 +1938,16 @@ private fun ReorderableDhikrChipsRow(
                     0f
                 }
 
-                val animatedShiftX by animateFloatAsState(
-                    targetValue = targetShiftX,
-                    animationSpec = spring(dampingRatio = 0.82f, stiffness = 450f),
-                    label = "shift_${preset.id}"
-                )
+                LaunchedEffect(targetShiftX, draggingPresetId) {
+                    if (draggingPresetId != null) {
+                        shiftAnim.animateTo(
+                            targetValue = targetShiftX,
+                            animationSpec = spring(dampingRatio = 0.82f, stiffness = 450f)
+                        )
+                    } else if (!isSettling) {
+                        shiftAnim.snapTo(0f)
+                    }
+                }
 
                 val itemScale by animateFloatAsState(
                     targetValue = if (isThisDragging) 1.03f else 1.0f,
@@ -1956,6 +2037,12 @@ private fun ReorderableDhikrChipsRow(
                                         draggingPresetId = preset.id
                                         initialIndex = currIdx
                                         targetIndex = currIdx
+                                        val initialSlotX = itemBounds[preset.id]?.x ?: 0f
+                                        currentInitialSlotX = initialSlotX
+                                        pointerGrabOffset = downPos.x
+                                        val initialScreenX = initialSlotX - scrollState.value + downPos.x
+                                        val viewportW = scrollState.viewportSize.toFloat()
+                                        currentPointerScreenX = if (viewportW > 0f) initialScreenX.coerceIn(0f, viewportW) else initialScreenX
                                         coroutineScope.launch { dragOffset.snapTo(0f) }
                                         if (isVibrationEnabled && globalVibrationEnabled) {
                                             try {
@@ -1974,15 +2061,21 @@ private fun ReorderableDhikrChipsRow(
                                             val dragDelta = change.positionChange()
                                             change.consume()
                                             val deltaX = dragDelta.x
-                                            val currentVal = dragOffset.value + deltaX
+                                            val currentViewportW = scrollState.viewportSize.toFloat()
+                                            currentPointerScreenX = if (currentViewportW > 0f) {
+                                                (currentPointerScreenX + deltaX).coerceIn(0f, currentViewportW)
+                                            } else {
+                                                currentPointerScreenX + deltaX
+                                            }
+
+                                            val targetOffset = (currentPointerScreenX - pointerGrabOffset) + scrollState.value - currentInitialSlotX
                                             coroutineScope.launch {
-                                                dragOffset.snapTo(currentVal)
+                                                dragOffset.snapTo(targetOffset)
                                             }
 
                                             val draggedW = itemBounds[preset.id]?.width ?: 0f
-                                            val initialSlotX = itemBounds[preset.id]?.x ?: 0f
                                             val initialSlotCenter = initialSlotX + (draggedW / 2f)
-                                            val visualCenter = initialSlotCenter + currentVal
+                                            val visualCenter = initialSlotCenter + targetOffset
 
                                             fun getTargetSlotX(idx: Int): Float {
                                                 if (idx == currIdx) return initialSlotX
@@ -2019,7 +2112,7 @@ private fun ReorderableDhikrChipsRow(
                                                 }
                                             }
 
-                                            if (newTarget != targetIndex) {
+                                            if (newTarget != targetIndex && newTarget in 0 until n) {
                                                 targetIndex = newTarget
                                                 if (isVibrationEnabled && globalVibrationEnabled) {
                                                     try {
@@ -2034,7 +2127,7 @@ private fun ReorderableDhikrChipsRow(
                         }
                         .zIndex(if (isThisDragging) 100f else 1f)
                         .graphicsLayer {
-                            translationX = if (isThisDragging) dragOffset.value else animatedShiftX
+                            translationX = if (isThisDragging) dragOffset.value else shiftAnim.value
                             scaleX = itemScale
                             scaleY = itemScale
                             shadowElevation = itemElevation.toPx()
