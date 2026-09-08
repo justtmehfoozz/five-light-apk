@@ -243,14 +243,19 @@ fun QiblaScreen(
         label = "raw_breathing"
     )
 
-    // Alignment status text with ±4° tolerance threshold
-    val facingThreshold = 4f
-    val isAligned = isSensorAvailable && absDiff <= facingThreshold
+    // Authoritative real-time angular difference from sensor heading (zero-latency)
+    val authoritativeAbsDiff = abs(shortestSignedAngle(qiblaAngle - compassHeading))
 
-    // Pre-alignment threshold (12°) for anticipatory Qibla-Lock Ring Pulse with 14° reset hysteresis
-    val nearQiblaThreshold = 12f
-    val nearQiblaResetThreshold = 14f
-    val isNearQibla = isSensorAvailable && absDiff <= nearQiblaThreshold
+    // Static product thresholds:
+    // <=25° enters the Qibla approach pulse zone.
+    // <=4° represents accurate Qibla alignment.
+    // >27° re-arms the one-shot pulse.
+    val facingThreshold = 4f
+    val isAligned = isSensorAvailable && authoritativeAbsDiff <= facingThreshold
+
+    val nearQiblaThreshold = 25f
+    val nearQiblaResetThreshold = 27f
+    val isNearQibla = isSensorAvailable && authoritativeAbsDiff <= nearQiblaThreshold
 
     var wasNearQibla by remember { mutableStateOf(false) }
     var wasAligned by remember { mutableStateOf(false) }
@@ -276,23 +281,22 @@ fun QiblaScreen(
 
     // Qibla-Lock Ring Pulse Animation (Animates 0f -> 1f -> 0f over ~400ms)
     val ringPulseAnim = remember { Animatable(0f) }
-    val coroutineScope = rememberCoroutineScope()
 
     val isVibrationEnabled = LocalVibrationEnabled.current
 
-    // Hysteresis reset: re-arm near-Qibla pulse when user moves sufficiently away (>14°)
-    LaunchedEffect(absDiff, isActive) {
+    // Hysteresis reset: re-arm near-Qibla pulse when user moves sufficiently away (>27°)
+    LaunchedEffect(authoritativeAbsDiff, isActive) {
         if (!isActive) {
             wasNearQibla = false
             wasAligned = false
             return@LaunchedEffect
         }
-        if (absDiff > nearQiblaResetThreshold) {
+        if (authoritativeAbsDiff > nearQiblaResetThreshold) {
             wasNearQibla = false
         }
     }
 
-    // Trigger Qibla-Lock Ring Pulse ONCE when entering near-Qibla threshold (≤ 12°)
+    // Trigger Qibla-Lock Ring Pulse ONCE immediately when entering near-Qibla threshold (≤ 25°)
     LaunchedEffect(isNearQibla, isActive) {
         if (!isActive) {
             wasNearQibla = false
@@ -301,29 +305,28 @@ fun QiblaScreen(
         if (isNearQibla && !wasNearQibla) {
             wasNearQibla = true
 
-            // Trigger Ring pulse animation (140ms attack, 260ms decay)
-            coroutineScope.launch {
-                ringPulseAnim.snapTo(0f)
-                ringPulseAnim.animateTo(
-                    targetValue = 1f,
-                    animationSpec = tween(140, easing = FastOutSlowInEasing)
-                )
-                ringPulseAnim.animateTo(
-                    targetValue = 0f,
-                    animationSpec = tween(260, easing = FastOutSlowInEasing)
-                )
-            }
-
-            // Light anticipatory haptic tap
+            // Light anticipatory haptic tap (instant)
             if (isVibrationEnabled && !isAligned) {
                 try {
                     FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
                 } catch (_: Exception) { }
             }
+
+            // Trigger Ring pulse animation directly in this LaunchedEffect coroutine (140ms attack, 260ms decay)
+            ringPulseAnim.snapTo(0f)
+            ringPulseAnim.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(140, easing = FastOutSlowInEasing)
+            )
+            ringPulseAnim.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(260, easing = FastOutSlowInEasing)
+            )
         }
     }
 
     // Edge-triggered haptic feedback & Glow Settle: Triggered ONCE upon entering exact alignment threshold (≤ 4°)
+    val coroutineScope = rememberCoroutineScope()
     LaunchedEffect(isAligned, isActive) {
         if (!isActive) {
             wasAligned = false

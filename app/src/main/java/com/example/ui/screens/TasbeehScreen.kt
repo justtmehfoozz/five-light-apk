@@ -31,9 +31,11 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -42,7 +44,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -59,6 +63,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -67,6 +72,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.History
@@ -120,6 +127,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -129,6 +137,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.example.data.db.DhikrHistoryEntity
 import com.example.data.model.DhikrPreset
 import com.example.data.model.TasbeehSound
@@ -163,6 +172,9 @@ fun TasbeehScreen(
     onAddCustomDhikr: (transliteration: String, arabicText: String, meaning: String, target: Int) -> Unit = { _, _, _, _ -> },
     onUpdateCustomDhikr: (DhikrPreset) -> Unit = {},
     onDeleteCustomDhikr: (String) -> Unit = {},
+    onReorderDhikrs: (List<String>) -> Unit = {},
+    onRemoveDhikr: (String) -> Unit = {},
+    onRestoreDefaultDhikrs: () -> Unit = {},
     onToggleVibration: (Boolean) -> Unit = {},
     onSelectTasbeehSound: (TasbeehSound) -> Unit = {},
     isActiveTab: Boolean = true,
@@ -171,8 +183,15 @@ fun TasbeehScreen(
     val context = LocalContext.current
     val density = LocalDensity.current
     val haptic = LocalHapticFeedback.current
+    val view = LocalView.current
     val coroutineScope = rememberCoroutineScope()
     val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f
+
+    // Dhikr Customization Edit Mode State
+    var isEditMode by remember { mutableStateOf(false) }
+    var draggingPresetId by remember { mutableStateOf<String?>(null) }
+    var dragOffsetX by remember { mutableFloatStateOf(0f) }
+    val chipLazyListState = rememberLazyListState()
 
     // Vibrator Service Reference
     val vibrator = remember(context) {
@@ -205,13 +224,15 @@ fun TasbeehScreen(
     var targetToDelete by remember { mutableStateOf<Int?>(null) }
 
     val tasbeehPredictiveState = rememberPredictiveBackState()
-    val isTasbeehOverlayActive = showHistorySheet || showCustomDhikrDialog || showAddTargetDialog || dhikrToDelete != null || targetToDelete != null || showFeedbackSettings
+    val isTasbeehOverlayActive = showHistorySheet || showCustomDhikrDialog || showAddTargetDialog || dhikrToDelete != null || targetToDelete != null || showFeedbackSettings || isEditMode
 
     RegisterPredictiveBackHandler(
         enabled = isActiveTab && isTasbeehOverlayActive,
         backState = tasbeehPredictiveState,
         onBack = {
-            if (showHistorySheet) {
+            if (isEditMode) {
+                isEditMode = false
+            } else if (showHistorySheet) {
                 showHistorySheet = false
             } else if (showCustomDhikrDialog) {
                 showCustomDhikrDialog = false
@@ -641,6 +662,52 @@ fun TasbeehScreen(
                             )
                         )
                     }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.Refresh, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.semanticPrimaryAccent)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Restore Default Dhikrs", style = MaterialTheme.typography.bodyMedium, color = Color.semanticPrimaryText)
+                        }
+                        TextButton(
+                            onClick = {
+                                FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
+                                onRestoreDefaultDhikrs()
+                            },
+                            modifier = Modifier.testTag("restore_default_dhikrs_btn")
+                        ) {
+                            Text("Restore", style = MaterialTheme.typography.labelMedium, color = Color.semanticPrimaryAccent, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // LaunchedEffect for smooth edge auto-scrolling when dragging chip
+        LaunchedEffect(draggingPresetId, dragOffsetX) {
+            if (draggingPresetId != null) {
+                val visibleItems = chipLazyListState.layoutInfo.visibleItemsInfo
+                val draggedItem = visibleItems.find { it.key == draggingPresetId }
+                if (draggedItem != null) {
+                    val viewportWidth = chipLazyListState.layoutInfo.viewportSize.width.toFloat()
+                    val draggedLeft = draggedItem.offset.toFloat() + dragOffsetX
+                    val draggedRight = draggedLeft + draggedItem.size.toFloat()
+
+                    if (draggedLeft < 40f) {
+                        while (draggingPresetId != null && chipLazyListState.canScrollBackward) {
+                            chipLazyListState.scrollBy(-12f)
+                            delay(16)
+                        }
+                    } else if (draggedRight > viewportWidth - 40f) {
+                        while (draggingPresetId != null && chipLazyListState.canScrollForward) {
+                            chipLazyListState.scrollBy(12f)
+                            delay(16)
+                        }
+                    }
                 }
             }
         }
@@ -649,13 +716,29 @@ fun TasbeehScreen(
         // SECTION 2 & 3: DHIKR SELECTOR + STANDALONE DHIKR "+" BUTTON
         // Which Dhikr is being recited. Horizontally scrollable row + standalone '+'
         // =========================================================================
+        AnimatedVisibility(
+            visible = isEditMode,
+            enter = fadeIn(tween(180)) + expandVertically(tween(180)),
+            exit = fadeOut(tween(150)) + shrinkVertically(tween(150))
+        ) {
+            Text(
+                text = "Drag chips to reorder · Tap × to remove",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.semanticMutedText,
+                modifier = Modifier.padding(bottom = 2.dp)
+            )
+        }
+
         LazyRow(
+            state = chipLazyListState,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
         ) {
             items(presets, key = { it.id }) { preset ->
                 val isSelected = preset.id == selectedPreset.id
+                val isBeingDragged = draggingPresetId == preset.id
+
                 val pillBg by animateColorAsState(
                     targetValue = if (isSelected) {
                         Color.semanticPrimaryAccent
@@ -680,41 +763,164 @@ fun TasbeehScreen(
                     BorderStroke(1.dp, Color.semanticBorder)
                 }
 
+                val dragScale by animateFloatAsState(
+                    targetValue = if (isBeingDragged) 1.04f else 1.0f,
+                    animationSpec = spring(stiffness = 400f, dampingRatio = 0.8f),
+                    label = "dragScale"
+                )
+
                 Surface(
                     shape = RoundedCornerShape(16.dp),
                     color = pillBg,
                     border = pillBorder,
+                    shadowElevation = if (isBeingDragged) 6.dp else 0.dp,
                     modifier = Modifier
                         .testTag("preset_${preset.id}")
                         .semantics {
-                            contentDescription = if (preset.isCustom) {
-                                "${preset.nameEnglish}, long press to delete"
+                            contentDescription = if (isEditMode) {
+                                "${preset.nameEnglish}, draggable, tap X to remove"
                             } else {
                                 preset.nameEnglish
                             }
                         }
-                        .pointerInput(preset.id) {
-                            detectTapGestures(
-                                onTap = {
-                                    onSelectPreset(preset)
-                                    isAutoCountEnabled = false
-                                },
-                                onLongPress = {
-                                    if (preset.isCustom) {
-                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        dhikrToDelete = preset
+                        .zIndex(if (isBeingDragged) 10f else 1f)
+                        .graphicsLayer {
+                            scaleX = dragScale
+                            scaleY = dragScale
+                            translationX = if (isBeingDragged) dragOffsetX else 0f
+                        }
+                        .pointerInput(preset.id, isEditMode, presets) {
+                            if (isEditMode) {
+                                detectHorizontalDragGestures(
+                                    onDragStart = {
+                                        draggingPresetId = preset.id
+                                        dragOffsetX = 0f
+                                        FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
+                                    },
+                                    onDragEnd = {
+                                        draggingPresetId = null
+                                        dragOffsetX = 0f
+                                    },
+                                    onDragCancel = {
+                                        draggingPresetId = null
+                                        dragOffsetX = 0f
+                                    },
+                                    onHorizontalDrag = { change, dragAmount ->
+                                        change.consume()
+                                        dragOffsetX += dragAmount
+
+                                        val visibleItems = chipLazyListState.layoutInfo.visibleItemsInfo
+                                        val currentItemInfo = visibleItems.find { it.key == preset.id }
+                                        if (currentItemInfo != null) {
+                                            val currentIndex = presets.indexOfFirst { it.id == preset.id }
+                                            if (currentIndex != -1) {
+                                                val currentCenter = currentItemInfo.offset.toFloat() + currentItemInfo.size.toFloat() / 2f + dragOffsetX
+
+                                                if (currentIndex > 0 && dragOffsetX < 0f) {
+                                                    val prevItemInfo = visibleItems.find { it.key == presets[currentIndex - 1].id }
+                                                    val prevCenter = if (prevItemInfo != null) {
+                                                        prevItemInfo.offset.toFloat() + prevItemInfo.size.toFloat() / 2f
+                                                    } else {
+                                                        currentItemInfo.offset.toFloat() - currentItemInfo.size.toFloat() / 2f
+                                                    }
+
+                                                    if (currentCenter < prevCenter) {
+                                                        val mutableOrder = presets.map { it.id }.toMutableList()
+                                                        val movedId = mutableOrder.removeAt(currentIndex)
+                                                        mutableOrder.add(currentIndex - 1, movedId)
+                                                        onReorderDhikrs(mutableOrder)
+                                                        FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled)
+                                                        dragOffsetX += currentItemInfo.size.toFloat()
+                                                    }
+                                                } else if (currentIndex < presets.size - 1 && dragOffsetX > 0f) {
+                                                    val nextItemInfo = visibleItems.find { it.key == presets[currentIndex + 1].id }
+                                                    val nextCenter = if (nextItemInfo != null) {
+                                                        nextItemInfo.offset.toFloat() + nextItemInfo.size.toFloat() / 2f
+                                                    } else {
+                                                        currentItemInfo.offset.toFloat() + currentItemInfo.size.toFloat() * 1.5f
+                                                    }
+
+                                                    if (currentCenter > nextCenter) {
+                                                        val mutableOrder = presets.map { it.id }.toMutableList()
+                                                        val movedId = mutableOrder.removeAt(currentIndex)
+                                                        mutableOrder.add(currentIndex + 1, movedId)
+                                                        onReorderDhikrs(mutableOrder)
+                                                        FiveLightHaptics.performSoftTick(view, haptic, isVibrationEnabled)
+                                                        dragOffsetX -= currentItemInfo.size.toFloat()
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
-                                }
-                            )
+                                )
+                            } else {
+                                detectTapGestures(
+                                    onTap = {
+                                        onSelectPreset(preset)
+                                        isAutoCountEnabled = false
+                                    },
+                                    onLongPress = {
+                                        isEditMode = true
+                                        FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
+                                    }
+                                )
+                            }
                         }
                 ) {
-                    Text(
-                        text = preset.nameEnglish,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                        color = pillText,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(
+                            start = 14.dp,
+                            end = if (isEditMode && presets.size > 1) 6.dp else 14.dp,
+                            top = 8.dp,
+                            bottom = 8.dp
+                        )
+                    ) {
+                        Text(
+                            text = preset.nameEnglish,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = pillText
+                        )
+
+                        AnimatedVisibility(
+                            visible = isEditMode && presets.size > 1,
+                            enter = fadeIn(tween(220)) + expandHorizontally(tween(220)),
+                            exit = fadeOut(tween(200)) + shrinkHorizontally(tween(200))
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isSelected) {
+                                                (if (isDarkTheme) Color(0xFFFFFFFF) else Color.semanticAccentForeground).copy(alpha = 0.25f)
+                                            } else {
+                                                Color.semanticBorder.copy(alpha = 0.8f)
+                                            }
+                                        )
+                                        .clickable {
+                                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
+                                            onRemoveDhikr(preset.id)
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Close,
+                                        contentDescription = "Remove ${preset.nameEnglish}",
+                                        tint = if (isSelected) {
+                                            if (isDarkTheme) Color(0xFFFFFFFF) else Color.semanticAccentForeground
+                                        } else {
+                                            Color.semanticPrimaryText
+                                        },
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -743,6 +949,72 @@ fun TasbeehScreen(
                             tint = Color.semanticPrimaryAccent,
                             modifier = Modifier.size(17.dp)
                         )
+                    }
+                }
+            }
+
+            // Restore Defaults & Done Actions shown when in Edit Mode
+            if (isEditMode) {
+                item {
+                    Surface(
+                        onClick = {
+                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
+                            onRestoreDefaultDhikrs()
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.semanticSurface,
+                        border = BorderStroke(1.dp, Color.semanticBorder),
+                        modifier = Modifier.height(34.dp).testTag("restore_defaults_chip_btn")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Refresh,
+                                contentDescription = "Restore Defaults",
+                                tint = Color.semanticPrimaryAccent,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Restore Defaults",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.semanticPrimaryAccent,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
+
+                item {
+                    Surface(
+                        onClick = {
+                            FiveLightHaptics.performLightTap(view, haptic, isVibrationEnabled)
+                            isEditMode = false
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.semanticPrimaryAccent,
+                        modifier = Modifier.height(34.dp).testTag("done_edit_dhikr_btn")
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 14.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Check,
+                                contentDescription = "Done editing",
+                                tint = if (isDarkTheme) Color(0xFFFFFFFF) else Color.semanticAccentForeground,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Done",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isDarkTheme) Color(0xFFFFFFFF) else Color.semanticAccentForeground,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }

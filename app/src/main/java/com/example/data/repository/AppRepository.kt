@@ -268,6 +268,109 @@ class AppRepository(
     private val _customDhikrs = MutableStateFlow<List<DhikrPreset>>(loadCustomDhikrs())
     val customDhikrs: StateFlow<List<DhikrPreset>> = _customDhikrs
 
+    // Dhikr Order & Removal Persistence
+    private val _dhikrOrder = MutableStateFlow<List<String>>(loadDhikrOrder())
+    private val _removedDhikrs = MutableStateFlow<Set<String>>(loadRemovedDhikrs())
+
+    private fun loadDhikrOrder(): List<String> {
+        val jsonString = prefs?.getString("dhikr_order_json", null) ?: return emptyList()
+        return try {
+            val array = org.json.JSONArray(jsonString)
+            val list = mutableListOf<String>()
+            for (i in 0 until array.length()) {
+                list.add(array.getString(i))
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveDhikrOrderToPrefs(order: List<String>) {
+        val array = org.json.JSONArray()
+        order.forEach { array.put(it) }
+        prefs?.edit()?.putString("dhikr_order_json", array.toString())?.apply()
+    }
+
+    private fun loadRemovedDhikrs(): Set<String> {
+        val jsonString = prefs?.getString("removed_dhikrs_json", null) ?: return emptySet()
+        return try {
+            val array = org.json.JSONArray(jsonString)
+            val set = mutableSetOf<String>()
+            for (i in 0 until array.length()) {
+                set.add(array.getString(i))
+            }
+            set
+        } catch (_: Exception) {
+            emptySet()
+        }
+    }
+
+    private fun saveRemovedDhikrsToPrefs(removed: Set<String>) {
+        val array = org.json.JSONArray()
+        removed.forEach { array.put(it) }
+        prefs?.edit()?.putString("removed_dhikrs_json", array.toString())?.apply()
+    }
+
+    private fun buildOrderedDhikrs(
+        customList: List<DhikrPreset>,
+        orderIds: List<String>,
+        removedIds: Set<String>
+    ): List<DhikrPreset> {
+        val allMap = (DHIKR_PRESETS + customList).associateBy { it.id }
+        val remainingKeys = allMap.keys.filterNot { removedIds.contains(it) }
+
+        if (remainingKeys.isEmpty()) {
+            return listOf(DHIKR_PRESETS[0])
+        }
+
+        val sorted = remainingKeys.sortedBy { id ->
+            val idx = orderIds.indexOf(id)
+            if (idx != -1) idx else Int.MAX_VALUE
+        }
+        return sorted.mapNotNull { allMap[it] }
+    }
+
+    private val _allDhikrs = MutableStateFlow<List<DhikrPreset>>(
+        buildOrderedDhikrs(_customDhikrs.value, _dhikrOrder.value, _removedDhikrs.value)
+    )
+    val allDhikrs: StateFlow<List<DhikrPreset>> = _allDhikrs
+
+    private fun refreshAllDhikrs() {
+        _allDhikrs.value = buildOrderedDhikrs(_customDhikrs.value, _dhikrOrder.value, _removedDhikrs.value)
+    }
+
+    fun reorderDhikrs(newOrderIds: List<String>) {
+        _dhikrOrder.value = newOrderIds
+        saveDhikrOrderToPrefs(newOrderIds)
+        refreshAllDhikrs()
+        prefs?.edit()?.putLong("tasbeeh_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyTasbeehStateChanged()
+    }
+
+    fun removeDhikr(presetId: String) {
+        val preset = (DHIKR_PRESETS + _customDhikrs.value).find { it.id == presetId } ?: return
+        if (preset.isCustom) {
+            deleteCustomDhikr(presetId)
+        } else {
+            val updatedRemoved = _removedDhikrs.value + presetId
+            _removedDhikrs.value = updatedRemoved
+            saveRemovedDhikrsToPrefs(updatedRemoved)
+            refreshAllDhikrs()
+            prefs?.edit()?.putLong("tasbeeh_updated_at", System.currentTimeMillis())?.apply()
+            if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyTasbeehStateChanged()
+        }
+    }
+
+    fun restoreDefaultDhikrs() {
+        _dhikrOrder.value = emptyList()
+        _removedDhikrs.value = emptySet()
+        prefs?.edit()?.remove("dhikr_order_json")?.remove("removed_dhikrs_json")
+            ?.putLong("tasbeeh_updated_at", System.currentTimeMillis())?.apply()
+        refreshAllDhikrs()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyTasbeehStateChanged()
+    }
+
     private fun loadCustomDhikrs(): List<DhikrPreset> {
         val jsonString = prefs?.getString("custom_dhikrs_json", null) ?: return emptyList()
         return try {
@@ -310,6 +413,7 @@ class AppRepository(
         val updated = _customDhikrs.value + preset
         _customDhikrs.value = updated
         saveCustomDhikrsToPrefs(updated)
+        refreshAllDhikrs()
         prefs?.edit()?.putLong("tasbeeh_updated_at", System.currentTimeMillis())?.apply()
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyTasbeehStateChanged()
     }
@@ -318,6 +422,7 @@ class AppRepository(
         val updated = _customDhikrs.value.map { if (it.id == preset.id) preset else it }
         _customDhikrs.value = updated
         saveCustomDhikrsToPrefs(updated)
+        refreshAllDhikrs()
         prefs?.edit()?.putLong("tasbeeh_updated_at", System.currentTimeMillis())?.apply()
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyTasbeehStateChanged()
     }
@@ -326,6 +431,9 @@ class AppRepository(
         val updated = _customDhikrs.value.filterNot { it.id == presetId }
         _customDhikrs.value = updated
         saveCustomDhikrsToPrefs(updated)
+        _dhikrOrder.value = _dhikrOrder.value.filterNot { it == presetId }
+        saveDhikrOrderToPrefs(_dhikrOrder.value)
+        refreshAllDhikrs()
         prefs?.edit()?.remove("dhikr_count_$presetId")?.remove("dhikr_target_$presetId")
             ?.putLong("tasbeeh_updated_at", System.currentTimeMillis())?.apply()
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyTasbeehStateChanged()

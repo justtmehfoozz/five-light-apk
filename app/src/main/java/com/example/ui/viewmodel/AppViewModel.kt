@@ -605,12 +605,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
 
     // Tasbeeh State
     val customDhikrs: StateFlow<List<DhikrPreset>> = repository.customDhikrs
-    val allDhikrs: StateFlow<List<DhikrPreset>> = kotlinx.coroutines.flow.combine(
-        MutableStateFlow(repository.DHIKR_PRESETS),
-        customDhikrs
-    ) { presets, custom ->
-        presets + custom
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, repository.DHIKR_PRESETS)
+    val allDhikrs: StateFlow<List<DhikrPreset>> = repository.allDhikrs
 
     val customTargets: StateFlow<List<Int>> = repository.customTargets
     val allTargets: StateFlow<List<Int>> = kotlinx.coroutines.flow.combine(
@@ -1774,7 +1769,33 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
         val wasSelected = _selectedDhikr.value.id == presetId
         repository.deleteCustomDhikr(presetId)
         if (wasSelected) {
-            selectDhikrPreset(repository.DHIKR_PRESETS[0])
+            val remaining = repository.allDhikrs.value
+            if (remaining.isNotEmpty()) {
+                selectDhikrPreset(remaining[0])
+            }
+        }
+    }
+
+    fun reorderDhikrs(newOrderIds: List<String>) {
+        repository.reorderDhikrs(newOrderIds)
+    }
+
+    fun removeDhikr(presetId: String) {
+        val wasSelected = _selectedDhikr.value.id == presetId
+        repository.removeDhikr(presetId)
+        if (wasSelected) {
+            val remaining = repository.allDhikrs.value
+            if (remaining.isNotEmpty()) {
+                selectDhikrPreset(remaining[0])
+            }
+        }
+    }
+
+    fun restoreDefaultDhikrs() {
+        repository.restoreDefaultDhikrs()
+        val remaining = repository.allDhikrs.value
+        if (remaining.isNotEmpty() && remaining.none { it.id == _selectedDhikr.value.id }) {
+            selectDhikrPreset(remaining[0])
         }
     }
 
