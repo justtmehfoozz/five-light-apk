@@ -93,6 +93,21 @@ fun FiveLightTheme(
     val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
     val semanticColors = if (darkTheme) DarkSemanticColors else LightSemanticColors
 
+    val view = androidx.compose.ui.platform.LocalView.current
+    if (!view.isInEditMode) {
+        androidx.compose.runtime.SideEffect {
+            var context = view.context
+            while (context is android.content.ContextWrapper) {
+                if (context is android.app.Activity) break
+                context = context.baseContext
+            }
+            val window = (context as? android.app.Activity)?.window
+            if (window != null) {
+                androidx.core.view.WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            }
+        }
+    }
+
     // 2. Draw-only overlay crossfade:
     // Tracks theme transitions synchronously in composition so there is ZERO 1-frame gap before overlayAlpha is set
     var lastDarkTheme by remember { mutableStateOf(darkTheme) }
