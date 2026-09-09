@@ -132,17 +132,17 @@ fun PreLoginPromptScreen(
             }
         }
 
-        // 220ms - 850ms: Wordmark Glow awakening sequence (peak -> settle)
+        // 220ms - 850ms: Temporary Wordmark illumination during reveal (peak -> disappears completely)
         launch {
             kotlinx.coroutines.delay(220)
-            // Soft peak
-            launch { glowAlpha.animateTo(0.85f, tween(260, easing = FastOutSlowInEasing)) }
-            launch { glowRadiusDp.animateTo(46f, tween(260, easing = FastOutSlowInEasing)) }
+            // Subtle temporary reveal illumination
+            launch { glowAlpha.animateTo(0.40f, tween(260, easing = FastOutSlowInEasing)) }
+            launch { glowRadiusDp.animateTo(42f, tween(260, easing = FastOutSlowInEasing)) }
 
             kotlinx.coroutines.delay(260)
-            // Settle naturally
-            launch { glowAlpha.animateTo(0.38f, tween(400, easing = FastOutSlowInEasing)) }
-            launch { glowRadiusDp.animateTo(32f, tween(400, easing = FastOutSlowInEasing)) }
+            // Disappears completely to 0f — no permanent glow behind logo
+            launch { glowAlpha.animateTo(0f, tween(400, easing = FastOutSlowInEasing)) }
+            launch { glowRadiusDp.animateTo(24f, tween(400, easing = FastOutSlowInEasing)) }
         }
 
         // 360ms: Headline enters
@@ -257,31 +257,33 @@ fun PreLoginPromptScreen(
                     .weight(0.32f),
                 contentAlignment = Alignment.Center
             ) {
-                // Soft Blurred Glow Layer behind sharp text
-                Canvas(
-                    modifier = Modifier
-                        .size(width = 280.dp, height = 110.dp)
-                        .graphicsLayer {
-                            alpha = glowAlpha.value * wordmarkAlpha.value * wordmarkAmbientBreathMult
-                            translationY = wordmarkOffsetY.value
-                        }
-                ) {
-                    val centerOffset = Offset(size.width / 2f, size.height / 2f)
-                    val currentRadiusPx = glowRadiusDp.value.dp.toPx()
+                // Temporary subtle emergence illumination — disappears completely after reveal
+                if (glowAlpha.value > 0.001f) {
+                    Canvas(
+                        modifier = Modifier
+                            .size(width = 280.dp, height = 110.dp)
+                            .graphicsLayer {
+                                alpha = glowAlpha.value * wordmarkAlpha.value
+                                translationY = wordmarkOffsetY.value
+                            }
+                    ) {
+                        val centerOffset = Offset(size.width / 2f, size.height / 2f)
+                        val currentRadiusPx = glowRadiusDp.value.dp.toPx()
 
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                wordmarkGlowColor.copy(alpha = 0.50f),
-                                wordmarkGlowColor.copy(alpha = 0.15f),
-                                Color.Transparent
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    wordmarkGlowColor.copy(alpha = 0.35f * glowAlpha.value),
+                                    wordmarkGlowColor.copy(alpha = 0.10f * glowAlpha.value),
+                                    Color.Transparent
+                                ),
+                                center = centerOffset,
+                                radius = currentRadiusPx
                             ),
-                            center = centerOffset,
-                            radius = currentRadiusPx
-                        ),
-                        radius = currentRadiusPx,
-                        center = centerOffset
-                    )
+                            radius = currentRadiusPx,
+                            center = centerOffset
+                        )
+                    }
                 }
 
                 // Sharp Wordmark Text

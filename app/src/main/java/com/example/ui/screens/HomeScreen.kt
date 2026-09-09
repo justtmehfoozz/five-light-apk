@@ -597,29 +597,33 @@ fun HomeScreen(
                 bottomPadding = 0.dp,
                 actions = {
                     Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-                            .clickable { onOpenSettings() }
-                            .testTag("header_search_btn"),
+                        modifier = Modifier.size(38.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Settings,
-                            contentDescription = "Settings",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(CircleShape)
+                                .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
+                                .clickable { onOpenSettings() }
+                                .testTag("header_search_btn"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Settings,
+                                contentDescription = "Settings",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
 
                         if (isUpdateAvailable) {
                             Box(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .align(Alignment.TopEnd)
-                                    .padding(top = 2.dp, end = 2.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.semanticError)
+                                    .offset(x = 1.dp, y = (-1).dp)
+                                    .background(Color.semanticError, CircleShape)
                                     .testTag("settings_update_badge")
                             )
                         }

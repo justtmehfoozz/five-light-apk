@@ -1358,8 +1358,7 @@ fun GroupedMenuRow(
                     Box(
                         modifier = Modifier
                             .size(7.dp)
-                            .clip(CircleShape)
-                            .background(Color.semanticError)
+                            .background(Color.semanticError, CircleShape)
                             .testTag("menu_row_badge")
                     )
                 }
