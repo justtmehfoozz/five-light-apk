@@ -487,7 +487,7 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
         )
 
         val builder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification_small)
             .setSubText("FiveLight")
             .setContentTitle(title)
             .setContentText(message)
@@ -518,14 +518,14 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             builder.addAction(
-                R.drawable.ic_launcher_foreground,
+                R.drawable.ic_notification_small,
                 "Mark as prayed",
                 markPrayedPendingIntent
             )
         }
 
         builder.addAction(
-            R.drawable.ic_launcher_foreground,
+            R.drawable.ic_notification_small,
             "Open FiveLight",
             openAppPendingIntent
         )
@@ -583,7 +583,7 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
         val message = "Recorded in Personal Log."
 
         val builder = NotificationCompat.Builder(context, SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification_small)
             .setSubText("FiveLight")
             .setContentTitle(title)
             .setContentText(message)
@@ -592,7 +592,7 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .setContentIntent(openAppPendingIntent)
             .addAction(
-                R.drawable.ic_launcher_foreground,
+                R.drawable.ic_notification_small,
                 "Undo",
                 undoPendingIntent
             )
@@ -625,7 +625,7 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
         }
 
         val builder = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification_small)
             .setSubText("FiveLight")
             .setContentTitle(title)
             .setContentText(message)

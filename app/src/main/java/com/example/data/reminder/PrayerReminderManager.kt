@@ -326,7 +326,7 @@ class PrayerReminderManager(private val context: Context) {
         val title = "$displayName Prayer Reminder"
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification_small)
             .setContentTitle(title)
             .setContentText(subtext)
             .setPriority(NotificationCompat.PRIORITY_HIGH)

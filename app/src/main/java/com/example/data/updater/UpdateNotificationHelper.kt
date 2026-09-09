@@ -50,7 +50,7 @@ class UpdateNotificationHelper(private val context: Context) {
         val message = "Version ${releaseInfo.versionName} (Build ${releaseInfo.versionCode}) is available to install."
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification_small)
             .setSubText("FiveLight Update")
             .setContentTitle(versionTitle)
             .setContentText(message)
