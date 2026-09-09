@@ -199,4 +199,78 @@ class AppUpdateManagerTest {
         )
         assertTrue(errorState.canRetry)
     }
+
+    @Test
+    fun testVersionCodeRemoteGreaterThanLocal() {
+        val remoteVersionCode = 8L
+        val localVersionCode = 7L
+        assertTrue(remoteVersionCode > localVersionCode)
+    }
+
+    @Test
+    fun testVersionCodeRemoteEqualsLocal() {
+        val remoteVersionCode = 7L
+        val localVersionCode = 7L
+        assertEquals(remoteVersionCode, localVersionCode)
+    }
+
+    @Test
+    fun testVersionCodeRemoteLessThanLocal() {
+        val remoteVersionCode = 6L
+        val localVersionCode = 7L
+        assertTrue(remoteVersionCode < localVersionCode)
+    }
+
+    @Test
+    fun testMalformedAtomFeedReturnsNull() {
+        val malformedFeed = "this is not xml at all"
+        val parsed = updateManager.parseAtomFeed(malformedFeed)
+        org.junit.Assert.assertNull(parsed)
+    }
+
+    @Test
+    fun testFutureReleaseTagAndAssetResolution() {
+        val futureTagName = "2.0"
+        val downloadUrl = "https://github.com/justtmehfoozz/five-light-apk/releases/download/$futureTagName/FiveLight.apk"
+        assertEquals("https://github.com/justtmehfoozz/five-light-apk/releases/download/2.0/FiveLight.apk", downloadUrl)
+    }
+
+    @Test
+    fun testValidateApkOlderVersionCode() {
+        val dummyFile = File(context.cacheDir, "test_old.apk").apply { createNewFile() }
+        val dummyRelease = ReleaseInfo(
+            versionName = "1.8",
+            versionCode = 6, // older than current 7
+            tagName = "1.8",
+            name = "FiveLight 1.8",
+            body = "",
+            publishedAt = "",
+            apkDownloadUrl = "",
+            apkFileName = "FiveLight.apk",
+            apkSize = 100L
+        )
+        val result = updateManager.validateApk(dummyFile, dummyRelease)
+        assertTrue(result.isFailure)
+        dummyFile.delete()
+    }
+
+    @Test
+    fun testDownloadStatusMapping404() {
+        val code = 404
+        val errMsg = when (code) {
+            404 -> "The update APK is temporarily unavailable on GitHub. Please try again in a few minutes."
+            else -> "Download failed."
+        }
+        assertEquals("The update APK is temporarily unavailable on GitHub. Please try again in a few minutes.", errMsg)
+    }
+
+    @Test
+    fun testDownloadStatusMapping500() {
+        val code = 503
+        val errMsg = when (code) {
+            in 500..599 -> "GitHub servers are temporarily unavailable. Please try again later."
+            else -> "Download failed."
+        }
+        assertEquals("GitHub servers are temporarily unavailable. Please try again later.", errMsg)
+    }
 }

@@ -378,8 +378,12 @@ class AppUpdateManager(private val context: Context) {
                         canRetry = true
                     )
                 } else {
+                    val msg = when (resp.code) {
+                        in 500..599 -> "GitHub servers are temporarily unavailable. Please try again later."
+                        else -> "GitHub update server is temporarily inaccessible (HTTP ${resp.code}). Please try again later."
+                    }
                     UpdateState.Error(
-                        message = "GitHub API request failed (HTTP ${resp.code}). Please try again later.",
+                        message = msg,
                         isNetworkError = true,
                         canRetry = true
                     )
@@ -569,7 +573,12 @@ class AppUpdateManager(private val context: Context) {
             val response = call.execute()
             if (!response.isSuccessful) {
                 targetApk.delete()
-                val errorState = UpdateState.Error("Download failed with HTTP ${response.code}", isNetworkError = true)
+                val errMsg = when (response.code) {
+                    404 -> "The update APK is temporarily unavailable on GitHub. Please try again in a few minutes."
+                    in 500..599 -> "GitHub servers are temporarily unavailable. Please try again later."
+                    else -> "Download failed (HTTP ${response.code})."
+                }
+                val errorState = UpdateState.Error(errMsg, isNetworkError = true, canRetry = true)
                 _updateState.value = errorState
                 return@withContext errorState
             }
