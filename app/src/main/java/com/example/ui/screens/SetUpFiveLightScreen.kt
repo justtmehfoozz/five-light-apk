@@ -911,17 +911,26 @@ private fun WelcomeBackRestoreStep(
     }
 
     val driveAuthLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
+        contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-        try {
-            val account = task.getResult(ApiException::class.java)
-            if (account != null && GoogleSignIn.hasPermissions(account, GoogleDriveService.DRIVE_APPDATA_SCOPE)) {
-                driveAccount = account
-                Toast.makeText(context, "Google Drive connected: ${account.email}", Toast.LENGTH_SHORT).show()
-                isCheckingBackup = true
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            try {
+                val data = result.data
+                val authResult = com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(context)
+                    .getAuthorizationResultFromIntent(data)
+                val hasScope = authResult.grantedScopes.any { it.toString().contains("drive.appdata") }
+                if (hasScope) {
+                    val account = GoogleSignIn.getLastSignedInAccount(context)
+                    driveAccount = account
+                    Toast.makeText(context, "Google Drive connected: ${account?.email ?: "Success"}", Toast.LENGTH_SHORT).show()
+                    isCheckingBackup = true
+                } else {
+                    Toast.makeText(context, "Google Drive authorization was not granted", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Google Drive authorization failed", Toast.LENGTH_SHORT).show()
             }
-        } catch (e: Exception) {
+        } else {
             Toast.makeText(context, "Google Drive authorization was not granted", Toast.LENGTH_SHORT).show()
         }
     }
@@ -1391,10 +1400,25 @@ private fun WelcomeBackRestoreStep(
                 PrimaryOnboardingButton(
                     text = "Connect Matching Drive Account",
                     onClick = {
-                        val signInClient = GoogleDriveService.getGoogleSignInClient(context)
-                        signInClient.signOut().addOnCompleteListener {
-                            driveAuthLauncher.launch(signInClient.signInIntent)
-                        }
+                        val request = com.google.android.gms.auth.api.identity.AuthorizationRequest.builder()
+                            .setRequestedScopes(listOf(GoogleDriveService.DRIVE_APPDATA_SCOPE))
+                            .build()
+                        com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(context)
+                            .authorize(request)
+                            .addOnSuccessListener { authResult ->
+                                val pendingIntent = authResult.pendingIntent
+                                if (authResult.hasResolution() && pendingIntent != null) {
+                                    val intentSenderRequest = androidx.activity.result.IntentSenderRequest.Builder(pendingIntent).build()
+                                    driveAuthLauncher.launch(intentSenderRequest)
+                                } else {
+                                    val account = GoogleSignIn.getLastSignedInAccount(context)
+                                    driveAccount = account
+                                    isCheckingBackup = true
+                                }
+                            }
+                            .addOnFailureListener { e ->
+                                Toast.makeText(context, "Failed to start Google Drive authorization", Toast.LENGTH_SHORT).show()
+                            }
                     },
                     testTag = "switch_google_drive_account_button"
                 )
@@ -2675,16 +2699,25 @@ private fun AutomaticBackupStep(
     var hasAutoTriggeredDrive by rememberSaveable { mutableStateOf(false) }
 
     val driveAuthLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
+        contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-        try {
-            val account = task.getResult(ApiException::class.java)
-            if (account != null && GoogleSignIn.hasPermissions(account, GoogleDriveService.DRIVE_APPDATA_SCOPE)) {
-                driveAccount = account
-                Toast.makeText(context, "Google Drive connected: ${account.email}", Toast.LENGTH_SHORT).show()
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            try {
+                val data = result.data
+                val authResult = com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(context)
+                    .getAuthorizationResultFromIntent(data)
+                val hasScope = authResult.grantedScopes.any { it.toString().contains("drive.appdata") }
+                if (hasScope) {
+                    val account = GoogleSignIn.getLastSignedInAccount(context)
+                    driveAccount = account
+                    Toast.makeText(context, "Google Drive connected: ${account?.email ?: "Success"}", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "Google Drive connection was not granted", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Google Drive connection failed", Toast.LENGTH_SHORT).show()
             }
-        } catch (e: Exception) {
+        } else {
             Toast.makeText(context, "Google Drive connection cancelled", Toast.LENGTH_SHORT).show()
         }
     }
@@ -2692,13 +2725,26 @@ private fun AutomaticBackupStep(
     // Automatically detect and initialize existing Google Drive authorization or trigger connect flow
     LaunchedEffect(Unit) {
         val account = GoogleDriveService.getAuthorizedAccount(context)
-        if (account != null && GoogleSignIn.hasPermissions(account, GoogleDriveService.DRIVE_APPDATA_SCOPE)) {
+        if (account != null) {
             driveAccount = account
         } else if (!hasAutoTriggeredDrive) {
             hasAutoTriggeredDrive = true
             try {
-                val signInClient = GoogleDriveService.getGoogleSignInClient(context)
-                driveAuthLauncher.launch(signInClient.signInIntent)
+                val request = com.google.android.gms.auth.api.identity.AuthorizationRequest.builder()
+                    .setRequestedScopes(listOf(GoogleDriveService.DRIVE_APPDATA_SCOPE))
+                    .build()
+                com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(context)
+                    .authorize(request)
+                    .addOnSuccessListener { authResult ->
+                        val pendingIntent = authResult.pendingIntent
+                        if (authResult.hasResolution() && pendingIntent != null) {
+                            val intentSenderRequest = androidx.activity.result.IntentSenderRequest.Builder(pendingIntent).build()
+                            driveAuthLauncher.launch(intentSenderRequest)
+                        } else {
+                            val lastAccount = GoogleSignIn.getLastSignedInAccount(context)
+                            driveAccount = lastAccount
+                        }
+                    }
             } catch (_: Exception) {}
         }
     }
@@ -2797,10 +2843,24 @@ private fun AutomaticBackupStep(
                         if (driveAccount == null) {
                             Button(
                                 onClick = {
-                                    val client = GoogleDriveService.getGoogleSignInClient(context)
-                                    client.signOut().addOnCompleteListener {
-                                        driveAuthLauncher.launch(client.signInIntent)
-                                    }
+                                    val request = com.google.android.gms.auth.api.identity.AuthorizationRequest.builder()
+                                        .setRequestedScopes(listOf(GoogleDriveService.DRIVE_APPDATA_SCOPE))
+                                        .build()
+                                    com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(context)
+                                        .authorize(request)
+                                        .addOnSuccessListener { authResult ->
+                                            val pendingIntent = authResult.pendingIntent
+                                            if (authResult.hasResolution() && pendingIntent != null) {
+                                                val intentSenderRequest = androidx.activity.result.IntentSenderRequest.Builder(pendingIntent).build()
+                                                driveAuthLauncher.launch(intentSenderRequest)
+                                            } else {
+                                                val account = GoogleSignIn.getLastSignedInAccount(context)
+                                                driveAccount = account
+                                            }
+                                        }
+                                        .addOnFailureListener { e ->
+                                            Toast.makeText(context, "Failed to start Google Drive authorization", Toast.LENGTH_SHORT).show()
+                                        }
                                 },
                                 shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(
