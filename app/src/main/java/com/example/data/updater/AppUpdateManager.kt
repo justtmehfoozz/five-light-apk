@@ -24,6 +24,8 @@ import java.io.InputStream
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
+import android.util.Xml
+import org.xmlpull.v1.XmlPullParser
 
 class AppUpdateManager(private val context: Context) {
 
@@ -81,6 +83,161 @@ class AppUpdateManager(private val context: Context) {
     private var rateLimitResetEpochSeconds: Long = 0L
 
     /**
+     * Fetches release info using the public, rate-limit-free GitHub Atom feed as a robust fallback.
+     */
+    private fun fetchLatestFromAtomFeed(): ReleaseInfo? {
+        val feedUrl = "https://github.com/justtmehfoozz/five-light-apk/releases.atom"
+        val request = Request.Builder()
+            .url(feedUrl)
+            .header("User-Agent", "FiveLight-Android-App/$currentVersionName")
+            .get()
+            .build()
+        return try {
+            httpClient.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return null
+                val bodyString = resp.body?.string() ?: return null
+                parseAtomFeed(bodyString)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
+     * Parses the public GitHub Atom feed XML content to extract the latest release details.
+     */
+    internal fun parseAtomFeed(bodyString: String): ReleaseInfo? {
+        return try {
+            val parser = Xml.newPullParser()
+            parser.setInput(bodyString.reader())
+
+            var eventType = parser.eventType
+            var inEntry = false
+
+            // Parsed values
+            var title = ""
+            var tagName = ""
+            var publishedAt = ""
+            var unescapedContent = ""
+
+            while (eventType != XmlPullParser.END_DOCUMENT) {
+                val name = parser.name
+                when (eventType) {
+                    XmlPullParser.START_TAG -> {
+                        val localName = name ?: ""
+                        if (localName.equals("entry", ignoreCase = true)) {
+                            inEntry = true
+                        } else if (inEntry) {
+                            when {
+                                localName.equals("title", ignoreCase = true) -> {
+                                    title = parser.nextText().trim()
+                                }
+                                localName.equals("updated", ignoreCase = true) || localName.equals("published", ignoreCase = true) -> {
+                                    publishedAt = parser.nextText().trim()
+                                }
+                                localName.equals("link", ignoreCase = true) -> {
+                                    val href = parser.getAttributeValue(null, "href")
+                                    if (!href.isNullOrBlank()) {
+                                        val tagIndicator = "releases/tag/"
+                                        val idx = href.indexOf(tagIndicator)
+                                        if (idx != -1) {
+                                            var tagPart = href.substring(idx + tagIndicator.length).trim()
+                                            // Strip query parameters
+                                            val queryIdx = tagPart.indexOf('?')
+                                            if (queryIdx != -1) tagPart = tagPart.substring(0, queryIdx)
+                                            // Strip fragment identifiers
+                                            val hashIdx = tagPart.indexOf('#')
+                                            if (hashIdx != -1) tagPart = tagPart.substring(0, hashIdx)
+                                            // Strip trailing slashes
+                                            while (tagPart.endsWith("/")) {
+                                                tagPart = tagPart.substring(0, tagPart.length - 1)
+                                            }
+                                            tagName = tagPart
+                                        }
+                                    }
+                                }
+                                localName.equals("content", ignoreCase = true) -> {
+                                    val htmlContent = parser.nextText().trim()
+                                    unescapedContent = htmlContent
+                                        .replace("&lt;", "<")
+                                        .replace("&gt;", ">")
+                                        .replace("&amp;", "&")
+                                        .replace("&quot;", "\"")
+                                        .replace("&#39;", "'")
+                                }
+                            }
+                        }
+                    }
+                    XmlPullParser.END_TAG -> {
+                        val localName = name ?: ""
+                        if (localName.equals("entry", ignoreCase = true)) {
+                            // We only care about the first entry in the feed (the latest release). Stop parsing.
+                            break
+                        }
+                    }
+                }
+                eventType = parser.next()
+            }
+
+            if (tagName.isBlank()) return null
+
+            // Extract remote versionCode using strict patterns
+            var extractedVersionCode: Long = -1L
+            val patterns = listOf(
+                Pattern.compile("versionCode\\s*[:=]?\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
+                Pattern.compile("Version\\s*Code\\s*[:=]?\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
+                Pattern.compile("build\\s*[:=]?\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
+                Pattern.compile("code\\s*[:=]?\\s*(\\d+)", Pattern.CASE_INSENSITIVE),
+                Pattern.compile("b(\\d+)", Pattern.CASE_INSENSITIVE)
+            )
+
+            for (pat in patterns) {
+                val m = pat.matcher("$unescapedContent\n$title\n$tagName")
+                if (m.find()) {
+                    extractedVersionCode = m.group(1)?.toLongOrNull() ?: -1L
+                    if (extractedVersionCode > 0) break
+                }
+            }
+
+            // Fallback to semantic version name parsing if required
+            val cleanTagName = tagName.removePrefix("v").removePrefix("V").trim()
+            val versionName = if (cleanTagName.isNotBlank()) cleanTagName else title
+
+            if (extractedVersionCode <= 0) {
+                val semverPattern = Pattern.compile("(\\d+)\\.(\\d+)(?:\\.(\\d+))?")
+                val m = semverPattern.matcher(versionName)
+                if (m.find()) {
+                    val major = m.group(1)?.toIntOrNull() ?: 1
+                    val minor = m.group(2)?.toIntOrNull() ?: 0
+                    val patch = m.group(3)?.toIntOrNull() ?: 0
+                    extractedVersionCode = (major * 100 + minor * 10 + patch).toLong()
+                }
+            }
+
+            if (extractedVersionCode <= 0) {
+                extractedVersionCode = currentVersionCode + 1
+            }
+
+            ReleaseInfo(
+                versionName = versionName,
+                versionCode = extractedVersionCode,
+                tagName = tagName,
+                name = title.ifBlank { "FiveLight $versionName" },
+                body = unescapedContent,
+                publishedAt = publishedAt,
+                apkDownloadUrl = "https://github.com/justtmehfoozz/five-light-apk/releases/download/$tagName/FiveLight.apk",
+                apkFileName = "FiveLight.apk",
+                apkSize = 0L,
+                sha256 = null
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
      * Checks the official FiveLight GitHub repository for the latest release.
      * Prevents concurrent or duplicate requests and respects rate-limit cooldowns.
      */
@@ -92,10 +249,29 @@ class AppUpdateManager(private val context: Context) {
 
         val nowEpochSeconds = System.currentTimeMillis() / 1000
         if (!force && rateLimitResetEpochSeconds > nowEpochSeconds) {
+            // Attempt Atom feed fallback to bypass previous rate limits
+            val fallbackParsed = fetchLatestFromAtomFeed()
+            if (fallbackParsed != null) {
+                val state = if (fallbackParsed.versionCode > currentVersionCode) {
+                    UpdateState.UpdateAvailable(
+                        releaseInfo = fallbackParsed,
+                        installedVersionName = currentVersionName,
+                        installedVersionCode = currentVersionCode
+                    )
+                } else {
+                    UpdateState.UpToDate(
+                        installedVersionName = currentVersionName,
+                        installedVersionCode = currentVersionCode
+                    )
+                }
+                _updateState.value = state
+                return@withContext state
+            }
+
             val secondsRemaining = rateLimitResetEpochSeconds - nowEpochSeconds
             val minutesRemaining = (secondsRemaining + 59) / 60
             val rateLimitMsg = "GitHub API hourly request limit reached. Please try again in $minutesRemaining ${if (minutesRemaining == 1L) "minute" else "minutes"}."
-            val state = UpdateState.Error(message = rateLimitMsg, isNetworkError = true, canRetry = false)
+            val state = UpdateState.Error(message = rateLimitMsg, isNetworkError = true, canRetry = true)
             _updateState.value = state
             return@withContext state
         }
@@ -148,36 +324,53 @@ class AppUpdateManager(private val context: Context) {
                         )
                     }
                 } else if (resp.code == 403) {
-                    val respBody = try { resp.body?.string() ?: "" } catch (_: Exception) { "" }
-                    val isRateLimit = remainingHeader == 0L || respBody.contains("rate limit", ignoreCase = true)
+                    // Try rate-limit-free public Atom feed fallback first
+                    val fallbackParsed = fetchLatestFromAtomFeed()
+                    if (fallbackParsed != null) {
+                        if (fallbackParsed.versionCode > currentVersionCode) {
+                            UpdateState.UpdateAvailable(
+                                releaseInfo = fallbackParsed,
+                                installedVersionName = currentVersionName,
+                                installedVersionCode = currentVersionCode
+                            )
+                        } else {
+                            UpdateState.UpToDate(
+                                installedVersionName = currentVersionName,
+                                installedVersionCode = currentVersionCode
+                              )
+                        }
+                    } else {
+                        val respBody = try { resp.body?.string() ?: "" } catch (_: Exception) { "" }
+                        val isRateLimit = remainingHeader == 0L || respBody.contains("rate limit", ignoreCase = true)
 
-                    if (isRateLimit) {
-                        if (resetHeader != null && resetHeader > 0) {
-                            rateLimitResetEpochSeconds = resetHeader
-                            val now = System.currentTimeMillis() / 1000
-                            val secondsRemaining = (resetHeader - now).coerceAtLeast(0)
-                            val minutesRemaining = (secondsRemaining + 59) / 60
-                            val formattedTime = try {
-                                val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-                                sdf.format(java.util.Date(resetHeader * 1000))
-                            } catch (_: Exception) { null }
+                        if (isRateLimit) {
+                            if (resetHeader != null && resetHeader > 0) {
+                                rateLimitResetEpochSeconds = resetHeader
+                                val now = System.currentTimeMillis() / 1000
+                                val secondsRemaining = (resetHeader - now).coerceAtLeast(0)
+                                val minutesRemaining = (secondsRemaining + 59) / 60
+                                val formattedTime = try {
+                                    val sdf = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+                                    sdf.format(java.util.Date(resetHeader * 1000))
+                                } catch (_: Exception) { null }
 
-                            val timeHint = if (formattedTime != null) " (around $formattedTime)" else ""
-                            val msg = "GitHub API hourly request limit reached. Please try again in $minutesRemaining ${if (minutesRemaining == 1L) "minute" else "minutes"}$timeHint."
-                            UpdateState.Error(message = msg, isNetworkError = true, canRetry = false)
+                                val timeHint = if (formattedTime != null) " (around $formattedTime)" else ""
+                                val msg = "GitHub API hourly request limit reached. Please try again in $minutesRemaining ${if (minutesRemaining == 1L) "minute" else "minutes"}$timeHint."
+                                UpdateState.Error(message = msg, isNetworkError = true, canRetry = true)
+                            } else {
+                                UpdateState.Error(
+                                    message = "GitHub API hourly request limit reached. Please try again in a few minutes.",
+                                    isNetworkError = true,
+                                    canRetry = true
+                                )
+                            }
                         } else {
                             UpdateState.Error(
-                                message = "GitHub API hourly request limit reached. Please try again in a few minutes.",
+                                message = "Unable to access GitHub releases (HTTP 403). Please verify network access or try again later.",
                                 isNetworkError = true,
                                 canRetry = true
                             )
                         }
-                    } else {
-                        UpdateState.Error(
-                            message = "Unable to access GitHub releases (HTTP 403). Please verify network access or try again later.",
-                            isNetworkError = true,
-                            canRetry = true
-                        )
                     }
                 } else if (resp.code == 404) {
                     UpdateState.Error(
@@ -194,11 +387,28 @@ class AppUpdateManager(private val context: Context) {
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
-            UpdateState.Error(
-                message = "Network error: ${e.localizedMessage ?: "Unable to connect to GitHub"}",
-                isNetworkError = true,
-                canRetry = true
-            )
+            // Attempt Atom feed fallback on generic network errors too to increase resilience
+            val fallbackParsed = fetchLatestFromAtomFeed()
+            if (fallbackParsed != null) {
+                if (fallbackParsed.versionCode > currentVersionCode) {
+                    UpdateState.UpdateAvailable(
+                        releaseInfo = fallbackParsed,
+                        installedVersionName = currentVersionName,
+                        installedVersionCode = currentVersionCode
+                    )
+                } else {
+                    UpdateState.UpToDate(
+                        installedVersionName = currentVersionName,
+                        installedVersionCode = currentVersionCode
+                    )
+                }
+            } else {
+                UpdateState.Error(
+                    message = "Network error: ${e.localizedMessage ?: "Unable to connect to GitHub"}",
+                    isNetworkError = true,
+                    canRetry = true
+                )
+            }
         }
 
         _updateState.value = finalState

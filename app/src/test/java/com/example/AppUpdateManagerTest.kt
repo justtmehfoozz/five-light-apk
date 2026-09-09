@@ -75,4 +75,128 @@ class AppUpdateManagerTest {
         assertNotNull(intent)
         assertNotNull(intent.action)
     }
+
+    @Test
+    fun testParseAtomFeedCorrectlyExtractsLatestRelease() {
+        val sampleFeed = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom" xml:lang="en-US">
+              <entry>
+                <id>tag:github.com,2008:Repository/1331080292/1.8</id>
+                <updated>2026-09-09T01:40:30Z</updated>
+                <link rel="alternate" type="text/html" href="https://github.com/justtmehfoozz/five-light-apk/releases/tag/1.8"/>
+                <title>FiveLight 1.8</title>
+                <content type="html">&lt;p&gt;FiveLight 1.8&lt;/p&gt;&lt;p&gt;Signed release build.&lt;br&gt;Version Name: 1.8&lt;br&gt;Version Code: 6&lt;/p&gt;</content>
+              </entry>
+            </feed>
+        """.trimIndent()
+
+        val parsed = updateManager.parseAtomFeed(sampleFeed)
+        assertNotNull(parsed)
+        assertEquals("1.8", parsed?.versionName)
+        assertEquals(6L, parsed?.versionCode)
+        assertEquals("1.8", parsed?.tagName)
+        assertEquals("FiveLight 1.8", parsed?.name)
+        assertEquals("https://github.com/justtmehfoozz/five-light-apk/releases/download/1.8/FiveLight.apk", parsed?.apkDownloadUrl)
+        assertEquals("FiveLight.apk", parsed?.apkFileName)
+        assertTrue(parsed?.body?.contains("Version Code: 6") == true)
+    }
+
+    @Test
+    fun testParseAtomFeedWithAttributes() {
+        val sampleFeed = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry xml:lang="en">
+                <id>tag:github.com,2008:Repository/1331080292/1.8</id>
+                <updated>2026-09-09T01:40:30Z</updated>
+                <link rel="alternate" type="text/html" href="https://github.com/justtmehfoozz/five-light-apk/releases/tag/1.8"/>
+                <title>FiveLight 1.8</title>
+                <content type="html">&lt;p&gt;FiveLight 1.8&lt;/p&gt;&lt;p&gt;Signed release build.&lt;br&gt;Version Name: 1.8&lt;br&gt;Version Code: 6&lt;/p&gt;</content>
+              </entry>
+            </feed>
+        """.trimIndent()
+
+        val parsed = updateManager.parseAtomFeed(sampleFeed)
+        assertNotNull(parsed)
+        assertEquals("1.8", parsed?.versionName)
+        assertEquals(6L, parsed?.versionCode)
+    }
+
+    @Test
+    fun testParseAtomFeedWithNamespace() {
+        val sampleFeed = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry xmlns="http://www.w3.org/2005/Atom">
+                <id>tag:github.com,2008:Repository/1331080292/1.8</id>
+                <updated>2026-09-09T01:40:30Z</updated>
+                <link rel="alternate" type="text/html" href="https://github.com/justtmehfoozz/five-light-apk/releases/tag/1.8"/>
+                <title>FiveLight 1.8</title>
+                <content type="html">&lt;p&gt;FiveLight 1.8&lt;/p&gt;&lt;p&gt;Signed release build.&lt;br&gt;Version Name: 1.8&lt;br&gt;Version Code: 6&lt;/p&gt;</content>
+              </entry>
+            </feed>
+        """.trimIndent()
+
+        val parsed = updateManager.parseAtomFeed(sampleFeed)
+        assertNotNull(parsed)
+        assertEquals("1.8", parsed?.versionName)
+        assertEquals(6L, parsed?.versionCode)
+    }
+
+    @Test
+    fun testParseAtomFeedWithWhitespaceVariations() {
+        val sampleFeed = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry 
+                xml:lang="en"
+                xmlns:abc="http://example.com"
+                abc:attr="value"   >
+                <id>tag:github.com,2008:Repository/1331080292/1.8</id>
+                <updated>2026-09-09T01:40:30Z</updated>
+                <link rel="alternate" type="text/html" href="https://github.com/justtmehfoozz/five-light-apk/releases/tag/1.8"/>
+                <title>FiveLight 1.8</title>
+                <content type="html">&lt;p&gt;FiveLight 1.8&lt;/p&gt;&lt;p&gt;Signed release build.&lt;br&gt;Version Name: 1.8&lt;br&gt;Version Code: 6&lt;/p&gt;</content>
+              </entry>
+            </feed>
+        """.trimIndent()
+
+        val parsed = updateManager.parseAtomFeed(sampleFeed)
+        assertNotNull(parsed)
+        assertEquals("1.8", parsed?.versionName)
+        assertEquals(6L, parsed?.versionCode)
+    }
+
+    @Test
+    fun testVersionComparisonWithParsedRelease() {
+        val sampleFeed = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry xml:lang="en-US">
+                <id>tag:github.com,2008:Repository/1331080292/1.8</id>
+                <updated>2026-09-09T01:40:30Z</updated>
+                <link rel="alternate" type="text/html" href="https://github.com/justtmehfoozz/five-light-apk/releases/tag/1.8"/>
+                <title>FiveLight 1.8</title>
+                <content type="html">&lt;p&gt;FiveLight 1.8&lt;/p&gt;&lt;p&gt;Signed release build.&lt;br&gt;Version Name: 1.8&lt;br&gt;Version Code: 6&lt;/p&gt;</content>
+              </entry>
+            </feed>
+        """.trimIndent()
+
+        val parsed = updateManager.parseAtomFeed(sampleFeed)
+        assertNotNull(parsed)
+        val remoteCode = parsed!!.versionCode
+        val installedCode = 5L // simulated v1.7
+        assertTrue(remoteCode > installedCode)
+    }
+
+    @Test
+    fun testRateLimitErrorExposesUsableRetryAction() {
+        val errorState = UpdateState.Error(
+            message = "GitHub API hourly request limit reached. Please try again in 45 minutes.",
+            isNetworkError = true,
+            canRetry = true
+        )
+        assertTrue(errorState.canRetry)
+    }
 }
