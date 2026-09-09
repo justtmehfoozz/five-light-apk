@@ -348,55 +348,36 @@ fun ProfileSubScreen(
     var pendingBackupAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     val driveAuthLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()
+        contract = androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
-            try {
-                val data = result.data
-                val authResult = com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(context)
-                    .getAuthorizationResultFromIntent(data)
-                val hasScope = authResult.grantedScopes.any { it.toString().contains("drive.appdata") }
+        val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+            if (account != null) {
+                val hasScope = account.grantedScopes.any { it.scopeUri.equals("https://www.googleapis.com/auth/drive.appdata", ignoreCase = true) }
                 if (hasScope) {
-                    val account = com.google.android.gms.auth.api.signin.GoogleSignIn.getLastSignedInAccount(context)
                     driveAccount = account
-                    Toast.makeText(context, "Google Drive connected: ${account?.email ?: "Success"}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Google Drive connected: ${account.email}", Toast.LENGTH_SHORT).show()
                     pendingBackupAction?.invoke()
                     pendingBackupAction = null
                 } else {
                     Toast.makeText(context, "Authorization failed: Please make sure to check the checkbox allowing Drive private app data access.", Toast.LENGTH_LONG).show()
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("ProfileSubScreen", "Google Drive authorization failed parsing result: ${e.message}")
-                Toast.makeText(context, "Google Drive authorization failed", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "Google Drive authorization was not granted", Toast.LENGTH_SHORT).show()
             }
-        } else {
-            Toast.makeText(context, "Google Drive authorization was not granted", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            android.util.Log.e("ProfileSubScreen", "Google Drive authorization failed: ${e.message}")
+            Toast.makeText(context, "Google Drive authorization failed", Toast.LENGTH_SHORT).show()
         }
     }
 
     val requestDriveAuth: (() -> Unit) -> Unit = { onAuthorized ->
         pendingBackupAction = onAuthorized
-        val request = com.google.android.gms.auth.api.identity.AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(com.example.data.backup.GoogleDriveService.DRIVE_APPDATA_SCOPE))
-            .build()
-        val client = com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(context)
-        client.authorize(request)
-            .addOnSuccessListener { authorizationResult ->
-                val pendingIntent = authorizationResult.pendingIntent
-                if (authorizationResult.hasResolution() && pendingIntent != null) {
-                    val intentSenderRequest = androidx.activity.result.IntentSenderRequest.Builder(pendingIntent).build()
-                    driveAuthLauncher.launch(intentSenderRequest)
-                } else {
-                    val account = com.google.android.gms.auth.api.signin.GoogleSignIn.getLastSignedInAccount(context)
-                    driveAccount = account
-                    onAuthorized()
-                    pendingBackupAction = null
-                }
-            }
-            .addOnFailureListener { e ->
-                android.util.Log.e("ProfileSubScreen", "Failed to start Google Drive authorization: ${e.message}", e)
-                Toast.makeText(context, "Google Drive authorization failed to start", Toast.LENGTH_SHORT).show()
-            }
+        val signInClient = com.example.data.backup.GoogleDriveService.getGoogleSignInClient(context)
+        signInClient.signOut().addOnCompleteListener {
+            driveAuthLauncher.launch(signInClient.signInIntent)
+        }
     }
 
     val formattedLastBackup = remember(lastBackupTime) {

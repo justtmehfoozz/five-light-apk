@@ -47,6 +47,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import com.example.ui.components.AmbientUniverseMode
+import com.example.ui.components.FiveLightAmbientBackground
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -152,14 +154,22 @@ fun RegisterScreen(
         modifier = modifier
             .fillMaxSize()
             .testTag("register_screen"),
-        color = pageBgColor
+        color = Color.Transparent
     ) {
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
+            modifier = Modifier.fillMaxSize()
         ) {
+            FiveLightAmbientBackground(
+                modifier = Modifier.fillMaxSize(),
+                mode = AmbientUniverseMode.LOGIN_REGISTER
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+            ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -499,6 +509,7 @@ fun RegisterScreen(
             }
         }
     }
+}
 }
 
 @Composable

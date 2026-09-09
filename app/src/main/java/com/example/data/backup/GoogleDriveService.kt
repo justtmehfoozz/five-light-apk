@@ -211,40 +211,53 @@ object GoogleDriveService {
             .build()
     }
 
+    fun getGoogleSignInClient(context: Context) = GoogleSignIn.getClient(
+        context,
+        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestScopes(DRIVE_APPDATA_SCOPE)
+            .build()
+    )
+
     /**
      * Returns currently authorized Google account for Google Drive appDataFolder access.
      */
     fun getAuthorizedAccount(context: Context): GoogleSignInAccount? {
         val account = GoogleSignIn.getLastSignedInAccount(context) ?: return null
-        val hasScope = account.grantedScopes.any { it.scopeUri.equals("https://www.googleapis.com/auth/drive.appdata", ignoreCase = true) }
-        return if (hasScope) account else null
+        return if (GoogleSignIn.hasPermissions(account, DRIVE_APPDATA_SCOPE)) account else null
     }
 
     /**
-     * Obtains an OAuth access token for the authorized Google account using modern Google Identity Authorization API.
+     * Obtains an OAuth access token for the authorized Google account.
      */
-    suspend fun getAccessToken(context: Context, account: GoogleSignInAccount? = null): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun getAccessToken(context: Context, account: GoogleSignInAccount): Result<String> = withContext(Dispatchers.IO) {
         try {
-            appendTrace("--- MODERN TOKEN ACQUISITION TRACE ---")
-            val request = com.google.android.gms.auth.api.identity.AuthorizationRequest.builder()
-                .setRequestedScopes(listOf(DRIVE_APPDATA_SCOPE))
-                .build()
-            val authorizationClient = com.google.android.gms.auth.api.identity.Identity.getAuthorizationClient(context)
-            val task = authorizationClient.authorize(request)
-            val result = com.google.android.gms.tasks.Tasks.await(task)
-            
-            if (result.hasResolution()) {
-                appendTrace("Token acquisition FAILED: Authorization resolution is required.")
-                return@withContext Result.failure(Exception("Authorization required. Please connect your Google Drive account first."))
+            val email = account.email ?: "NO_EMAIL"
+            val accountId = account.id ?: "NO_ID"
+            val grantedScopes = account.grantedScopes.map { it.scopeUri }.joinToString(", ")
+            val hasAppData = account.grantedScopes.any { it.scopeUri.equals("https://www.googleapis.com/auth/drive.appdata", ignoreCase = true) }
+            val androidAccount = account.account
+            val androidAccountName = androidAccount?.name ?: "NULL"
+            val androidAccountType = androidAccount?.type ?: "NULL"
+            val identityMatch = (!email.isBlank() && email == androidAccountName && androidAccountType == "com.google")
+
+            appendTrace("--- TOKEN ACQUISITION TRACE ---")
+            appendTrace("GoogleSignInAccount email: $email, id: $accountId")
+            appendTrace("GoogleSignInAccount grantedScopes: [$grantedScopes]")
+            appendTrace("GoogleSignInAccount has drive.appdata: $hasAppData")
+            appendTrace("Android Account name: $androidAccountName, type: $androidAccountType")
+            appendTrace("Identity match (GoogleSignIn == AndroidAccount): ${if (identityMatch) "YES" else "NO"}")
+            appendTrace("Scope requested from GoogleAuthUtil: $OAUTH_SCOPE_STRING")
+
+            if (androidAccount == null) {
+                appendTrace("Token acquisition FAILED: androidAccount is null")
+                return@withContext Result.failure(Exception("No valid Google account found."))
             }
-            
-            val token = result.accessToken
-            if (token.isNullOrBlank()) {
-                appendTrace("Token acquisition FAILED: Received empty access token.")
-                return@withContext Result.failure(Exception("Access token is unavailable."))
-            }
-            
-            appendTrace("Token acquisition result: SUCCESS (valid token obtained)")
+
+            val token = GoogleAuthUtil.getToken(context, androidAccount, OAUTH_SCOPE_STRING)
+            val acquired = !token.isNullOrBlank()
+            appendTrace("Token acquisition result: ${if (acquired) "SUCCESS (valid non-empty token obtained)" else "FAILURE (empty token)"}")
+            // NEVER log the token itself
             Result.success(token)
         } catch (e: Exception) {
             appendTrace("Token acquisition EXCEPTION: ${e.message}")
@@ -257,8 +270,11 @@ object GoogleDriveService {
      * Clears cached OAuth token if invalid/expired.
      */
     suspend fun invalidateToken(context: Context, token: String) = withContext(Dispatchers.IO) {
-        // Modern Identity API manages and refreshes access tokens automatically, so invalidation is a safe no-op.
-        appendTrace("invalidateToken: called, modern Identity API handles invalidation and refresh automatically")
+        try {
+            GoogleAuthUtil.clearToken(context, token)
+        } catch (e: Exception) {
+            Log.w(TAG, "Error clearing token: ${e.message}")
+        }
     }
 
     /**
@@ -266,7 +282,7 @@ object GoogleDriveService {
      */
     suspend fun signOut(context: Context) = withContext(Dispatchers.IO) {
         try {
-            val client = GoogleSignIn.getClient(context, GoogleSignInOptions.DEFAULT_SIGN_IN)
+            val client = getGoogleSignInClient(context)
             com.google.android.gms.tasks.Tasks.await(client.signOut())
         } catch (e: Exception) {
             Log.e(TAG, "Failed to sign out Google Sign-In client: ${e.message}", e)
