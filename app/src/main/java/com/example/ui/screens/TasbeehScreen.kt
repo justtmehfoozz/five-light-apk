@@ -23,6 +23,15 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.view.KeyEvent
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.example.ui.util.LocalVolumeKeyDispatcher
+import com.example.ui.util.VolumeKeyDispatcher
+import com.example.ui.util.VolumeKeyEventListener
+import com.example.ui.util.findActivity
+import kotlinx.coroutines.Job
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -88,6 +97,7 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Vibration
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -197,6 +207,8 @@ fun TasbeehScreen(
     onToggleVibration: (Boolean) -> Unit = {},
     onSelectTasbeehSound: (TasbeehSound) -> Unit = {},
     isActiveTab: Boolean = true,
+    dhikrVolumeControlsEnabled: Boolean = true,
+    onToggleVolumeControls: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -436,6 +448,111 @@ fun TasbeehScreen(
         onReset()
     }
 
+    // Physical Volume Button Controls (Volume Up = Increment, Volume Down = Decrement)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentIncrement by rememberUpdatedState(triggerIncrement)
+    val currentDecrement by rememberUpdatedState(triggerDecrement)
+
+    val volumeButtonController = remember(coroutineScope) {
+        object : VolumeKeyEventListener {
+            private var activeKeyCode: Int? = null
+            private var repeatJob: Job? = null
+
+            fun cancel() {
+                repeatJob?.cancel()
+                repeatJob = null
+                activeKeyCode = null
+            }
+
+            override fun onVolumeKeyDown(keyCode: Int): Boolean {
+                if (keyCode != KeyEvent.KEYCODE_VOLUME_UP && keyCode != KeyEvent.KEYCODE_VOLUME_DOWN) {
+                    return false
+                }
+
+                // If this volume key is already held down, consume OS auto-repeats without double-counting
+                if (activeKeyCode == keyCode) {
+                    return true
+                }
+
+                cancel()
+                activeKeyCode = keyCode
+
+                // Execute immediate count for the initial press
+                if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                    currentIncrement()
+                } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                    currentDecrement()
+                }
+
+                // Smooth controlled repeat on long press:
+                // 500ms initial threshold prevents accidental rapid repeats on standard clicks.
+                // 250ms interval ensures smooth, controlled 4-counts-per-second cadence.
+                repeatJob = coroutineScope.launch {
+                    delay(500L)
+                    while (isActive) {
+                        if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                            currentIncrement()
+                        } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                            currentDecrement()
+                        }
+                        delay(250L)
+                    }
+                }
+                return true
+            }
+
+            override fun onVolumeKeyUp(keyCode: Int): Boolean {
+                if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                    if (activeKeyCode == keyCode) {
+                        cancel()
+                    }
+                    return true
+                }
+                return false
+            }
+        }
+    }
+
+    val volumeDispatcher = LocalVolumeKeyDispatcher.current
+        ?: (context.findActivity() as? VolumeKeyDispatcher)
+
+    // Volume interception is active ONLY when:
+    // 1. Dhikr screen is visible and active (isActiveTab == true)
+    // 2. User preference "Dhikr Volume Button Controls" is ON (dhikrVolumeControlsEnabled == true)
+    // 3. No text entry dialogs are active (e.g. adding custom dhikr or custom target)
+    val isVolumeInterceptionActive = isActiveTab && dhikrVolumeControlsEnabled && !showCustomDhikrDialog && !showAddTargetDialog
+
+    DisposableEffect(isVolumeInterceptionActive, lifecycleOwner, volumeDispatcher) {
+        if (!isVolumeInterceptionActive || volumeDispatcher == null) {
+            volumeButtonController.cancel()
+            volumeDispatcher?.setVolumeKeyEventListener(null)
+            onDispose { }
+        } else {
+            val observer = LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_RESUME -> {
+                        volumeDispatcher.setVolumeKeyEventListener(volumeButtonController)
+                    }
+                    Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP, Lifecycle.Event.ON_DESTROY -> {
+                        volumeButtonController.cancel()
+                        volumeDispatcher.setVolumeKeyEventListener(null)
+                    }
+                    else -> {}
+                }
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                volumeDispatcher.setVolumeKeyEventListener(volumeButtonController)
+            }
+
+            onDispose {
+                volumeButtonController.cancel()
+                volumeDispatcher.setVolumeKeyEventListener(null)
+                lifecycleOwner.lifecycle.removeObserver(observer)
+            }
+        }
+    }
+
     // Progress Fraction Calculation Clamped [0, 1]
     val safeTarget = dhikrTarget.coerceAtLeast(1)
     val progressFraction = (dhikrCount.toFloat() / safeTarget.toFloat()).coerceIn(0f, 1f)
@@ -636,6 +753,51 @@ fun TasbeehScreen(
                                 }
                             },
                             modifier = Modifier.testTag("sound_switch"),
+                            colors = androidx.compose.material3.SwitchDefaults.colors(
+                                checkedThumbColor = Color.semanticAccentForeground,
+                                checkedTrackColor = Color.semanticPrimaryAccent,
+                                checkedBorderColor = Color.Transparent,
+                                uncheckedThumbColor = Color.semanticSecondaryText,
+                                uncheckedTrackColor = Color.semanticControl,
+                                uncheckedBorderColor = Color.semanticBorder
+                            )
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Outlined.Tune,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = Color.semanticPrimaryAccent
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    "Dhikr Volume Button Controls",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.semanticPrimaryText
+                                )
+                                Text(
+                                    "Use volume up/down keys to count Dhikr",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.semanticMutedText
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Switch(
+                            checked = dhikrVolumeControlsEnabled,
+                            onCheckedChange = onToggleVolumeControls,
+                            modifier = Modifier.testTag("dhikr_volume_controls_switch"),
                             colors = androidx.compose.material3.SwitchDefaults.colors(
                                 checkedThumbColor = Color.semanticAccentForeground,
                                 checkedTrackColor = Color.semanticPrimaryAccent,

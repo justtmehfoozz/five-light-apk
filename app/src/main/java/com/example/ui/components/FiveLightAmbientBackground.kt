@@ -10,12 +10,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -24,6 +27,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.ui.theme.isAppInDarkTheme
 import kotlinx.coroutines.isActive
+import java.util.Random
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.pow
@@ -34,33 +38,31 @@ import kotlin.math.sin
  */
 enum class AmbientUniverseMode {
     /**
-     * Cinematic, alive, full ambient presence for onboarding / prelude.
+     * Feature Introduction Screen (Prelude / onboarding).
+     * Discovery feeling, more alive, cinematic, 15–30s rare shooting stars, five primary lights.
      */
-    PRELUDE,
+    FEATURE_INTRO,
 
     /**
-     * Serene, slower, calmer atmosphere supporting login / register forms with zero distraction.
+     * Login / Register / Pre-login prompt screens.
+     * Peaceful arrival, calm, elegant, 12–20s softer/thinner shooting stars, zero distraction.
      */
-    LOGIN_REGISTER
+    LOGIN_REGISTER;
+
+    companion object {
+        /**
+         * Alias for backwards compatibility with existing PRELUDE references.
+         */
+        val PRELUDE get() = FEATURE_INTRO
+    }
 }
 
 /**
- * Astronomical behavior classification for secondary stars.
+ * Astronomical behavior classification for primary stars and legacy types.
  */
 enum class StarTwinkleType {
-    /**
-     * Tranquil, steady star with subtle micro-luminosity fluctuation (~30% of stars).
-     */
     STEADY,
-
-    /**
-     * Smooth 3.5s - 7.5s sinusoidal breathing cycle (~55% of stars).
-     */
     BREATHING,
-
-    /**
-     * Infrequent, slow, gentle 10s - 15s luminous flare peak (~15% of stars).
-     */
     RARE_LUMINOUS
 }
 
@@ -82,19 +84,34 @@ data class AtmosphericDepthLight(
 )
 
 /**
- * Data representation of a star in the FiveLight ambient star field.
+ * Data representation of a star in the FiveLight living universe star field.
+ *
+ * Each star features:
+ * - Individual opacity boundaries (minAlpha, maxAlpha)
+ * - Individual breathing timing (cycleDurationSec)
+ * - Harmonic twinkling frequency multiplier (harmonicMultiplier)
+ * - Random phase offset
+ * - Independent 1–2px micro-drift speed & direction
+ * - Star birth envelope for gentle emergence from darkness (hasStarBirth, birthCycleSec, birthPhase)
  */
 data class AmbientStar(
-    val relX: Float,          // Relative X position (0.0 to 1.0)
-    val relY: Float,          // Relative Y position (0.0 to 1.0)
-    val radiusDp: Float,      // Core radius in dp (0.7dp to 2.4dp)
-    val baseAlpha: Float,     // Base opacity
-    val twinkleType: StarTwinkleType,
-    val pulseSpeed: Float,    // Animation breathing speed factor
-    val twinkleFreq: Float,   // Twinkle harmonic multiplier
-    val phaseOffset: Float,   // Phase shift in radians
-    val isPrimary: Boolean,   // True for EXACTLY 5 primary lights
-    val layer: Int            // 0 = distant dim, 1 = mid secondary, 2 = near secondary, 3 = primary
+    val relX: Float,
+    val relY: Float,
+    val radiusDp: Float,
+    val minAlpha: Float,
+    val maxAlpha: Float,
+    val cycleDurationSec: Float,
+    val phaseOffset: Float,
+    val harmonicMultiplier: Float,
+    val driftSpeedX: Float,
+    val driftSpeedY: Float,
+    val driftRadiusPx: Float,
+    val isPrimary: Boolean = false,
+    val layer: Int = 0, // 0 = distant dust, 1 = mid secondary, 2 = near brighter star, 3 = primary
+    val hasHalo: Boolean = false,
+    val hasStarBirth: Boolean = false,
+    val birthCycleSec: Float = 0f,
+    val birthPhase: Float = 0f
 )
 
 /**
@@ -112,8 +129,8 @@ data class CosmicParticle(
 
 /**
  * Monotonic continuous universe clock shared across screens.
- * Ensures star positions, breathing phases, and atmospheric depth lights never jump or reset
- * during navigation between Prelude, Pre-Login, Login, and Register screens.
+ * Ensures star positions, breathing phases, shooting star timelines, and atmospheric depth lights
+ * never jump or reset during navigation between Splash, Prelude, Pre-Login, Login, and Register.
  */
 object AmbientUniverseClock {
     private val appStartTimeNanos: Long = System.nanoTime()
@@ -124,7 +141,7 @@ object AmbientUniverseClock {
 }
 
 /**
- * Deterministic catalog of celestial bodies ensuring zero reshuffling across compositions.
+ * Deterministic catalog of celestial bodies ensuring zero reshuffling or heap churn across compositions.
  */
 object AmbientUniverseData {
     // 3 Large atmospheric depth lights providing soft moonlight haze and cosmic depth
@@ -170,91 +187,148 @@ object AmbientUniverseData {
     // EXACTLY 5 PRIMARY LIGHTS - Sacred coordinates in 5 distinct regions around the UI
     val primaryStars: List<AmbientStar> = listOf(
         AmbientStar(
-            relX = 0.18f, relY = 0.13f, radiusDp = 2.4f, baseAlpha = 0.95f,
-            twinkleType = StarTwinkleType.BREATHING, pulseSpeed = 0.85f, twinkleFreq = 2.2f,
-            phaseOffset = 0.0f, isPrimary = true, layer = 3
+            relX = 0.18f, relY = 0.13f, radiusDp = 2.4f,
+            minAlpha = 0.80f, maxAlpha = 0.98f, cycleDurationSec = 7.4f,
+            phaseOffset = 0.0f, harmonicMultiplier = 2.2f,
+            driftSpeedX = 0.08f, driftSpeedY = 0.06f, driftRadiusPx = 0.6f,
+            isPrimary = true, layer = 3, hasHalo = true
         ),
         AmbientStar(
-            relX = 0.82f, relY = 0.16f, radiusDp = 2.4f, baseAlpha = 0.95f,
-            twinkleType = StarTwinkleType.BREATHING, pulseSpeed = 0.68f, twinkleFreq = 1.8f,
-            phaseOffset = 1.35f, isPrimary = true, layer = 3
+            relX = 0.82f, relY = 0.16f, radiusDp = 2.4f,
+            minAlpha = 0.80f, maxAlpha = 0.98f, cycleDurationSec = 9.2f,
+            phaseOffset = 1.35f, harmonicMultiplier = 1.8f,
+            driftSpeedX = 0.07f, driftSpeedY = 0.09f, driftRadiusPx = 0.6f,
+            isPrimary = true, layer = 3, hasHalo = true
         ),
         AmbientStar(
-            relX = 0.50f, relY = 0.26f, radiusDp = 2.5f, baseAlpha = 0.98f,
-            twinkleType = StarTwinkleType.BREATHING, pulseSpeed = 1.02f, twinkleFreq = 2.4f,
-            phaseOffset = 2.70f, isPrimary = true, layer = 3
+            relX = 0.50f, relY = 0.26f, radiusDp = 2.5f,
+            minAlpha = 0.82f, maxAlpha = 1.00f, cycleDurationSec = 6.2f,
+            phaseOffset = 2.70f, harmonicMultiplier = 2.4f,
+            driftSpeedX = 0.09f, driftSpeedY = 0.07f, driftRadiusPx = 0.7f,
+            isPrimary = true, layer = 3, hasHalo = true
         ),
         AmbientStar(
-            relX = 0.14f, relY = 0.42f, radiusDp = 2.3f, baseAlpha = 0.92f,
-            twinkleType = StarTwinkleType.BREATHING, pulseSpeed = 0.76f, twinkleFreq = 1.7f,
-            phaseOffset = 4.05f, isPrimary = true, layer = 3
+            relX = 0.14f, relY = 0.42f, radiusDp = 2.3f,
+            minAlpha = 0.78f, maxAlpha = 0.95f, cycleDurationSec = 8.3f,
+            phaseOffset = 4.05f, harmonicMultiplier = 1.7f,
+            driftSpeedX = 0.06f, driftSpeedY = 0.08f, driftRadiusPx = 0.5f,
+            isPrimary = true, layer = 3, hasHalo = true
         ),
         AmbientStar(
-            relX = 0.86f, relY = 0.38f, radiusDp = 2.3f, baseAlpha = 0.92f,
-            twinkleType = StarTwinkleType.BREATHING, pulseSpeed = 0.60f, twinkleFreq = 2.0f,
-            phaseOffset = 5.40f, isPrimary = true, layer = 3
+            relX = 0.86f, relY = 0.38f, radiusDp = 2.3f,
+            minAlpha = 0.78f, maxAlpha = 0.95f, cycleDurationSec = 10.5f,
+            phaseOffset = 5.40f, harmonicMultiplier = 2.0f,
+            driftSpeedX = 0.08f, driftSpeedY = 0.05f, driftRadiusPx = 0.5f,
+            isPrimary = true, layer = 3, hasHalo = true
         )
     )
 
-    // ~44 Asymmetrically placed secondary stars with deliberate negative space over UI reading areas
-    val secondaryStars: List<AmbientStar> = listOf(
-        // Constellation 1: Upper-Left Sky
-        AmbientStar(0.06f, 0.06f, 1.1f, 0.55f, StarTwinkleType.STEADY, 0.45f, 1.1f, 0.3f, false, 0),
-        AmbientStar(0.12f, 0.09f, 1.4f, 0.68f, StarTwinkleType.BREATHING, 1.25f, 1.6f, 1.8f, false, 1),
-        AmbientStar(0.22f, 0.05f, 0.9f, 0.45f, StarTwinkleType.STEADY, 0.35f, 0.9f, 3.2f, false, 0),
-        AmbientStar(0.09f, 0.17f, 1.6f, 0.78f, StarTwinkleType.RARE_LUMINOUS, 0.52f, 1.4f, 4.6f, false, 2),
-        AmbientStar(0.27f, 0.12f, 1.2f, 0.62f, StarTwinkleType.BREATHING, 1.05f, 1.8f, 0.8f, false, 1),
-        AmbientStar(0.05f, 0.25f, 0.8f, 0.40f, StarTwinkleType.STEADY, 0.40f, 1.0f, 2.1f, false, 0),
-        AmbientStar(0.21f, 0.22f, 1.5f, 0.72f, StarTwinkleType.BREATHING, 0.95f, 1.5f, 5.2f, false, 2),
-        AmbientStar(0.15f, 0.30f, 1.0f, 0.48f, StarTwinkleType.STEADY, 0.50f, 1.2f, 1.4f, false, 0),
-        AmbientStar(0.31f, 0.19f, 1.3f, 0.65f, StarTwinkleType.RARE_LUMINOUS, 0.48f, 1.3f, 3.8f, false, 1),
+    /**
+     * Deterministic catalog of 96 secondary stars.
+     * Pre-allocated once at class loading time to ensure ZERO runtime allocations per frame.
+     *
+     * Distribution:
+     * - 60% Small / Dust stars: 15% -> 35% -> 15%, 4–7s cycle
+     * - 25% Mid stars: 20% -> 50% -> 20%, 5–8.5s cycle
+     * - 15% Brighter stars: 35% -> 75% -> 35%, 6–10s cycle with soft luminous halo
+     *
+     * Star Birth:
+     * - ~25% of stars possess an organic 20–36s birth-and-fade envelope (0% -> faint -> normal -> fade)
+     *
+     * Subtle Star Movement:
+     * - 1–2 pixel drifting with independent direction and velocity per star
+     */
+    val secondaryStars: List<AmbientStar> by lazy {
+        val random = Random(19950711L)
+        val list = ArrayList<AmbientStar>(96)
 
-        // Constellation 2: Upper-Right Sky
-        AmbientStar(0.69f, 0.06f, 1.2f, 0.60f, StarTwinkleType.BREATHING, 1.15f, 1.7f, 2.5f, false, 1),
-        AmbientStar(0.76f, 0.04f, 0.8f, 0.42f, StarTwinkleType.STEADY, 0.38f, 0.9f, 4.1f, false, 0),
-        AmbientStar(0.86f, 0.07f, 1.5f, 0.76f, StarTwinkleType.RARE_LUMINOUS, 0.55f, 1.5f, 0.6f, false, 2),
-        AmbientStar(0.94f, 0.11f, 1.0f, 0.50f, StarTwinkleType.STEADY, 0.42f, 1.1f, 2.9f, false, 0),
-        AmbientStar(0.73f, 0.14f, 1.4f, 0.70f, StarTwinkleType.BREATHING, 0.90f, 1.9f, 5.0f, false, 1),
-        AmbientStar(0.91f, 0.19f, 1.6f, 0.80f, StarTwinkleType.BREATHING, 1.35f, 2.1f, 1.2f, false, 2),
-        AmbientStar(0.64f, 0.21f, 0.9f, 0.45f, StarTwinkleType.STEADY, 0.48f, 1.0f, 3.4f, false, 0),
-        AmbientStar(0.79f, 0.23f, 1.3f, 0.64f, StarTwinkleType.STEADY, 0.55f, 1.3f, 0.4f, false, 1),
-        AmbientStar(0.95f, 0.27f, 1.1f, 0.58f, StarTwinkleType.RARE_LUMINOUS, 0.42f, 1.2f, 2.2f, false, 1),
-        AmbientStar(0.70f, 0.31f, 1.4f, 0.68f, StarTwinkleType.BREATHING, 1.10f, 1.6f, 4.7f, false, 2),
+        var count = 0
+        while (count < 96) {
+            val rx = 0.03f + random.nextFloat() * 0.94f
+            val ry = 0.04f + random.nextFloat() * 0.92f
 
-        // Left Margin Stream (relX 0.04f to 0.16f, relY 0.35f to 0.70f)
-        AmbientStar(0.05f, 0.38f, 1.2f, 0.60f, StarTwinkleType.BREATHING, 0.98f, 1.4f, 1.9f, false, 1),
-        AmbientStar(0.11f, 0.46f, 0.9f, 0.42f, StarTwinkleType.STEADY, 0.36f, 1.0f, 3.7f, false, 0),
-        AmbientStar(0.04f, 0.54f, 1.5f, 0.74f, StarTwinkleType.RARE_LUMINOUS, 0.46f, 1.5f, 5.8f, false, 2),
-        AmbientStar(0.12f, 0.62f, 1.1f, 0.58f, StarTwinkleType.BREATHING, 1.20f, 1.8f, 2.1f, false, 1),
-        AmbientStar(0.06f, 0.68f, 0.8f, 0.40f, StarTwinkleType.STEADY, 0.44f, 0.9f, 0.9f, false, 0),
+            // Negative space check: Keep center region sparse so cards and forms are prominent
+            val inCentralCardArea = (rx in 0.22f..0.78f && ry in 0.30f..0.70f)
+            if (inCentralCardArea && random.nextFloat() > 0.18f) {
+                continue
+            }
 
-        // Right Margin Stream (relX 0.84f to 0.96f, relY 0.35f to 0.70f)
-        AmbientStar(0.95f, 0.36f, 1.3f, 0.62f, StarTwinkleType.BREATHING, 1.02f, 1.6f, 4.2f, false, 1),
-        AmbientStar(0.89f, 0.45f, 1.6f, 0.78f, StarTwinkleType.RARE_LUMINOUS, 0.50f, 1.3f, 1.1f, false, 2),
-        AmbientStar(0.96f, 0.53f, 0.9f, 0.44f, StarTwinkleType.STEADY, 0.38f, 1.1f, 3.0f, false, 0),
-        AmbientStar(0.88f, 0.61f, 1.4f, 0.70f, StarTwinkleType.BREATHING, 1.18f, 1.7f, 5.4f, false, 2),
-        AmbientStar(0.94f, 0.69f, 1.0f, 0.48f, StarTwinkleType.STEADY, 0.40f, 1.0f, 2.7f, false, 0),
+            val cat = count % 10
+            val radiusDp: Float
+            val minAlpha: Float
+            val maxAlpha: Float
+            val cycleSec: Float
+            val hasHalo: Boolean
+            val layer: Int
 
-        // Lower Ambient Horizon (relY 0.74f to 0.95f)
-        AmbientStar(0.14f, 0.76f, 1.2f, 0.56f, StarTwinkleType.BREATHING, 1.05f, 1.5f, 0.5f, false, 1),
-        AmbientStar(0.24f, 0.82f, 0.9f, 0.42f, StarTwinkleType.STEADY, 0.35f, 0.9f, 2.6f, false, 0),
-        AmbientStar(0.08f, 0.86f, 1.4f, 0.72f, StarTwinkleType.RARE_LUMINOUS, 0.44f, 1.4f, 4.4f, false, 2),
-        AmbientStar(0.32f, 0.89f, 1.0f, 0.50f, StarTwinkleType.BREATHING, 0.92f, 1.6f, 1.5f, false, 0),
-        AmbientStar(0.18f, 0.93f, 0.8f, 0.38f, StarTwinkleType.STEADY, 0.40f, 1.0f, 3.9f, false, 0),
-        AmbientStar(0.72f, 0.77f, 1.3f, 0.62f, StarTwinkleType.BREATHING, 1.14f, 1.8f, 5.1f, false, 1),
-        AmbientStar(0.85f, 0.79f, 1.1f, 0.52f, StarTwinkleType.STEADY, 0.46f, 1.2f, 0.7f, false, 0),
-        AmbientStar(0.64f, 0.85f, 0.9f, 0.44f, StarTwinkleType.STEADY, 0.36f, 0.9f, 2.8f, false, 0),
-        AmbientStar(0.78f, 0.88f, 1.5f, 0.74f, StarTwinkleType.RARE_LUMINOUS, 0.48f, 1.3f, 4.9f, false, 2),
-        AmbientStar(0.91f, 0.92f, 0.8f, 0.40f, StarTwinkleType.BREATHING, 1.22f, 1.9f, 1.6f, false, 0),
-        AmbientStar(0.42f, 0.92f, 1.1f, 0.54f, StarTwinkleType.STEADY, 0.52f, 1.1f, 3.3f, false, 1),
-        AmbientStar(0.56f, 0.94f, 0.9f, 0.45f, StarTwinkleType.BREATHING, 0.88f, 1.4f, 5.7f, false, 0),
+            when {
+                cat == 0 || cat == 5 -> {
+                    // Brighter stars (15%): 35% -> 75% -> 35%, 6–10 second cycle
+                    radiusDp = 1.4f + random.nextFloat() * 0.38f
+                    minAlpha = 0.33f + random.nextFloat() * 0.05f
+                    maxAlpha = 0.70f + random.nextFloat() * 0.07f
+                    cycleSec = 6.0f + random.nextFloat() * 4.0f
+                    hasHalo = true
+                    layer = 2
+                }
+                cat in 1..3 -> {
+                    // Mid stars (25%): 20% -> 50% -> 20%, 5–8.5 second cycle
+                    radiusDp = 1.0f + random.nextFloat() * 0.32f
+                    minAlpha = 0.20f + random.nextFloat() * 0.05f
+                    maxAlpha = 0.48f + random.nextFloat() * 0.06f
+                    cycleSec = 5.0f + random.nextFloat() * 3.5f
+                    hasHalo = false
+                    layer = 1
+                }
+                else -> {
+                    // Small / Dust stars (60%): 15% -> 35% -> 15%, 4–7 second cycle
+                    radiusDp = 0.6f + random.nextFloat() * 0.32f
+                    minAlpha = 0.14f + random.nextFloat() * 0.04f
+                    maxAlpha = 0.32f + random.nextFloat() * 0.05f
+                    cycleSec = 4.0f + random.nextFloat() * 3.0f
+                    hasHalo = false
+                    layer = 0
+                }
+            }
 
-        // Deep Minimal Backdrop (Subtle distant pinpricks in negative space zones)
-        AmbientStar(0.38f, 0.33f, 0.7f, 0.24f, StarTwinkleType.STEADY, 0.30f, 0.8f, 1.2f, false, 0),
-        AmbientStar(0.62f, 0.35f, 0.8f, 0.26f, StarTwinkleType.STEADY, 0.32f, 0.8f, 3.5f, false, 0),
-        AmbientStar(0.40f, 0.66f, 0.7f, 0.20f, StarTwinkleType.STEADY, 0.28f, 0.8f, 2.0f, false, 0),
-        AmbientStar(0.60f, 0.68f, 0.7f, 0.20f, StarTwinkleType.STEADY, 0.28f, 0.8f, 4.2f, false, 0)
-    )
+            val phaseOffset = (random.nextFloat() * 2 * PI).toFloat()
+            val twinkleFreq = 1.2f + random.nextFloat() * 1.2f
+
+            // 1–2 pixel drifting with different speed & direction per star
+            val driftSpeedX = (0.18f + random.nextFloat() * 0.28f) * (if (random.nextBoolean()) 1f else -1f)
+            val driftSpeedY = (0.14f + random.nextFloat() * 0.26f) * (if (random.nextBoolean()) 1f else -1f)
+            val driftRadiusPx = 0.8f + random.nextFloat() * 1.0f // 0.8px .. 1.8px (1-2px)
+
+            // Star birth effect: ~25% of stars slowly fade from 0% -> faint -> normal -> slow fade
+            val hasStarBirth = (count % 4 == 2)
+            val birthCycleSec = if (hasStarBirth) 20.0f + random.nextFloat() * 16.0f else 0f
+            val birthPhase = if (hasStarBirth) (random.nextFloat() * 2 * PI).toFloat() else 0f
+
+            list.add(
+                AmbientStar(
+                    relX = rx,
+                    relY = ry,
+                    radiusDp = radiusDp,
+                    minAlpha = minAlpha,
+                    maxAlpha = maxAlpha,
+                    cycleDurationSec = cycleSec,
+                    phaseOffset = phaseOffset,
+                    harmonicMultiplier = twinkleFreq,
+                    driftSpeedX = driftSpeedX,
+                    driftSpeedY = driftSpeedY,
+                    driftRadiusPx = driftRadiusPx,
+                    isPrimary = false,
+                    layer = layer,
+                    hasHalo = hasHalo,
+                    hasStarBirth = hasStarBirth,
+                    birthCycleSec = birthCycleSec,
+                    birthPhase = birthPhase
+                )
+            )
+            count++
+        }
+        list
+    }
 
     // 14 Rare microscopic cosmic particles creating photographic depth
     val cosmicParticles: List<CosmicParticle> = listOf(
@@ -276,24 +350,28 @@ object AmbientUniverseData {
 }
 
 /**
- * Native Jetpack Compose Ambient "Five Lights" Background.
+ * Native Jetpack Compose Ambient "Five Lights" Background — Living Universe.
  *
- * Visual System:
- * - 3 Atmospheric Depth Lights behind the star field with soft moonlight haze.
- * - Natural secondary star field with 3 distinct twinkling dynamics (steady, breathing, rare luminous).
- * - Art-directed asymmetric distribution with generous negative space over UI reading areas.
- * - EXACTLY FIVE refined luminous primary lights with subtle micro-bloom halo & diffraction cross.
- * - Ultra-subtle floating cosmic particles adding photographic depth.
- * - Monotonic universe clock ensuring 100% transition continuity with zero resets.
- * - Theme adaptive (Dark Mode cosmic night vs Light Mode warm parchment).
- * - High performance: lifecycle-aware frame loop, zero composable recomposition.
+ * Screen Hierarchy:
+ * - Feature Introduction Screen: Discovery feeling, more alive, cinematic universe experience, 15–30s rare shooting stars.
+ * - Login / Register Screen: Peaceful arrival, calmer version of the same universe, 12–20s softer/thinner shooting stars.
+ * - Continuous Universe: Shared monotonic universe clock, continuous star positions across navigation.
+ *
+ * Cosmic Depth Layering:
+ * - Layer 1: Atmospheric depth lights (slow diffused moonlight haze)
+ * - Layer 2: Subtle floating cosmic dust particles
+ * - Layer 3: Rare cinematic shooting stars (one at a time, thin trail, white/gold tint, smooth fade in/out)
+ * - Layer 4: Living star field (~96 stars with individual breathing, natural twinkling, star-birth emergence & 1-2px drift)
+ * - Layer 5: Exactly FIVE sacred primary lights (in FEATURE_INTRO mode with micro-bloom and diffraction flare)
+ * - Layer 6: Subtle feature transition light streak on rare scene changes
  */
 @Composable
 fun FiveLightAmbientBackground(
     modifier: Modifier = Modifier,
     initialAlpha: Float = 1.0f,
-    mode: AmbientUniverseMode = AmbientUniverseMode.PRELUDE,
-    showPrimaryLights: Boolean = (mode == AmbientUniverseMode.PRELUDE)
+    mode: AmbientUniverseMode = AmbientUniverseMode.FEATURE_INTRO,
+    showPrimaryLights: Boolean = (mode == AmbientUniverseMode.FEATURE_INTRO),
+    transitionStreakIndex: Int = 0
 ) {
     val isDark = isAppInDarkTheme()
     val context = LocalContext.current
@@ -314,7 +392,7 @@ fun FiveLightAmbientBackground(
         }
     }
 
-    // 1. Color System Definitions with smooth 700ms transitions
+    // 1. Theme-adaptive Color System with smooth 700ms transitions
     val durationMs = 700
     val tweenSpec = tween<Color>(durationMillis = durationMs, easing = FastOutSlowInEasing)
 
@@ -358,22 +436,35 @@ fun FiveLightAmbientBackground(
 
     // Cosmic Particle Color
     val particleColor by animateColorAsState(
-        targetValue = if (isDark) Color(0xFFB6AFD1) else Color(0xFF887D6E),
+        targetValue = if (isDark) Color(0xFF8B81A8) else Color(0xFFB5A998),
         animationSpec = tweenSpec,
-        label = "particleColorAnim"
+        label = "particleAnim"
     )
 
-    // Primary 5 Lights Palette (Small, luminous, refined, sacred)
+    // Shooting Star Colors: White core with golden celestial tint
+    val shootingStarHeadColor by animateColorAsState(
+        targetValue = if (isDark) Color(0xFFFFFDF8) else Color(0xFF383022),
+        animationSpec = tweenSpec,
+        label = "shootHeadAnim"
+    )
+
+    val shootingStarTailColor by animateColorAsState(
+        targetValue = if (isDark) Color(0xFFE5C78A) else Color(0xFF8D6B1E),
+        animationSpec = tweenSpec,
+        label = "shootTailAnim"
+    )
+
+    // Primary Lights Sacred Colors (Gold/Champagne Radiance)
     val primaryCoreColor by animateColorAsState(
-        targetValue = if (isDark) Color(0xFFFFFFFF) else Color(0xFF262018),
+        targetValue = if (isDark) Color(0xFFFAF8FF) else Color(0xFF4A3E31),
         animationSpec = tweenSpec,
         label = "primaryCoreAnim"
     )
 
     val primaryCoreHighlightColor by animateColorAsState(
-        targetValue = if (isDark) Color(0xFFFFFFFF) else Color(0xFFFFFDF8),
+        targetValue = if (isDark) Color(0xFFFFFFFF) else Color(0xFFF9F5EE),
         animationSpec = tweenSpec,
-        label = "primaryCoreHighlightAnim"
+        label = "primaryHighlightAnim"
     )
 
     val primaryInnerGlowColor by animateColorAsState(
@@ -407,9 +498,10 @@ fun FiveLightAmbientBackground(
     )
 
     // Mode-dependent pace & intensity
-    val speedScale = if (mode == AmbientUniverseMode.LOGIN_REGISTER) 0.55f else 1.0f
-    val depthAlphaScale = if (mode == AmbientUniverseMode.LOGIN_REGISTER) 0.82f else 1.0f
-    val starAlphaScale = if (mode == AmbientUniverseMode.LOGIN_REGISTER) 0.85f else 1.0f
+    val isLoginMode = (mode == AmbientUniverseMode.LOGIN_REGISTER)
+    val speedScale = if (isLoginMode) 0.55f else 1.0f
+    val depthAlphaScale = if (isLoginMode) 0.78f else 1.0f
+    val starAlphaScale = if (isLoginMode) 0.82f else 1.0f
 
     // 2. Lifecycle-Aware Frame Loop: Updates only when screen is STARTED
     val timeSecondsState = remember { mutableFloatStateOf(AmbientUniverseClock.getElapsedSeconds()) }
@@ -421,6 +513,18 @@ fun FiveLightAmbientBackground(
                     timeSecondsState.floatValue = AmbientUniverseClock.getElapsedSeconds()
                 }
             }
+        }
+    }
+
+    // 3. Rare Transition Light Streak State (Triggered on rare scene changes, e.g. odd pages)
+    var lastStreakStartTime by remember { mutableFloatStateOf(-100f) }
+    var streakActive by remember { mutableStateOf(false) }
+
+    LaunchedEffect(transitionStreakIndex) {
+        if (!reduceMotion && transitionStreakIndex > 0 && (transitionStreakIndex % 2 == 1)) {
+            // Very rare subtle streak on feature transitions
+            lastStreakStartTime = AmbientUniverseClock.getElapsedSeconds()
+            streakActive = true
         }
     }
 
@@ -447,7 +551,7 @@ fun FiveLightAmbientBackground(
 
         if (initialAlpha <= 0.001f || canvasWidth <= 0f || canvasHeight <= 0f) return@Canvas
 
-        // 2. ATMOSPHERIC DEPTH LIGHT LAYERS (Behind star field)
+        // 2. LAYER 1: ATMOSPHERIC DEPTH LIGHTS (Slow diffused cosmic haze)
         AmbientUniverseData.depthLights.forEachIndexed { index, light ->
             val color = when (index % 3) {
                 0 -> depthLightColor1
@@ -456,7 +560,7 @@ fun FiveLightAmbientBackground(
             }
 
             val dPhase = (timeSeconds * light.pulseSpeed + light.phaseOffset) % (2 * PI.toFloat())
-            val dPulse = (sin(dPhase) + 1f) / 2f // 0.0f .. 1.0f
+            val dPulse = (sin(dPhase) + 1f) / 2f
 
             val baseAlpha = if (isDark) light.baseAlphaDark else light.baseAlphaLight
             val dAlpha = (baseAlpha * (0.85f + 0.30f * dPulse) * initialAlpha * depthAlphaScale).coerceIn(0.01f, 0.25f)
@@ -474,7 +578,6 @@ fun FiveLightAmbientBackground(
             val dOffset = Offset(dCenterX, dCenterY)
             val dRadiusPx = maxOf(1f, light.radiusDp.dp.toPx() * (0.94f + 0.12f * dPulse))
 
-            // 4-stop radial gradient with smooth quadratic falloff for zero visible banding
             val dBrush = Brush.radialGradient(
                 colors = listOf(
                     color.copy(alpha = dAlpha),
@@ -493,7 +596,7 @@ fun FiveLightAmbientBackground(
             )
         }
 
-        // 3. SUBTLE FLOATING COSMIC PARTICLES (Drifting celestial dust)
+        // 3. LAYER 2: SUBTLE FLOATING COSMIC PARTICLES (Drifting celestial dust)
         AmbientUniverseData.cosmicParticles.forEach { particle ->
             val normX = if (reduceMotion) particle.startX else {
                 val raw = (particle.startX + particle.speedX * timeSeconds + 1000f) % 1.0f
@@ -507,8 +610,8 @@ fun FiveLightAmbientBackground(
             val px = normX * canvasWidth
             val py = normY * canvasHeight
             val pPulse = 0.72f + 0.28f * sin(timeSeconds * 0.35f + particle.phaseOffset)
-            val particleAlpha = (particle.baseAlpha * pPulse * initialAlpha * (if (mode == AmbientUniverseMode.LOGIN_REGISTER) 0.65f else 1.0f))
-                .coerceIn(0.02f, 0.22f)
+            val particleAlpha = (particle.baseAlpha * pPulse * initialAlpha * (if (isLoginMode) 0.60f else 1.0f))
+                .coerceIn(0.015f, 0.20f)
             val pRadius = particle.radiusDp.dp.toPx()
 
             drawCircle(
@@ -518,59 +621,165 @@ fun FiveLightAmbientBackground(
             )
         }
 
-        // 4. SECONDARY STAR FIELD (Art-directed asymmetric distribution)
+        // 4. LAYER 3: RARE CINEMATIC SHOOTING STARS (Zero allocation per frame)
+        // Feature Introduction: 15–30s interval, duration 650–950ms.
+        // Login / Register: 12–20s interval, duration 600–850ms, thinner (0.85dp) & softer (alpha 0.36).
+        // Guaranteed: Exactly ONE shooting star at a time, random direction, random position, white/gold tint.
+        if (!reduceMotion) {
+            val slotDuration = if (isLoginMode) 16.0f else 22.0f
+            val currentSlot = (rawTime / slotDuration).toLong()
+            val slotLocalTime = rawTime - currentSlot * slotDuration
+
+            // Deterministic PRNG seeded by slot index
+            val slotSeed = if (isLoginMode) {
+                (currentSlot * 7919L + 31L) xor 0x5DEECE66DL
+            } else {
+                (currentSlot * 104729L + 17L) xor 0xBADC0FFEEL
+            }
+            val rng = Random(slotSeed)
+
+            val delayInSlot = if (isLoginMode) {
+                2.5f + rng.nextFloat() * 10.0f // 2.5s .. 12.5s
+            } else {
+                3.0f + rng.nextFloat() * 14.0f // 3.0s .. 17.0s
+            }
+
+            val shootDuration = if (isLoginMode) {
+                0.60f + rng.nextFloat() * 0.25f // 600ms .. 850ms
+            } else {
+                0.65f + rng.nextFloat() * 0.30f // 650ms .. 950ms
+            }
+
+            if (slotLocalTime in delayInSlot..(delayInSlot + shootDuration)) {
+                val progress = ((slotLocalTime - delayInSlot) / shootDuration).coerceIn(0f, 1f)
+
+                val startX = 0.08f + rng.nextFloat() * 0.84f
+                val startY = 0.04f + rng.nextFloat() * 0.28f
+                val dirRight = rng.nextBoolean()
+                val angleDeg = if (dirRight) {
+                    32f + rng.nextFloat() * 22f // 32° .. 54° (down and right)
+                } else {
+                    126f + rng.nextFloat() * 22f // 126° .. 148° (down and left)
+                }
+                val angleRad = (angleDeg * PI / 180f).toFloat()
+
+                val travelDistancePx = (if (isLoginMode) 140.dp else 220.dp).toPx()
+                val trailLengthPx = (if (isLoginMode) 38.dp else 62.dp).toPx()
+                val strokeWidthPx = (if (isLoginMode) 0.85.dp else 1.25.dp).toPx()
+                val peakAlpha = if (isLoginMode) 0.36f else 0.65f
+
+                // Smooth bell curve fade: ease in 0..0.18, hold 0.18..0.65, graceful ease out 0.65..1.0
+                val fadeEnvelope = when {
+                    progress < 0.18f -> (progress / 0.18f).pow(1.5f)
+                    progress < 0.65f -> 1.0f
+                    else -> ((1.0f - progress) / 0.35f).pow(1.5f)
+                }
+                val starAlpha = (fadeEnvelope * peakAlpha * initialAlpha).coerceIn(0f, 1f)
+
+                val curTravel = travelDistancePx * progress
+                val headX = canvasWidth * startX + cos(angleRad) * curTravel
+                val headY = canvasHeight * startY + sin(angleRad) * curTravel
+                val headOffset = Offset(headX, headY)
+
+                val effectiveTrail = minOf(trailLengthPx, curTravel)
+                val tailX = headX - cos(angleRad) * effectiveTrail
+                val tailY = headY - sin(angleRad) * effectiveTrail
+                val tailOffset = Offset(tailX, tailY)
+
+                if (starAlpha > 0.005f && effectiveTrail > 1f) {
+                    val trailBrush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            shootingStarTailColor.copy(alpha = starAlpha * 0.35f),
+                            shootingStarTailColor.copy(alpha = starAlpha * 0.70f),
+                            shootingStarHeadColor.copy(alpha = starAlpha)
+                        ),
+                        start = tailOffset,
+                        end = headOffset
+                    )
+
+                    // Thin celestial trail
+                    drawLine(
+                        brush = trailBrush,
+                        start = tailOffset,
+                        end = headOffset,
+                        strokeWidth = strokeWidthPx,
+                        cap = StrokeCap.Round
+                    )
+
+                    // Tiny crisp luminous head point
+                    drawCircle(
+                        color = shootingStarHeadColor.copy(alpha = starAlpha),
+                        radius = strokeWidthPx * 1.15f,
+                        center = headOffset
+                    )
+
+                    // Micro-halo at the head in Feature Intro
+                    if (!isLoginMode && starAlpha > 0.28f) {
+                        val haloRadius = strokeWidthPx * 3.5f
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    shootingStarTailColor.copy(alpha = starAlpha * 0.30f),
+                                    Color.Transparent
+                                ),
+                                center = headOffset,
+                                radius = haloRadius
+                            ),
+                            radius = haloRadius,
+                            center = headOffset
+                        )
+                    }
+                }
+            }
+        }
+
+        // 5. LAYER 4: LIVING SECONDARY STAR FIELD (~96 Stars)
+        // Natural twinkling, breathing animation, individual timing, star birth effect & 1-2px drift
         AmbientUniverseData.secondaryStars.forEach { star ->
-            val phase = (timeSeconds * star.pulseSpeed + star.phaseOffset) % (2 * PI.toFloat())
+            // Individual breathing & harmonic twinkling
+            val twinkleSpeed = (2 * PI / star.cycleDurationSec).toFloat()
+            val phase = (timeSeconds * twinkleSpeed + star.phaseOffset) % (2 * PI.toFloat())
+            val rawSine = (sin(phase) + 1f) / 2f
+            val harmonic = (sin(timeSeconds * twinkleSpeed * star.harmonicMultiplier + star.phaseOffset * 1.6f) + 1f) / 2f
+            val breathFactor = rawSine * 0.82f + harmonic * 0.18f
 
-            // Individual twinkle dynamics
-            val pulseFactor = when (star.twinkleType) {
-                StarTwinkleType.STEADY -> {
-                    0.93f + 0.07f * sin(phase)
-                }
-                StarTwinkleType.BREATHING -> {
-                    val rawSine = (sin(phase) + 1f) / 2f
-                    val harmonic = (sin(timeSeconds * star.twinkleFreq * 2.5f + star.phaseOffset * 1.5f) + 1f) / 2f
-                    0.65f + 0.35f * (rawSine * 0.82f + harmonic * 0.18f)
-                }
-                StarTwinkleType.RARE_LUMINOUS -> {
-                    val rawSine = (sin(phase) + 1f) / 2f
-                    val flare = rawSine.pow(3.5f)
-                    0.68f + 0.52f * flare
-                }
+            val baseOpacity = star.minAlpha + (star.maxAlpha - star.minAlpha) * breathFactor
+
+            // Star birth effect: 0% -> faint -> normal -> slow fade
+            val birthEnvelope = if (star.hasStarBirth && star.birthCycleSec > 0f) {
+                val bSpeed = (2 * PI / star.birthCycleSec).toFloat()
+                val bRaw = (sin(timeSeconds * bSpeed + star.birthPhase) + 1f) / 2f
+                bRaw.pow(2.6f)
+            } else {
+                1.0f
             }
 
-            // Layer-based subtle parallax drift
-            val driftFactor = when (star.layer) {
-                0 -> 0.045f
-                1 -> 0.080f
-                else -> 0.115f
-            }
-            val driftX = if (reduceMotion) 0f else {
-                sin(timeSeconds * 0.12f + star.phaseOffset) * driftFactor * density.density * 10f
-            }
-            val driftY = if (reduceMotion) 0f else {
-                cos(timeSeconds * 0.09f + star.phaseOffset) * driftFactor * density.density * 8f
-            }
+            if (birthEnvelope <= 0.01f) return@forEach
+
+            // 1–2 pixel subtle life-like drifting (different speed & direction per star)
+            val driftX = if (reduceMotion) 0f else sin(timeSeconds * star.driftSpeedX + star.phaseOffset) * star.driftRadiusPx
+            val driftY = if (reduceMotion) 0f else cos(timeSeconds * star.driftSpeedY + star.phaseOffset) * star.driftRadiusPx
 
             val pointX = canvasWidth * star.relX + driftX
             val pointY = canvasHeight * star.relY + driftY
             val centerOffset = Offset(pointX, pointY)
 
-            // Extra dampening in center card area during Login/Register for flawless form legibility
-            val isInCentralFormArea = mode == AmbientUniverseMode.LOGIN_REGISTER &&
-                    star.relX in 0.16f..0.84f && star.relY in 0.34f..0.72f
-            val formDampening = if (isInCentralFormArea) 0.60f else 1.0f
+            // Extra dampening in central card/form area during Login/Register for flawless form legibility
+            val isInCentralFormArea = isLoginMode &&
+                    star.relX in 0.16f..0.84f && star.relY in 0.32f..0.74f
+            val formDampening = if (isInCentralFormArea) 0.55f else 1.0f
 
-            val currentAlpha = ((star.baseAlpha * pulseFactor) * initialAlpha * starAlphaScale * formDampening)
-                .coerceIn(0.06f, 0.92f)
+            val currentAlpha = (baseOpacity * birthEnvelope * initialAlpha * starAlphaScale * formDampening)
+                .coerceIn(0.04f, 0.90f)
             val starRadiusPx = star.radiusDp.dp.toPx()
 
-            // Subtle luminous halo around near stars
-            if (star.layer == 2 && starRadiusPx > 1.2f) {
-                val haloRadius = starRadiusPx * 2.7f
+            // Subtle luminous halo around brighter stars
+            if (star.hasHalo && currentAlpha > 0.28f) {
+                val haloRadius = starRadiusPx * 2.8f
                 val haloBrush = Brush.radialGradient(
                     colors = listOf(
-                        secondaryStarGlowColor.copy(alpha = currentAlpha * 0.42f),
+                        secondaryStarGlowColor.copy(alpha = currentAlpha * 0.38f),
                         Color.Transparent
                     ),
                     center = centerOffset,
@@ -591,20 +800,21 @@ fun FiveLightAmbientBackground(
             )
         }
 
-        // 5. EXACTLY FIVE PRIMARY LIGHTS (With subtle micro-bloom enhancement)
+        // 6. LAYER 5: EXACTLY FIVE PRIMARY LIGHTS (In FEATURE_INTRO mode with micro-bloom and diffraction flare)
         if (showPrimaryLights) {
             AmbientUniverseData.primaryStars.forEach { star ->
-                val phase = (timeSeconds * star.pulseSpeed + star.phaseOffset) % (2 * PI.toFloat())
+                val twinkleSpeed = (2 * PI / star.cycleDurationSec).toFloat()
+                val phase = (timeSeconds * twinkleSpeed + star.phaseOffset) % (2 * PI.toFloat())
                 val rawSine = (sin(phase) + 1f) / 2f
-                val twinkle = (sin(timeSeconds * star.twinkleFreq * 2.8f + star.phaseOffset) + 1f) / 2f
+                val twinkle = (sin(timeSeconds * twinkleSpeed * star.harmonicMultiplier + star.phaseOffset) + 1f) / 2f
                 val combinedPulse = rawSine * 0.78f + twinkle * 0.22f
 
                 // Subtle optical lock drift
                 val driftX = if (reduceMotion) 0f else {
-                    sin(timeSeconds * 0.08f + star.phaseOffset) * 0.4f * density.density
+                    sin(timeSeconds * star.driftSpeedX + star.phaseOffset) * star.driftRadiusPx * density.density
                 }
                 val driftY = if (reduceMotion) 0f else {
-                    cos(timeSeconds * 0.06f + star.phaseOffset) * 0.3f * density.density
+                    cos(timeSeconds * star.driftSpeedY + star.phaseOffset) * star.driftRadiusPx * density.density
                 }
 
                 val pointX = canvasWidth * star.relX + driftX
@@ -716,6 +926,39 @@ fun FiveLightAmbientBackground(
                         center = centerOffset
                     )
                 }
+            }
+        }
+
+        // 7. LAYER 6: VERY RARE FEATURE TRANSITION LIGHT STREAK (Extremely subtle, 650ms)
+        if (streakActive && !reduceMotion) {
+            val streakElapsed = rawTime - lastStreakStartTime
+            if (streakElapsed in 0f..0.65f) {
+                val streakProgress = streakElapsed / 0.65f
+                val streakAlpha = (sin(streakProgress * PI.toFloat()) * (if (isDark) 0.18f else 0.12f)).coerceIn(0f, 0.20f)
+                val streakY = canvasHeight * 0.18f
+                val streakLen = 90.dp.toPx()
+                val streakStartX = canvasWidth * 0.10f + (canvasWidth * 0.55f) * streakProgress
+                val streakEndX = streakStartX + streakLen
+
+                val streakBrush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        shootingStarTailColor.copy(alpha = streakAlpha),
+                        Color.Transparent
+                    ),
+                    start = Offset(streakStartX, streakY),
+                    end = Offset(streakEndX, streakY)
+                )
+
+                drawLine(
+                    brush = streakBrush,
+                    start = Offset(streakStartX, streakY),
+                    end = Offset(streakEndX, streakY),
+                    strokeWidth = 1.0.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
+            } else if (streakElapsed > 0.65f) {
+                streakActive = false
             }
         }
     }

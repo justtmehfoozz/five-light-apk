@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.components.AmbientUniverseMode
 import com.example.ui.components.FiveLightAmbientBackground
 import com.example.ui.theme.SpaceGrotesk
 import com.example.ui.theme.isAppInDarkTheme
@@ -85,8 +86,12 @@ fun PreludeScreen(
             .background(if (isDark) Color(0xFF000000) else Color(0xFFFAF7F2))
             .testTag("fivelight_prelude_screen")
     ) {
-        // Shared Ambient Background System
-        FiveLightAmbientBackground(modifier = Modifier.fillMaxSize())
+        // Shared Ambient Background System — Living Universe in Feature Intro Mode
+        FiveLightAmbientBackground(
+            modifier = Modifier.fillMaxSize(),
+            mode = AmbientUniverseMode.FEATURE_INTRO,
+            transitionStreakIndex = pagerState.currentPage
+        )
 
         // Horizontal Pager for Pages 0 to 5
         HorizontalPager(

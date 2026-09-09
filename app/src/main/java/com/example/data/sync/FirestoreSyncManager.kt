@@ -1350,6 +1350,7 @@ class FirestoreSyncManager(
             "customHijriOffset" to repository.customHijriOffset.value,
             "tasbeehSound" to repository.tasbeehSound.value.id,
             "vibrationEnabled" to repository.vibrationEnabled.value,
+            "dhikrVolumeControlsEnabled" to repository.dhikrVolumeControlsEnabled.value,
             "naflPreferencesJson" to naflJson,
             "homeFeaturesJson" to homeJson,
             "homeFeatureOrder" to home.featureOrder.joinToString(","),

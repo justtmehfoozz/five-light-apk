@@ -77,6 +77,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.components.RegisterPredictiveBackHandler
 import com.example.ui.components.rememberPredictiveBackState
 import com.example.data.util.DuaItem
+import android.view.KeyEvent
 import com.example.ui.components.ExploreSearchScope
 import com.example.ui.components.ExpandedQuranPlayerSheet
 import com.example.ui.components.NavItem
@@ -90,15 +91,40 @@ import com.example.ui.screens.QuranScreen
 import com.example.ui.screens.SettingsBottomSheet
 import com.example.ui.screens.TasbeehScreen
 import com.example.ui.theme.FiveLightTheme
+import com.example.ui.util.LocalVolumeKeyDispatcher
+import com.example.ui.util.VolumeKeyDispatcher
+import com.example.ui.util.VolumeKeyEventListener
 import com.example.ui.viewmodel.AppViewModel
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.launch
 
 
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
 
     private val viewModel: AppViewModel by viewModels()
+    private var volumeKeyEventListener: VolumeKeyEventListener? = null
+
+    override fun setVolumeKeyEventListener(listener: VolumeKeyEventListener?) {
+        this.volumeKeyEventListener = listener
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP || event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            val listener = volumeKeyEventListener
+            if (listener != null) {
+                val handled = when (event.action) {
+                    KeyEvent.ACTION_DOWN -> listener.onVolumeKeyDown(event.keyCode)
+                    KeyEvent.ACTION_UP -> listener.onVolumeKeyUp(event.keyCode)
+                    else -> false
+                }
+                if (handled) {
+                    return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
 
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -113,9 +139,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             val appearanceMode by viewModel.appearanceMode.collectAsStateWithLifecycle()
             val vibrationEnabled by viewModel.vibrationEnabled.collectAsStateWithLifecycle()
+            val dhikrVolumeControlsEnabled by viewModel.dhikrVolumeControlsEnabled.collectAsStateWithLifecycle()
 
             FiveLightTheme(appearanceMode = appearanceMode) {
-                androidx.compose.runtime.CompositionLocalProvider(com.example.ui.theme.LocalVibrationEnabled provides vibrationEnabled) {
+                androidx.compose.runtime.CompositionLocalProvider(
+                    com.example.ui.theme.LocalVibrationEnabled provides vibrationEnabled,
+                    LocalVolumeKeyDispatcher provides this
+                ) {
                 val coroutineScope = rememberCoroutineScope()
                 val pagerState = rememberPagerState(initialPage = 0, pageCount = { NavItem.entries.size })
                 val selectorController = rememberDockSelectorController(initialIndex = pagerState.currentPage)
@@ -589,6 +619,8 @@ class MainActivity : ComponentActivity() {
                                     targets = allTargets,
                                     dhikrHistory = dhikrHistory,
                                     selectedTasbeehSound = tasbeehSound,
+                                    dhikrVolumeControlsEnabled = dhikrVolumeControlsEnabled,
+                                    onToggleVolumeControls = { enabled -> viewModel.setDhikrVolumeControlsEnabled(enabled) },
                                     onSelectPreset = { preset -> viewModel.selectDhikrPreset(preset) },
                                     onReorderPresets = { newOrder -> viewModel.reorderDhikrs(newOrder) },
                                     onDeleteDhikr = { id -> viewModel.deleteDhikr(id) },
@@ -606,7 +638,7 @@ class MainActivity : ComponentActivity() {
                                     onDeleteCustomTarget = { t -> viewModel.deleteCustomTarget(t) },
                                     onToggleVibration = { enabled -> viewModel.setVibrationEnabled(enabled) },
                                     onSelectTasbeehSound = { sound -> viewModel.setTasbeehSound(sound) },
-                                    isActiveTab = (pagerState.currentPage == 3)
+                                    isActiveTab = (pagerState.currentPage == 3 && !showSettingsSheet && !showSearchOverlay)
                                 )
                             }
 
@@ -855,6 +887,8 @@ class MainActivity : ComponentActivity() {
                             onUpdateCustomHijriOffset = { offset -> viewModel.setCustomHijriOffset(offset) },
                             vibrationEnabled = vibrationEnabled,
                             onToggleVibration = { enabled -> viewModel.setVibrationEnabled(enabled) },
+                            dhikrVolumeControlsEnabled = dhikrVolumeControlsEnabled,
+                            onToggleDhikrVolumeControls = { enabled -> viewModel.setDhikrVolumeControlsEnabled(enabled) },
                             naflPreferences = naflPreferences,
                             onUpdateNaflPreference = { t, i, d, a -> viewModel.setNaflPreference(t, i, d, a) },
                             homeFeaturesPreferences = homeFeaturesPreferences,

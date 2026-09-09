@@ -151,6 +151,8 @@ fun SettingsBottomSheet(
     onUpdateCustomHijriOffset: (Int) -> Unit = {},
     vibrationEnabled: Boolean = true,
     onToggleVibration: (Boolean) -> Unit = {},
+    dhikrVolumeControlsEnabled: Boolean = true,
+    onToggleDhikrVolumeControls: (Boolean) -> Unit = {},
     naflPreferences: NaflPreferences = NaflPreferences(),
     onUpdateNaflPreference: (tahajjud: Boolean, ishraq: Boolean, duha: Boolean, awwabin: Boolean) -> Unit = { _, _, _, _ -> },
     homeFeaturesPreferences: com.example.data.model.HomeFeaturesPreferences = com.example.data.model.HomeFeaturesPreferences(),
@@ -271,6 +273,8 @@ fun SettingsBottomSheet(
                             selectedTasbeehSound = selectedTasbeehSound,
                             vibrationEnabled = vibrationEnabled,
                             onToggleVibration = onToggleVibration,
+                            dhikrVolumeControlsEnabled = dhikrVolumeControlsEnabled,
+                            onToggleDhikrVolumeControls = onToggleDhikrVolumeControls,
                             naflPreferences = naflPreferences,
                             currentUser = currentUser,
                             onOpenLoginSheet = onOpenLoginSheet,
@@ -906,6 +910,8 @@ fun MainPreferencesView(
     selectedTasbeehSound: TasbeehSound,
     vibrationEnabled: Boolean = true,
     onToggleVibration: (Boolean) -> Unit = {},
+    dhikrVolumeControlsEnabled: Boolean = true,
+    onToggleDhikrVolumeControls: (Boolean) -> Unit = {},
     naflPreferences: NaflPreferences = NaflPreferences(),
     currentUser: FirebaseUser? = null,
     onOpenLoginSheet: () -> Unit = {},
@@ -1149,6 +1155,41 @@ fun MainPreferencesView(
                             checked = vibrationEnabled,
                             onCheckedChange = onToggleVibration,
                             modifier = Modifier.testTag("pref_vibration_switch"),
+                            colors = androidx.compose.material3.SwitchDefaults.colors(
+                                checkedThumbColor = Color.semanticAccentForeground,
+                                checkedTrackColor = Color.semanticPrimaryAccent,
+                                checkedBorderColor = Color.Transparent,
+                                uncheckedThumbColor = Color.semanticSecondaryText,
+                                uncheckedTrackColor = Color.semanticControl,
+                                uncheckedBorderColor = Color.semanticBorder
+                            )
+                        )
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Dhikr Volume Button Controls",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (dhikrVolumeControlsEnabled) "Use volume keys to count Dhikr" else "Disabled (Standard volume control)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = dhikrVolumeControlsEnabled,
+                            onCheckedChange = onToggleDhikrVolumeControls,
+                            modifier = Modifier.testTag("pref_dhikr_volume_controls_switch"),
                             colors = androidx.compose.material3.SwitchDefaults.colors(
                                 checkedThumbColor = Color.semanticAccentForeground,
                                 checkedTrackColor = Color.semanticPrimaryAccent,

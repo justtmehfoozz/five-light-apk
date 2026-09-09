@@ -181,6 +181,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
     val customHijriOffset: StateFlow<Int> = repository.customHijriOffset
     val tasbeehSound: StateFlow<com.example.data.model.TasbeehSound> = repository.tasbeehSound
     val vibrationEnabled: StateFlow<Boolean> = repository.vibrationEnabled
+    val dhikrVolumeControlsEnabled: StateFlow<Boolean> = repository.dhikrVolumeControlsEnabled
     val naflPreferences: StateFlow<com.example.data.model.NaflPreferences> = repository.naflPreferences
     val homeFeaturesPreferences: StateFlow<com.example.data.model.HomeFeaturesPreferences> = repository.homeFeaturesPreferences
     val lastReadPosition: StateFlow<com.example.data.model.QuranLastRead?> = repository.lastReadPosition
@@ -1818,6 +1819,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
 
     fun setVibrationEnabled(enabled: Boolean) {
         repository.setVibrationEnabled(enabled)
+    }
+
+    fun setDhikrVolumeControlsEnabled(enabled: Boolean) {
+        repository.setDhikrVolumeControlsEnabled(enabled)
     }
 
     override fun onCleared() {

@@ -48,6 +48,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.components.AmbientUniverseMode
 import com.example.ui.components.FiveLightAmbientBackground
 import com.example.ui.theme.InstrumentSerifItalic
 import com.example.ui.theme.SerifHeaderFont
@@ -232,10 +233,11 @@ fun PreLoginPromptScreen(
             .fillMaxSize()
             .testTag("pre_login_prompt_screen")
     ) {
-        // Ambient "Five Lights" Background Layer
+        // Ambient "Five Lights" Background Layer — Living Universe in Calmer Login/Register Mode
         FiveLightAmbientBackground(
             modifier = Modifier.fillMaxSize(),
-            initialAlpha = initialLightAlpha.value
+            initialAlpha = initialLightAlpha.value,
+            mode = AmbientUniverseMode.LOGIN_REGISTER
         )
 
         // Screen Foreground Content

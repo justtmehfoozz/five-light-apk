@@ -137,6 +137,10 @@ class AppRepository(
     private val _vibrationEnabled = MutableStateFlow(savedVibrationEnabled)
     val vibrationEnabled: StateFlow<Boolean> = _vibrationEnabled
 
+    private val savedDhikrVolumeControlsEnabled = prefs?.getBoolean("dhikr_volume_controls_enabled", true) ?: true
+    private val _dhikrVolumeControlsEnabled = MutableStateFlow(savedDhikrVolumeControlsEnabled)
+    val dhikrVolumeControlsEnabled: StateFlow<Boolean> = _dhikrVolumeControlsEnabled
+
     private val savedHijriMethod = prefs?.getString("hijri_date_method", null)
     private val initialHijriMethod = com.example.data.model.HijriDateMethod.entries.find { it.name == savedHijriMethod }
         ?: com.example.data.model.HijriDateMethod.REGIONAL_INDIA
@@ -586,6 +590,13 @@ class AppRepository(
     fun setVibrationEnabled(enabled: Boolean) {
         _vibrationEnabled.value = enabled
         prefs?.edit()?.putBoolean("vibration_enabled", enabled)
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
+    }
+
+    fun setDhikrVolumeControlsEnabled(enabled: Boolean) {
+        _dhikrVolumeControlsEnabled.value = enabled
+        prefs?.edit()?.putBoolean("dhikr_volume_controls_enabled", enabled)
             ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
@@ -1363,6 +1374,11 @@ class AppRepository(
         (map["vibrationEnabled"] as? Boolean)?.let { vib ->
             _vibrationEnabled.value = vib
             editor?.putBoolean("vibration_enabled", vib)
+        }
+
+        (map["dhikrVolumeControlsEnabled"] as? Boolean)?.let { volEnabled ->
+            _dhikrVolumeControlsEnabled.value = volEnabled
+            editor?.putBoolean("dhikr_volume_controls_enabled", volEnabled)
         }
 
         (map["homeFeatureOrder"] as? String)?.let { orderStr ->

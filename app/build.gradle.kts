@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.fivelight.pzxqva"
     minSdk = 26
     targetSdk = 36
-    versionCode = 8
-    versionName = "1.10"
+    versionCode = 9
+    versionName = "1.11"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
