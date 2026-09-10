@@ -26,8 +26,8 @@ data class FiveLightWidgetColors(
 object FiveLightWidgetTheme {
 
     /**
-     * Frosted glass palette: pure black, white, obsidian, charcoal,
-     * and 70-85% translucent monochrome shades. Zero dynamic colors or loud accents.
+     * FiveLight dock frosted glass palette: obsidian charcoal glass in dark mode,
+     * warm milk glass in light mode, with optical diffusion, lens refraction, and specular highlight.
      */
     fun resolveColors(context: Context): FiveLightWidgetColors {
         val isNight = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
@@ -35,9 +35,9 @@ object FiveLightWidgetTheme {
         return if (isNight) {
             FiveLightWidgetColors(
                 isDark = true,
-                background = Color(0xCC0D0E12),      // 80% opacity translucent obsidian frosted glass
-                surfaceSubtle = Color(0x12FFFFFF),   // 7% white subtle glass highlight
-                border = Color(0x1AFFFFFF),          // 10% subtle frosted rim
+                background = Color(0xDC1C1C1E),      // FiveLight dock charcoal obsidian glass (86% opacity)
+                surfaceSubtle = Color(0x14FFFFFF),   // 8% white subtle glass highlight
+                border = Color(0x30FFFFFF),          // 19% subtle frosted glass rim
                 textPrimary = Color(0xFFF5F5F8),     // Soft luminous white
                 textSecondary = Color(0xFFA1A1AB),   // Refined muted stone
                 textTertiary = Color(0xFF71717A),    // Quiet charcoal
@@ -48,9 +48,9 @@ object FiveLightWidgetTheme {
         } else {
             FiveLightWidgetColors(
                 isDark = false,
-                background = Color(0xD0F6F6F8),      // 81% opacity translucent warm off-white glass
-                surfaceSubtle = Color(0x0D000000),   // 5% black subtle surface
-                border = Color(0x14000000),          // 8% black border
+                background = Color(0xE6F8F7F4),      // FiveLight dock warm off-white glass (90% opacity)
+                surfaceSubtle = Color(0x0A000000),   // 4% black subtle surface
+                border = Color(0x1E000000),          // 12% black soft glass rim
                 textPrimary = Color(0xFF141416),     // Deep obsidian black
                 textSecondary = Color(0xFF52525B),   // Slate grey
                 textTertiary = Color(0xFF8A8A94),    // Light muted

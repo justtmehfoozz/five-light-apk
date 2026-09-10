@@ -2,14 +2,26 @@
 <resources>
     <color name="splash_bg">#000000</color>
 
-    <!-- FiveLight Frosted Dark Glass Widgets (70-85% Translucent Obsidian Glass) -->
-    <color name="widget_background">#CC0D0E12</color>
-    <color name="widget_surface_subtle">#12FFFFFF</color>
-    <color name="widget_border">#1AFFFFFF</color>
+    <!-- FiveLight Frosted Dark Glass Widgets (Dock Glass Material) -->
+    <color name="widget_background">#DC1C1C1E</color>
+    <color name="widget_surface_subtle">#14FFFFFF</color>
+    <color name="widget_border">#30FFFFFF</color>
     <color name="widget_primary_text">#F5F5F8</color>
     <color name="widget_secondary_text">#A1A1AB</color>
     <color name="widget_tertiary_text">#71717A</color>
     <color name="widget_accent_gold">#F5F5F8</color>
     <color name="widget_accent_gold_subtle">#14FFFFFF</color>
     <color name="widget_accent_green">#F5F5F8</color>
+
+    <!-- FiveLight Glass Optical Shader Layers (Dark Theme) -->
+    <color name="widget_glass_ambient_shadow">#38000000</color>
+    <color name="widget_glass_base">#DC1C1C1E</color>
+    <color name="widget_glass_diffusion_top">#22FFFFFF</color>
+    <color name="widget_glass_diffusion_mid">#0CFFFFFF</color>
+    <color name="widget_glass_diffusion_bottom">#02FFFFFF</color>
+    <color name="widget_glass_refraction_center">#14E5C07B</color>
+    <color name="widget_glass_refraction_edge">#00000000</color>
+    <color name="widget_glass_specular_start">#40FFFFFF</color>
+    <color name="widget_glass_specular_mid">#10FFFFFF</color>
+    <color name="widget_glass_border">#30FFFFFF</color>
 </resources>
