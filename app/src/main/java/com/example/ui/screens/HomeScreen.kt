@@ -597,7 +597,9 @@ fun HomeScreen(
                 bottomPadding = 0.dp,
                 actions = {
                     Box(
-                        modifier = Modifier.size(38.dp),
+                        modifier = Modifier
+                            .size(38.dp)
+                            .testTag("header_search_btn"),
                         contentAlignment = Alignment.Center
                     ) {
                         Box(
@@ -605,8 +607,7 @@ fun HomeScreen(
                                 .fillMaxSize()
                                 .clip(CircleShape)
                                 .border(1.dp, MaterialTheme.colorScheme.outline, CircleShape)
-                                .clickable { onOpenSettings() }
-                                .testTag("header_search_btn"),
+                                .clickable { onOpenSettings() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -620,10 +621,11 @@ fun HomeScreen(
                         if (isUpdateAvailable) {
                             Box(
                                 modifier = Modifier
-                                    .size(8.dp)
                                     .align(Alignment.TopEnd)
-                                    .offset(x = 1.dp, y = (-1).dp)
-                                    .background(Color.semanticError, CircleShape)
+                                    .padding(top = 1.dp, end = 1.dp)
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.semanticError)
                                     .testTag("settings_update_badge")
                             )
                         }

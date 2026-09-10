@@ -335,28 +335,7 @@ fun SplashScreen(
             val canvasHeight = size.height
             if (canvasWidth <= 0f || canvasHeight <= 0f) return@Canvas
 
-            // 1. Temporary Light Emergence Effect (Only during 200ms - 750ms reveal)
-            if (revealGlowAlpha > 0.001f) {
-                val glowCenter = Offset(canvasWidth * 0.50f, canvasHeight * 0.48f)
-                val glowRadius = maxOf(1f, 150.dp.toPx())
-                val glowBrush = Brush.radialGradient(
-                    colors = listOf(
-                        revealGlowColor.copy(alpha = revealGlowAlpha),
-                        revealGlowColor.copy(alpha = revealGlowAlpha * 0.45f),
-                        revealGlowColor.copy(alpha = revealGlowAlpha * 0.12f),
-                        Color.Transparent
-                    ),
-                    center = glowCenter,
-                    radius = glowRadius
-                )
-                drawCircle(
-                    brush = glowBrush,
-                    radius = glowRadius,
-                    center = glowCenter
-                )
-            }
-
-            // 2. Stars: Independent Twinkling, Birth Emergence & Subtle Life Movement
+            // Stars: Independent Twinkling, Birth Emergence & Subtle Life Movement
             val timeSec = animationTimeMs / 1000f
 
             // Global star field noticeability: faint at 0ms (0.55), subtly ramping to 1.0 by 350ms
