@@ -48,6 +48,8 @@ import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
@@ -429,6 +431,12 @@ fun TasbeehScreen(
 
     val triggerDecrement = {
         if (dhikrCount > 0) {
+            // Micro-interaction press animation on counter disc
+            coroutineScope.launch {
+                isCounterPressed = true
+                delay(90)
+                isCounterPressed = false
+            }
             triggerVibration(isCompletion = false)
             playSound()
             onDecrement()
@@ -1078,11 +1086,23 @@ fun TasbeehScreen(
                             targetState = dhikrCount,
                             transitionSpec = {
                                 if (targetState > initialState) {
-                                    (slideInVertically(animationSpec = tween(120)) { it / 4 } + fadeIn(animationSpec = tween(120)))
-                                        .togetherWith(slideOutVertically(animationSpec = tween(100)) { -it / 4 } + fadeOut(animationSpec = tween(100)))
+                                    (slideInVertically(animationSpec = tween(120)) { it / 4 } +
+                                            fadeIn(animationSpec = tween(120)) +
+                                            scaleIn(initialScale = 0.94f, animationSpec = tween(120)))
+                                        .togetherWith(
+                                            slideOutVertically(animationSpec = tween(100)) { -it / 4 } +
+                                                    fadeOut(animationSpec = tween(100)) +
+                                                    scaleOut(targetScale = 1.04f, animationSpec = tween(100))
+                                        )
                                 } else {
-                                    (slideInVertically(animationSpec = tween(120)) { -it / 4 } + fadeIn(animationSpec = tween(120)))
-                                        .togetherWith(slideOutVertically(animationSpec = tween(100)) { it / 4 } + fadeOut(animationSpec = tween(100)))
+                                    (slideInVertically(animationSpec = tween(120)) { -it / 4 } +
+                                            fadeIn(animationSpec = tween(120)) +
+                                            scaleIn(initialScale = 1.04f, animationSpec = tween(120)))
+                                        .togetherWith(
+                                            slideOutVertically(animationSpec = tween(100)) { it / 4 } +
+                                                    fadeOut(animationSpec = tween(100)) +
+                                                    scaleOut(targetScale = 0.94f, animationSpec = tween(100))
+                                        )
                                 }
                             },
                             label = "tasbeehCountTransition"
