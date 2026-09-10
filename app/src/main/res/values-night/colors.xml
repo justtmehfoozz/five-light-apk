@@ -2,14 +2,14 @@
 <resources>
     <color name="splash_bg">#000000</color>
 
-    <!-- FiveLight Minimal Dark Glass Widgets (Dark Theme: Deep black, obsidian, charcoal, soft white text) -->
-    <color name="widget_background">#0E0E12</color>
-    <color name="widget_surface_subtle">#18181E</color>
-    <color name="widget_border">#1FFFFFFF</color>
-    <color name="widget_primary_text">#F2F2F5</color>
-    <color name="widget_secondary_text">#A1A1AA</color>
-    <color name="widget_tertiary_text">#666672</color>
-    <color name="widget_accent_gold">#F2F2F5</color>
-    <color name="widget_accent_gold_subtle">#1AFFFFFF</color>
-    <color name="widget_accent_green">#F2F2F5</color>
+    <!-- FiveLight Frosted Dark Glass Widgets (70-85% Translucent Obsidian Glass) -->
+    <color name="widget_background">#CC0D0E12</color>
+    <color name="widget_surface_subtle">#12FFFFFF</color>
+    <color name="widget_border">#1AFFFFFF</color>
+    <color name="widget_primary_text">#F5F5F8</color>
+    <color name="widget_secondary_text">#A1A1AB</color>
+    <color name="widget_tertiary_text">#71717A</color>
+    <color name="widget_accent_gold">#F5F5F8</color>
+    <color name="widget_accent_gold_subtle">#14FFFFFF</color>
+    <color name="widget_accent_green">#F5F5F8</color>
 </resources>

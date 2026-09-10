@@ -26,8 +26,8 @@ data class FiveLightWidgetColors(
 object FiveLightWidgetTheme {
 
     /**
-     * Minimal dark glass palette: pure black, white, obsidian, charcoal,
-     * and translucent monochrome shades. Zero dynamic colors or loud accents.
+     * Frosted glass palette: pure black, white, obsidian, charcoal,
+     * and 70-85% translucent monochrome shades. Zero dynamic colors or loud accents.
      */
     fun resolveColors(context: Context): FiveLightWidgetColors {
         val isNight = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
@@ -35,20 +35,20 @@ object FiveLightWidgetTheme {
         return if (isNight) {
             FiveLightWidgetColors(
                 isDark = true,
-                background = Color(0xF00E0E12),      // Deep obsidian dark glass
-                surfaceSubtle = Color(0x14FFFFFF),   // 8% white glass layer
-                border = Color(0x1FFFFFFF),          // 12% subtle white border
-                textPrimary = Color(0xFFF2F2F5),     // Soft white
-                textSecondary = Color(0xFFA1A1AA),   // Refined muted stone
+                background = Color(0xCC0D0E12),      // 80% opacity translucent obsidian frosted glass
+                surfaceSubtle = Color(0x12FFFFFF),   // 7% white subtle glass highlight
+                border = Color(0x1AFFFFFF),          // 10% subtle frosted rim
+                textPrimary = Color(0xFFF5F5F8),     // Soft luminous white
+                textSecondary = Color(0xFFA1A1AB),   // Refined muted stone
                 textTertiary = Color(0xFF71717A),    // Quiet charcoal
                 textSubtle = Color(0xFF52525B),      // Subtle boundary
-                accentGold = Color(0xFFF2F2F5),
-                accentGreen = Color(0xFFF2F2F5)
+                accentGold = Color(0xFFF5F5F8),
+                accentGreen = Color(0xFFF5F5F8)
             )
         } else {
             FiveLightWidgetColors(
                 isDark = false,
-                background = Color(0xF5F7F7F9),      // Warm off-white glass
+                background = Color(0xD0F6F6F8),      // 81% opacity translucent warm off-white glass
                 surfaceSubtle = Color(0x0D000000),   // 5% black subtle surface
                 border = Color(0x14000000),          // 8% black border
                 textPrimary = Color(0xFF141416),     // Deep obsidian black
@@ -60,6 +60,14 @@ object FiveLightWidgetTheme {
             )
         }
     }
+
+    // FiveLight Celestial Signature Mark ✦
+    fun celestialMarkStyle(colors: FiveLightWidgetColors, fontSize: Int = 11): TextStyle = TextStyle(
+        color = ColorProvider(colors.textTertiary),
+        fontSize = fontSize.sp,
+        fontWeight = FontWeight.Normal,
+        fontFamily = FontFamily.Serif
+    )
 
     // Header Typography matching FiveLight (Instrument Serif Italic)
     fun headerStyle(colors: FiveLightWidgetColors, fontSize: Int = 12): TextStyle = TextStyle(

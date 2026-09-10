@@ -91,13 +91,15 @@ fun PrayerWidgetContent(
 
 /**
  * SMALL SIZE:
- * ✦ Next Prayer
+ * ✦
  *
  * Asr
  *
  * 24 min
  *
  * 03:58 PM
+ *
+ * Large prayer name. Clear time. No unnecessary labels.
  */
 @Composable
 private fun PrayerSmallLayout(
@@ -109,10 +111,10 @@ private fun PrayerSmallLayout(
         verticalAlignment = Alignment.Top,
         horizontalAlignment = Alignment.Start
     ) {
-        // Minimal brand header
+        // Celestial mark
         Text(
-            text = "✦ Next Prayer",
-            style = FiveLightWidgetTheme.headerStyle(colors, fontSize = 11),
+            text = "✦",
+            style = FiveLightWidgetTheme.celestialMarkStyle(colors, fontSize = 12),
             maxLines = 1
         )
 
@@ -123,7 +125,7 @@ private fun PrayerSmallLayout(
             text = state.nextPrayerName.ifEmpty { "Salah" },
             style = TextStyle(
                 color = ColorProvider(colors.textPrimary),
-                fontSize = 24.sp,
+                fontSize = 26.sp,
                 fontWeight = FontWeight.Medium,
                 fontFamily = FontFamily.SansSerif
             ),
@@ -140,7 +142,7 @@ private fun PrayerSmallLayout(
         }
         Text(
             text = remainingText,
-            style = FiveLightWidgetTheme.supportingStyle(colors, fontSize = 12),
+            style = FiveLightWidgetTheme.supportingStyle(colors, fontSize = 13),
             maxLines = 1
         )
 
@@ -161,7 +163,7 @@ private fun PrayerSmallLayout(
 
 /**
  * MEDIUM SIZE:
- * ✦ Salah
+ * Salah
  *
  * Asr
  *
@@ -187,7 +189,7 @@ private fun PrayerMediumLayout(
         ) {
             Text(
                 text = "✦ Salah",
-                style = FiveLightWidgetTheme.headerStyle(colors, fontSize = 12),
+                style = FiveLightWidgetTheme.headerStyle(colors, fontSize = 13),
                 maxLines = 1
             )
             Spacer(modifier = GlanceModifier.defaultWeight())
@@ -202,48 +204,30 @@ private fun PrayerMediumLayout(
 
         Spacer(modifier = GlanceModifier.defaultWeight())
 
-        // Large prayer name with optional subtle Arabic
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = state.nextPrayerName.ifEmpty { "Salah" },
-                style = TextStyle(
-                    color = ColorProvider(colors.textPrimary),
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = FontFamily.SansSerif
-                ),
-                maxLines = 1
-            )
-            if (state.nextPrayerArabicName.isNotBlank()) {
-                Spacer(modifier = GlanceModifier.width(8.dp))
-                Text(
-                    text = state.nextPrayerArabicName,
-                    style = FiveLightWidgetTheme.arabicScriptureStyle(colors, fontSize = 14),
-                    maxLines = 1
-                )
-            }
-        }
+        // Large prayer name
+        Text(
+            text = state.nextPrayerName.ifEmpty { "Salah" },
+            style = TextStyle(
+                color = ColorProvider(colors.textPrimary),
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = FontFamily.SansSerif
+            ),
+            maxLines = 1
+        )
 
-        Spacer(modifier = GlanceModifier.height(2.dp))
+        Spacer(modifier = GlanceModifier.height(3.dp))
 
-        // in 24 minutes
+        // in 24 minutes (clean and emotional)
         val timeNotice = if (state.nextPrayerRemainingMinutes > 0) {
             "in ${state.nextPrayerRemainingMinutes} minutes"
         } else {
             state.nextPrayerRemainingFormatted.ifEmpty { "Due now" }
         }
-        val fullTimeNotice = if (state.nextPrayerTimeFormatted.isNotBlank()) {
-            "$timeNotice • ${state.nextPrayerTimeFormatted}"
-        } else {
-            timeNotice
-        }
 
         Text(
-            text = fullTimeNotice,
-            style = FiveLightWidgetTheme.supportingStyle(colors, fontSize = 12),
+            text = timeNotice,
+            style = FiveLightWidgetTheme.supportingStyle(colors, fontSize = 13),
             maxLines = 1
         )
 
@@ -274,7 +258,7 @@ private fun PrayerMediumLayout(
                 text = dots,
                 style = TextStyle(
                     color = ColorProvider(colors.textPrimary),
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Normal,
                     fontFamily = FontFamily.SansSerif
                 ),

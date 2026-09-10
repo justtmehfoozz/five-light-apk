@@ -25,6 +25,7 @@ import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
 import androidx.glance.layout.padding
 import androidx.glance.text.FontFamily
+import androidx.glance.text.FontStyle
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
@@ -88,10 +89,14 @@ fun PersonalLogWidgetContent(
 }
 
 /**
- * SMALL SIZE:
- * Dhikr
+ * SMALL SIZE (Dhikr Complication):
+ * ✦ Dhikr
  *
- * 342
+ * 0
+ *
+ * Tap to count
+ *
+ * Number is the main focus with balanced, calm spacing.
  */
 @Composable
 private fun PersonalLogSmallLayout(
@@ -102,7 +107,7 @@ private fun PersonalLogSmallLayout(
         modifier = GlanceModifier
             .fillMaxSize()
             .clickable(actionRunCallback<QuickDhikrIncrementCallback>()),
-        verticalAlignment = Alignment.Top,
+        verticalAlignment = Alignment.CenterVertically,
         horizontalAlignment = Alignment.Start
     ) {
         Text(
@@ -111,28 +116,26 @@ private fun PersonalLogSmallLayout(
             maxLines = 1
         )
 
-        Spacer(modifier = GlanceModifier.defaultWeight())
+        Spacer(modifier = GlanceModifier.height(10.dp))
 
         Text(
             text = "${state.todayDhikrCount}",
             style = TextStyle(
                 color = ColorProvider(colors.textPrimary),
-                fontSize = 28.sp,
+                fontSize = 32.sp,
                 fontWeight = FontWeight.Medium,
                 fontFamily = FontFamily.SansSerif
             ),
             maxLines = 1
         )
 
-        Spacer(modifier = GlanceModifier.height(2.dp))
+        Spacer(modifier = GlanceModifier.height(4.dp))
 
         Text(
             text = "Tap to count",
-            style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 10),
+            style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
             maxLines = 1
         )
-
-        Spacer(modifier = GlanceModifier.defaultWeight())
     }
 }
 
@@ -140,10 +143,15 @@ private fun PersonalLogSmallLayout(
  * MEDIUM SIZE:
  * Today's Journey
  *
+ * When empty:
+ * ✦ Today
+ * Your journey begins here.
+ * Dhikr • Salah • Quran
+ *
+ * When data exists:
+ * ✦ Today's Journey
  * Dhikr      342
- *
  * Salah      3/5
- *
  * Quran      Continue
  */
 @Composable
@@ -151,128 +159,177 @@ private fun PersonalLogMediumLayout(
     state: PersonalLogWidgetState,
     colors: FiveLightWidgetColors
 ) {
-    Column(
-        modifier = GlanceModifier.fillMaxSize(),
-        verticalAlignment = Alignment.Top,
-        horizontalAlignment = Alignment.Start
-    ) {
-        // Header
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "✦ Today's Journey",
-                style = FiveLightWidgetTheme.headerStyle(colors, fontSize = 12),
-                maxLines = 1
-            )
-            Spacer(modifier = GlanceModifier.defaultWeight())
-            Text(
-                text = state.dateFormatted,
-                style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 10),
-                maxLines = 1
-            )
-        }
+    val isEmpty = state.todayDhikrCount == 0 && state.completedPrayersCount == 0 && !state.hasQuranActivityToday
 
-        Spacer(modifier = GlanceModifier.defaultWeight())
-
-        // Row 1: Dhikr (Interactive tap-to-increment)
-        Row(
-            modifier = GlanceModifier
-                .fillMaxWidth()
-                .clickable(actionRunCallback<QuickDhikrIncrementCallback>())
-                .padding(vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically
+    if (isEmpty) {
+        Column(
+            modifier = GlanceModifier.fillMaxSize(),
+            verticalAlignment = Alignment.Top,
+            horizontalAlignment = Alignment.Start
         ) {
-            Text(
-                text = "Dhikr",
-                style = TextStyle(
-                    color = ColorProvider(colors.textSecondary),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Normal,
-                    fontFamily = FontFamily.SansSerif
-                ),
-                maxLines = 1
-            )
+            Row(
+                modifier = GlanceModifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "✦ Today",
+                    style = FiveLightWidgetTheme.headerStyle(colors, fontSize = 12),
+                    maxLines = 1
+                )
+                Spacer(modifier = GlanceModifier.defaultWeight())
+                Text(
+                    text = state.dateFormatted,
+                    style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 10),
+                    maxLines = 1
+                )
+            }
+
             Spacer(modifier = GlanceModifier.defaultWeight())
+
             Text(
-                text = "${state.todayDhikrCount}",
+                text = "Your journey begins here.",
                 style = TextStyle(
                     color = ColorProvider(colors.textPrimary),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = FontFamily.SansSerif
-                ),
-                maxLines = 1
-            )
-        }
-
-        Spacer(modifier = GlanceModifier.height(2.dp))
-
-        // Row 2: Salah
-        Row(
-            modifier = GlanceModifier
-                .fillMaxWidth()
-                .padding(vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Salah",
-                style = TextStyle(
-                    color = ColorProvider(colors.textSecondary),
-                    fontSize = 13.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Normal,
-                    fontFamily = FontFamily.SansSerif
+                    fontStyle = FontStyle.Italic,
+                    fontFamily = FontFamily.Serif
                 ),
                 maxLines = 1
             )
+
             Spacer(modifier = GlanceModifier.defaultWeight())
+
             Text(
-                text = "${state.completedPrayersCount}/5",
-                style = TextStyle(
-                    color = ColorProvider(colors.textPrimary),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = FontFamily.SansSerif
-                ),
+                text = "Dhikr  •  Salah  •  Quran",
+                style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
                 maxLines = 1
             )
         }
-
-        Spacer(modifier = GlanceModifier.height(2.dp))
-
-        // Row 3: Quran
-        val quranStatus = if (state.quranStatusText.isNotBlank()) "Continue" else "Start reading"
-        Row(
-            modifier = GlanceModifier
-                .fillMaxWidth()
-                .padding(vertical = 3.dp),
-            verticalAlignment = Alignment.CenterVertically
+    } else {
+        Column(
+            modifier = GlanceModifier.fillMaxSize(),
+            verticalAlignment = Alignment.Top,
+            horizontalAlignment = Alignment.Start
         ) {
-            Text(
-                text = "Quran",
-                style = TextStyle(
-                    color = ColorProvider(colors.textSecondary),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Normal,
-                    fontFamily = FontFamily.SansSerif
-                ),
-                maxLines = 1
-            )
-            Spacer(modifier = GlanceModifier.defaultWeight())
-            Text(
-                text = quranStatus,
-                style = TextStyle(
-                    color = ColorProvider(colors.textTertiary),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Normal,
-                    fontFamily = FontFamily.SansSerif
-                ),
-                maxLines = 1
-            )
-        }
+            // Header
+            Row(
+                modifier = GlanceModifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "✦ Today's Journey",
+                    style = FiveLightWidgetTheme.headerStyle(colors, fontSize = 12),
+                    maxLines = 1
+                )
+                Spacer(modifier = GlanceModifier.defaultWeight())
+                Text(
+                    text = state.dateFormatted,
+                    style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 10),
+                    maxLines = 1
+                )
+            }
 
-        Spacer(modifier = GlanceModifier.defaultWeight())
+            Spacer(modifier = GlanceModifier.defaultWeight())
+
+            // Row 1: Dhikr (Interactive tap-to-increment)
+            Row(
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .clickable(actionRunCallback<QuickDhikrIncrementCallback>())
+                    .padding(vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Dhikr",
+                    style = TextStyle(
+                        color = ColorProvider(colors.textSecondary),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Normal,
+                        fontFamily = FontFamily.SansSerif
+                    ),
+                    maxLines = 1
+                )
+                Spacer(modifier = GlanceModifier.defaultWeight())
+                Text(
+                    text = "${state.todayDhikrCount}",
+                    style = TextStyle(
+                        color = ColorProvider(colors.textPrimary),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.SansSerif
+                    ),
+                    maxLines = 1
+                )
+            }
+
+            Spacer(modifier = GlanceModifier.height(2.dp))
+
+            // Row 2: Salah
+            Row(
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Salah",
+                    style = TextStyle(
+                        color = ColorProvider(colors.textSecondary),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Normal,
+                        fontFamily = FontFamily.SansSerif
+                    ),
+                    maxLines = 1
+                )
+                Spacer(modifier = GlanceModifier.defaultWeight())
+                Text(
+                    text = "${state.completedPrayersCount}/5",
+                    style = TextStyle(
+                        color = ColorProvider(colors.textPrimary),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.SansSerif
+                    ),
+                    maxLines = 1
+                )
+            }
+
+            Spacer(modifier = GlanceModifier.height(2.dp))
+
+            // Row 3: Quran
+            val quranStatus = if (state.quranStatusText.isNotBlank()) "Continue" else "Start reading"
+            Row(
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .padding(vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Quran",
+                    style = TextStyle(
+                        color = ColorProvider(colors.textSecondary),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Normal,
+                        fontFamily = FontFamily.SansSerif
+                    ),
+                    maxLines = 1
+                )
+                Spacer(modifier = GlanceModifier.defaultWeight())
+                Text(
+                    text = quranStatus,
+                    style = TextStyle(
+                        color = ColorProvider(colors.textTertiary),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Normal,
+                        fontFamily = FontFamily.SansSerif
+                    ),
+                    maxLines = 1
+                )
+            }
+
+            Spacer(modifier = GlanceModifier.defaultWeight())
+        }
     }
 }
 
@@ -280,138 +337,220 @@ private fun PersonalLogMediumLayout(
  * LARGE SIZE:
  * Today
  *
+ * When empty:
+ * ✦ Today
+ * Your journey begins here.
+ * Dhikr  •  Salah  •  Quran
+ *
+ * When data exists:
+ * ✦ Today
  * 342 Dhikr
- *
  * 3/5 Salah
- *
- * Surah Al-Kahf
- * Continue reading
+ * Surah Al-Kahf / Continue reading
  */
 @Composable
 private fun PersonalLogLargeLayout(
     state: PersonalLogWidgetState,
     colors: FiveLightWidgetColors
 ) {
-    Column(
-        modifier = GlanceModifier.fillMaxSize(),
-        verticalAlignment = Alignment.Top,
-        horizontalAlignment = Alignment.Start
-    ) {
-        // Header
-        Row(
-            modifier = GlanceModifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "✦ Today",
-                style = FiveLightWidgetTheme.headerStyle(colors, fontSize = 12),
-                maxLines = 1
-            )
-            Spacer(modifier = GlanceModifier.defaultWeight())
-            Text(
-                text = state.dateFormatted,
-                style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
-                maxLines = 1
-            )
-        }
+    val isEmpty = state.todayDhikrCount == 0 && state.completedPrayersCount == 0 && !state.hasQuranActivityToday
 
-        Spacer(modifier = GlanceModifier.defaultWeight())
-
-        // Dhikr item (interactive tap-to-increment)
-        Row(
-            modifier = GlanceModifier
-                .fillMaxWidth()
-                .clickable(actionRunCallback<QuickDhikrIncrementCallback>())
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "${state.todayDhikrCount} Dhikr",
-                style = TextStyle(
-                    color = ColorProvider(colors.textPrimary),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = FontFamily.SansSerif
-                ),
-                maxLines = 1
-            )
-            Spacer(modifier = GlanceModifier.defaultWeight())
-            Text(
-                text = "+1",
-                style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
-                maxLines = 1
-            )
-        }
-
-        Spacer(modifier = GlanceModifier.height(6.dp))
-
-        // Salah item
-        Row(
-            modifier = GlanceModifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "${state.completedPrayersCount}/5 Salah",
-                style = TextStyle(
-                    color = ColorProvider(colors.textPrimary),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = FontFamily.SansSerif
-                ),
-                maxLines = 1
-            )
-            Spacer(modifier = GlanceModifier.defaultWeight())
-            val dots = buildString {
-                for (i in 0 until 5) {
-                    if (i < state.completedPrayersCount) append("● ") else append("○ ")
-                }
-            }.trim()
-            Text(
-                text = dots,
-                style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
-                maxLines = 1
-            )
-        }
-
-        Spacer(modifier = GlanceModifier.height(8.dp))
-
-        // Quran reading position / continue reading
-        val surahTitle = if (state.quranStatusText.isNotBlank()) {
-            state.quranStatusText
-        } else {
-            "Surah Al-Kahf"
-        }
-        val readingAction = if (state.hasQuranActivityToday || state.quranStatusText.isNotBlank()) {
-            "Continue reading"
-        } else {
-            "Start reading"
-        }
-
+    if (isEmpty) {
         Column(
-            modifier = GlanceModifier
-                .fillMaxWidth()
-                .padding(vertical = 4.dp)
+            modifier = GlanceModifier.fillMaxSize(),
+            verticalAlignment = Alignment.Top,
+            horizontalAlignment = Alignment.Start
         ) {
+            // Header
+            Row(
+                modifier = GlanceModifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "✦ Today",
+                    style = FiveLightWidgetTheme.headerStyle(colors, fontSize = 12),
+                    maxLines = 1
+                )
+                Spacer(modifier = GlanceModifier.defaultWeight())
+                Text(
+                    text = state.dateFormatted,
+                    style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
+                    maxLines = 1
+                )
+            }
+
+            Spacer(modifier = GlanceModifier.defaultWeight())
+
             Text(
-                text = surahTitle,
+                text = "Your journey begins here.",
                 style = TextStyle(
-                    color = ColorProvider(colors.textSecondary),
-                    fontSize = 14.sp,
+                    color = ColorProvider(colors.textPrimary),
+                    fontSize = 18.sp,
                     fontWeight = FontWeight.Normal,
-                    fontFamily = FontFamily.SansSerif
+                    fontStyle = FontStyle.Italic,
+                    fontFamily = FontFamily.Serif
                 ),
                 maxLines = 1
             )
-            Spacer(modifier = GlanceModifier.height(2.dp))
+
+            Spacer(modifier = GlanceModifier.height(8.dp))
+
             Text(
-                text = readingAction,
-                style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
+                text = "Dhikr  •  Salah  •  Quran",
+                style = FiveLightWidgetTheme.supportingStyle(colors, fontSize = 13),
                 maxLines = 1
             )
-        }
 
-        Spacer(modifier = GlanceModifier.defaultWeight())
+            Spacer(modifier = GlanceModifier.defaultWeight())
+
+            // Touch affordance
+            Row(
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .clickable(actionRunCallback<QuickDhikrIncrementCallback>())
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Tap to start today's Dhikr",
+                    style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
+                    maxLines = 1
+                )
+                Spacer(modifier = GlanceModifier.defaultWeight())
+                Text(
+                    text = "+1",
+                    style = TextStyle(
+                        color = ColorProvider(colors.textPrimary),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.SansSerif
+                    ),
+                    maxLines = 1
+                )
+            }
+        }
+    } else {
+        Column(
+            modifier = GlanceModifier.fillMaxSize(),
+            verticalAlignment = Alignment.Top,
+            horizontalAlignment = Alignment.Start
+        ) {
+            // Header
+            Row(
+                modifier = GlanceModifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "✦ Today",
+                    style = FiveLightWidgetTheme.headerStyle(colors, fontSize = 12),
+                    maxLines = 1
+                )
+                Spacer(modifier = GlanceModifier.defaultWeight())
+                Text(
+                    text = state.dateFormatted,
+                    style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
+                    maxLines = 1
+                )
+            }
+
+            Spacer(modifier = GlanceModifier.defaultWeight())
+
+            // Dhikr item (interactive tap-to-increment)
+            Row(
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .clickable(actionRunCallback<QuickDhikrIncrementCallback>())
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${state.todayDhikrCount} Dhikr",
+                    style = TextStyle(
+                        color = ColorProvider(colors.textPrimary),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.SansSerif
+                    ),
+                    maxLines = 1
+                )
+                Spacer(modifier = GlanceModifier.defaultWeight())
+                Text(
+                    text = "+1",
+                    style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
+                    maxLines = 1
+                )
+            }
+
+            Spacer(modifier = GlanceModifier.height(6.dp))
+
+            // Salah item
+            Row(
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${state.completedPrayersCount}/5 Salah",
+                    style = TextStyle(
+                        color = ColorProvider(colors.textPrimary),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = FontFamily.SansSerif
+                    ),
+                    maxLines = 1
+                )
+                Spacer(modifier = GlanceModifier.defaultWeight())
+                val dots = buildString {
+                    for (i in 0 until 5) {
+                        if (i < state.completedPrayersCount) append("● ") else append("○ ")
+                    }
+                }.trim()
+                Text(
+                    text = dots,
+                    style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
+                    maxLines = 1
+                )
+            }
+
+            Spacer(modifier = GlanceModifier.height(8.dp))
+
+            // Quran reading position / continue reading
+            val surahTitle = if (state.quranStatusText.isNotBlank()) {
+                state.quranStatusText
+            } else {
+                "Surah Al-Kahf"
+            }
+            val readingAction = if (state.hasQuranActivityToday || state.quranStatusText.isNotBlank()) {
+                "Continue reading"
+            } else {
+                "Start reading"
+            }
+
+            Column(
+                modifier = GlanceModifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
+                Text(
+                    text = surahTitle,
+                    style = TextStyle(
+                        color = ColorProvider(colors.textSecondary),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Normal,
+                        fontFamily = FontFamily.SansSerif
+                    ),
+                    maxLines = 1
+                )
+                Spacer(modifier = GlanceModifier.height(2.dp))
+                Text(
+                    text = readingAction,
+                    style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
+                    maxLines = 1
+                )
+            }
+
+            Spacer(modifier = GlanceModifier.defaultWeight())
+        }
     }
 }

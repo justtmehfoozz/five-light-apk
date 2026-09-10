@@ -9,14 +9,14 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 
-    <!-- FiveLight Minimal Dark Glass Widgets (Light Theme: Soft white & light grey shades) -->
-    <color name="widget_background">#F7F7F9</color>
-    <color name="widget_surface_subtle">#EFEFF2</color>
-    <color name="widget_border">#1A000000</color>
+    <!-- FiveLight Frosted Glass Widgets (Light Theme: Translucent off-white glass) -->
+    <color name="widget_background">#D0F6F6F8</color>
+    <color name="widget_surface_subtle">#0D000000</color>
+    <color name="widget_border">#14000000</color>
     <color name="widget_primary_text">#141416</color>
-    <color name="widget_secondary_text">#585862</color>
+    <color name="widget_secondary_text">#52525B</color>
     <color name="widget_tertiary_text">#8A8A94</color>
     <color name="widget_accent_gold">#141416</color>
-    <color name="widget_accent_gold_subtle">#14000000</color>
+    <color name="widget_accent_gold_subtle">#0A000000</color>
     <color name="widget_accent_green">#141416</color>
 </resources>

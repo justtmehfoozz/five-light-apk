@@ -91,10 +91,11 @@ fun DailyAyahWidgetContent(
 
 /**
  * SMALL SIZE:
- * Arabic ayah only + Verse reference
- * e.g.
- * فَإِنَّ مَعَ الْعُسْرِ يُسْرًا
- * 94:6
+ * ✦
+ *
+ * Arabic snippet
+ *
+ * Surah reference
  */
 @Composable
 private fun DailyAyahSmallLayout(
@@ -103,17 +104,24 @@ private fun DailyAyahSmallLayout(
 ) {
     Column(
         modifier = GlanceModifier.fillMaxSize(),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Celestial mark at top
+        Text(
+            text = "✦",
+            style = FiveLightWidgetTheme.celestialMarkStyle(colors, fontSize = 12),
+            maxLines = 1
+        )
+
         Spacer(modifier = GlanceModifier.defaultWeight())
 
-        // Arabic Ayah Only
+        // Arabic Ayah Only (Hero element)
         Text(
             text = state.shortArabicText.ifEmpty { state.arabicText },
             style = TextStyle(
                 color = ColorProvider(colors.textPrimary),
-                fontSize = 16.sp,
+                fontSize = 17.sp,
                 fontWeight = FontWeight.Normal,
                 fontFamily = FontFamily.Serif,
                 textAlign = TextAlign.Center
@@ -121,16 +129,15 @@ private fun DailyAyahSmallLayout(
             maxLines = 3
         )
 
-        Spacer(modifier = GlanceModifier.height(8.dp))
+        Spacer(modifier = GlanceModifier.defaultWeight())
 
-        // Reference e.g. 94:6
+        // Reference e.g. 94:6 or Surah name
+        val ref = state.reference.ifEmpty { "${state.surahNumber}:${state.verseNumber}" }
         Text(
-            text = "${state.surahNumber}:${state.verseNumber}",
+            text = ref,
             style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
             maxLines = 1
         )
-
-        Spacer(modifier = GlanceModifier.defaultWeight())
     }
 }
 
