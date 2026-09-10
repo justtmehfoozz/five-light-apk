@@ -136,6 +136,8 @@ dependencies {
   implementation(libs.haze.materials)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.core.splashscreen)
+  implementation(libs.androidx.glance)
+  implementation(libs.androidx.glance.appwidget)
   // implementation(libs.androidx.profileinstaller)
   // implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.lifecycle.runtime.compose)

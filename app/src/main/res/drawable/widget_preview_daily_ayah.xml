@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <!-- 1. Outer Container Card -->
+    <path
+        android:fillColor="@color/widget_background"
+        android:strokeColor="@color/widget_border"
+        android:strokeWidth="1.2"
+        android:pathData="M24,10 H296 A14,14 0 0 1 310,24 V156 A14,14 0 0 1 296,170 H24 A14,14 0 0 1 10,156 V24 A14,14 0 0 1 24,10 Z" />
+
+    <!-- 2. Header: Quran / Ayah Icon -->
+    <path
+        android:fillColor="@color/widget_accent_gold"
+        android:pathData="M28,21 H36 V31 H28 Z" />
+
+    <!-- Context Tag ("Morning Reflection" / "Daily Ayah") -->
+    <path
+        android:fillColor="@color/widget_accent_gold"
+        android:pathData="M42,23 H116 A3,3 0 0 1 119,26 V27 A3,3 0 0 1 116,30 H42 A3,3 0 0 1 39,27 V26 A3,3 0 0 1 42,23 Z" />
+
+    <!-- Reference Pill (Right: "Ash-Sharh 94:6") -->
+    <path
+        android:fillColor="@color/widget_tertiary_text"
+        android:pathData="M228,23 H288 A3,3 0 0 1 291,26 V27 A3,3 0 0 1 288,30 H228 A3,3 0 0 1 225,27 V26 A3,3 0 0 1 228,23 Z" />
+
+    <!-- 3. Arabic Verse Line (Centered / Prominent) -->
+    <path
+        android:fillColor="@color/widget_primary_text"
+        android:pathData="M30,48 H290 A4,4 0 0 1 294,52 V56 A4,4 0 0 1 290,60 H30 A4,4 0 0 1 26,56 V52 A4,4 0 0 1 30,48 Z" />
+    <path
+        android:fillColor="@color/widget_primary_text"
+        android:pathData="M70,66 H250 A3.5,3.5 0 0 1 253.5,69.5 V71.5 A3.5,3.5 0 0 1 250,75 H70 A3.5,3.5 0 0 1 66.5,71.5 V69.5 A3.5,3.5 0 0 1 70,66 Z" />
+
+    <!-- 4. English Translation (Italicized style bars) -->
+    <path
+        android:fillColor="@color/widget_secondary_text"
+        android:pathData="M32,86 H288 A3,3 0 0 1 291,89 V90 A3,3 0 0 1 288,93 H32 A3,3 0 0 1 29,90 V89 A3,3 0 0 1 32,86 Z" />
+    <path
+        android:fillColor="@color/widget_secondary_text"
+        android:pathData="M52,98 H268 A2.5,2.5 0 0 1 270.5,100.5 V101.5 A2.5,2.5 0 0 1 268,104 H52 A2.5,2.5 0 0 1 49.5,101.5 V100.5 A2.5,2.5 0 0 1 52,98 Z" />
+
+    <!-- 5. Spiritual Reflection Card -->
+    <path
+        android:fillColor="@color/widget_surface_subtle"
+        android:strokeColor="@color/widget_border"
+        android:strokeWidth="0.75"
+        android:pathData="M30,116 H290 A6,6 0 0 1 296,122 V142 A6,6 0 0 1 290,148 H30 A6,6 0 0 1 24,142 V122 A6,6 0 0 1 30,116 Z" />
+
+    <path
+        android:fillColor="@color/widget_tertiary_text"
+        android:pathData="M38,126 H282 A2.5,2.5 0 0 1 284.5,128.5 V129.5 A2.5,2.5 0 0 1 282,132 H38 A2.5,2.5 0 0 1 35.5,129.5 V128.5 A2.5,2.5 0 0 1 38,126 Z" />
+    <path
+        android:fillColor="@color/widget_tertiary_text"
+        android:pathData="M38,136 H210 A2,2 0 0 1 212,138 V139 A2,2 0 0 1 210,141 H38 A2,2 0 0 1 36,139 V138 A2,2 0 0 1 38,136 Z" />
+
+    <!-- 6. Bottom Celestial Star Accent -->
+    <path
+        android:fillColor="@color/widget_accent_gold"
+        android:pathData="M276,130 C276,133 277.5,134.5 280.5,134.5 C277.5,134.5 276,136 276,139 C276,136 274.5,134.5 271.5,134.5 C274.5,134.5 276,133 276,130 Z" />
+
+    <!-- Bottom Read Action Bar ("Tap to read in Quran") -->
+    <path
+        android:fillColor="@color/widget_tertiary_text"
+        android:pathData="M30,158 H134 A2.5,2.5 0 0 1 136.5,160.5 V161.5 A2.5,2.5 0 0 1 134,164 H30 A2.5,2.5 0 0 1 27.5,161.5 V160.5 A2.5,2.5 0 0 1 30,158 Z" />
+</vector>

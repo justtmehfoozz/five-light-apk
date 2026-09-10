@@ -224,11 +224,32 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                     currentUser != null && !viewModel.isSetupCompleted(currentUser?.uid.orEmpty())
                 }
 
+                var openPersonalLogDirectly by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+
                 // Check intent on launch / resume for update notification click
                 androidx.compose.runtime.LaunchedEffect(intent) {
                     if (intent?.getBooleanExtra(com.example.data.updater.UpdateNotificationHelper.EXTRA_OPEN_UPDATES, false) == true) {
                         initialSettingsSubScreen = com.example.ui.screens.PreferencesSubScreen.APP_UPDATES
                         showSettingsSheet = true
+                    }
+                    if (intent?.action == com.example.widget.core.WidgetConstants.ACTION_OPEN_PERSONAL_LOG ||
+                        intent?.getBooleanExtra(com.example.widget.core.WidgetConstants.EXTRA_OPEN_PERSONAL_LOG, false) == true) {
+                        coroutineScope.launch { pagerState.scrollToPage(0) }
+                        openPersonalLogDirectly = true
+                        intent?.action = null
+                        intent?.removeExtra(com.example.widget.core.WidgetConstants.EXTRA_OPEN_PERSONAL_LOG)
+                    }
+                    if (intent?.action == com.example.widget.core.WidgetConstants.ACTION_OPEN_PRAYER ||
+                        intent?.getBooleanExtra(com.example.widget.core.WidgetConstants.EXTRA_OPEN_PRAYER, false) == true) {
+                        coroutineScope.launch { pagerState.scrollToPage(0) }
+                        intent?.action = null
+                        intent?.removeExtra(com.example.widget.core.WidgetConstants.EXTRA_OPEN_PRAYER)
+                    }
+                    if (intent?.action == com.example.widget.core.WidgetConstants.ACTION_OPEN_QURAN ||
+                        intent?.getBooleanExtra(com.example.widget.core.WidgetConstants.EXTRA_OPEN_QURAN, false) == true) {
+                        coroutineScope.launch { pagerState.scrollToPage(2) }
+                        intent?.action = null
+                        intent?.removeExtra(com.example.widget.core.WidgetConstants.EXTRA_OPEN_QURAN)
                     }
                 }
 
@@ -499,7 +520,9 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                                         showSettingsSheet = true
                                     },
                                     isUpdateAvailable = isAppUpdateAvailable,
-                                    isActiveTab = (pagerState.currentPage == 0)
+                                    isActiveTab = (pagerState.currentPage == 0),
+                                    initialOpenPersonalLog = openPersonalLogDirectly,
+                                    onPersonalLogOpened = { openPersonalLogDirectly = false }
                                 )
                             }
 

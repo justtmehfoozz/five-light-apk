@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <!-- 1. Outer Container Card with rounded corners -->
+    <path
+        android:fillColor="@color/widget_background"
+        android:strokeColor="@color/widget_border"
+        android:strokeWidth="1.2"
+        android:pathData="M24,10 H296 A14,14 0 0 1 310,24 V156 A14,14 0 0 1 296,170 H24 A14,14 0 0 1 10,156 V24 A14,14 0 0 1 24,10 Z" />
+
+    <!-- 2. Header: Mosque Silhouette -->
+    <path
+        android:fillColor="@color/widget_accent_gold"
+        android:pathData="M31,23 C31,21.5 32,20 33,19 C34,20 35,21.5 35,23 H31 Z M29,24 H37 V25 H29 Z M30,26 H36 V33 H30 Z M26,27 H28 V33 H26 Z M38,27 H40 V33 H38 Z M27,24.5 L28,26 H26 Z M39,24.5 L40,26 H38 Z" />
+
+    <!-- Header Title Pill ("Next Prayer") -->
+    <path
+        android:fillColor="@color/widget_accent_gold"
+        android:pathData="M44,24 H108 A3,3 0 0 1 111,27 V28 A3,3 0 0 1 108,31 H44 A3,3 0 0 1 41,28 V27 A3,3 0 0 1 44,24 Z" />
+
+    <!-- Header Location Tag (Right) -->
+    <path
+        android:fillColor="@color/widget_tertiary_text"
+        android:pathData="M254,24 H288 A3,3 0 0 1 291,27 V28 A3,3 0 0 1 288,31 H254 A3,3 0 0 1 251,28 V27 A3,3 0 0 1 254,24 Z" />
+
+    <!-- 3. Center Focus Card: Next Prayer (Asr) -->
+    <path
+        android:fillColor="@color/widget_surface_subtle"
+        android:strokeColor="@color/widget_border"
+        android:strokeWidth="0.75"
+        android:pathData="M34,42 H286 A10,10 0 0 1 296,52 V118 A10,10 0 0 1 286,128 H34 A10,10 0 0 1 24,118 V52 A10,10 0 0 1 34,42 Z" />
+
+    <!-- Big Prayer Name Indicator Bar ("Asr") -->
+    <path
+        android:fillColor="@color/widget_primary_text"
+        android:pathData="M40,58 H110 A4,4 0 0 1 114,62 V70 A4,4 0 0 1 110,74 H40 A4,4 0 0 1 36,70 V62 A4,4 0 0 1 40,58 Z" />
+
+    <!-- Arabic Calligraphy Accent Pill -->
+    <path
+        android:fillColor="@color/widget_accent_gold"
+        android:pathData="M124,62 H172 A3,3 0 0 1 175,65 V67 A3,3 0 0 1 172,70 H124 A3,3 0 0 1 121,67 V65 A3,3 0 0 1 124,62 Z" />
+
+    <!-- Celestial 4-Point Star in Focus Card Top Right -->
+    <path
+        android:fillColor="@color/widget_accent_gold"
+        android:pathData="M276,54 C276,57.5 278.5,60 282,60 C278.5,60 276,62.5 276,66 C276,62.5 273.5,60 270,60 C273.5,60 276,57.5 276,54 Z" />
+
+    <!-- Remaining Time Indicator Bar ("24 min remaining") -->
+    <path
+        android:fillColor="@color/widget_secondary_text"
+        android:pathData="M40,86 H146 A3,3 0 0 1 149,89 V91 A3,3 0 0 1 146,94 H40 A3,3 0 0 1 37,91 V89 A3,3 0 0 1 40,86 Z" />
+
+    <!-- Scheduled Time Indicator Bar ("at 04:15 PM") -->
+    <path
+        android:fillColor="@color/widget_tertiary_text"
+        android:pathData="M40,104 H116 A2.5,2.5 0 0 1 118.5,106.5 V107.5 A2.5,2.5 0 0 1 116,110 H40 A2.5,2.5 0 0 1 37.5,107.5 V106.5 A2.5,2.5 0 0 1 40,104 Z" />
+
+    <!-- 4. Bottom Journey Progress Row -->
+    <path
+        android:fillColor="@color/widget_accent_green"
+        android:pathData="M30,147 A4,4 0 1,1 30,146.9 Z" />
+
+    <!-- Journey Text Bar ("3/5 completed") -->
+    <path
+        android:fillColor="@color/widget_secondary_text"
+        android:pathData="M42,143 H120 A3,3 0 0 1 123,146 V148 A3,3 0 0 1 120,151 H42 A3,3 0 0 1 39,148 V146 A3,3 0 0 1 42,143 Z" />
+
+    <!-- Mini Progress Dots (5 prayer steps: Fajr, Dhuhr, Asr, Maghrib, Isha) -->
+    <!-- 1: Fajr (Done) -->
+    <path
+        android:fillColor="@color/widget_accent_green"
+        android:pathData="M232,147 A3.5,3.5 0 1,1 232,146.9 Z" />
+    <!-- 2: Dhuhr (Done) -->
+    <path
+        android:fillColor="@color/widget_accent_green"
+        android:pathData="M246,147 A3.5,3.5 0 1,1 246,146.9 Z" />
+    <!-- 3: Asr (Next - Gold) -->
+    <path
+        android:fillColor="@color/widget_accent_gold"
+        android:pathData="M260,147 A4.5,4.5 0 1,1 260,146.9 Z" />
+    <!-- 4: Maghrib (Upcoming) -->
+    <path
+        android:fillColor="@color/widget_border"
+        android:pathData="M274,147 A3.5,3.5 0 1,1 274,146.9 Z" />
+    <!-- 5: Isha (Upcoming) -->
+    <path
+        android:fillColor="@color/widget_border"
+        android:pathData="M288,147 A3.5,3.5 0 1,1 288,146.9 Z" />
+</vector>

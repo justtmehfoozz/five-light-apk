@@ -519,6 +519,7 @@ class AppRepository(
         prefs?.edit()?.putInt("dhikr_count_$presetId", count)
             ?.putLong("tasbeeh_updated_at", System.currentTimeMillis())?.apply()
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyTasbeehStateChanged()
+        appContext?.let { com.example.widget.updater.PersonalLogWidgetUpdater.updateAsync(it) }
     }
 
     fun getSavedDhikrTarget(presetId: String, defaultTarget: Int): Int {
@@ -541,6 +542,7 @@ class AppRepository(
             ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
         islamicDateRepository.updateLocation(city)
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
+        appContext?.let { com.example.widget.updater.FiveLightWidgetUpdater.updateAllAsync(it) }
     }
 
     fun autoConfigureFromLocation(city: CityLocation) {
@@ -557,6 +559,7 @@ class AppRepository(
             ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
         islamicDateRepository.updateCalcMethod(method)
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
+        appContext?.let { com.example.widget.updater.FiveLightWidgetUpdater.updatePrayerAndLogAsync(it) }
     }
 
     fun setMadhab(m: Madhab) {
@@ -564,6 +567,7 @@ class AppRepository(
         prefs?.edit()?.putString("madhab", m.name)
             ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
+        appContext?.let { com.example.widget.updater.FiveLightWidgetUpdater.updatePrayerAndLogAsync(it) }
     }
 
     fun setAppearanceMode(mode: AppearanceMode) {
@@ -571,6 +575,7 @@ class AppRepository(
         prefs?.edit()?.putString("appearance_mode", mode.name)
             ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
+        appContext?.let { com.example.widget.updater.FiveLightWidgetUpdater.updateAllAsync(it) }
     }
 
     fun setTimeFormat(format: TimeFormat) {
@@ -578,6 +583,7 @@ class AppRepository(
         prefs?.edit()?.putString("time_format", format.name)
             ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
+        appContext?.let { com.example.widget.updater.FiveLightWidgetUpdater.updatePrayerAndLogAsync(it) }
     }
 
     fun setTasbeehSound(sound: com.example.data.model.TasbeehSound) {
@@ -770,6 +776,7 @@ class AppRepository(
             ?.putLong("quran_progress_updated_at", now)
             ?.apply()
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyQuranProgressChanged()
+        appContext?.let { com.example.widget.updater.PersonalLogWidgetUpdater.updateAsync(it) }
     }
 
     fun getPrayerLogsForDates(dates: List<String>): Flow<List<PrayerLogEntity>> {
@@ -970,6 +977,7 @@ class AppRepository(
         }
         db.prayerLogDao().insertOrUpdatePrayerLog(updated)
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPrayerLogChanged(updated)
+        appContext?.let { com.example.widget.updater.PersonalLogWidgetUpdater.updateAsync(it) }
 
         appContext?.let { ctx ->
             if (isCompleted) {
@@ -1119,6 +1127,7 @@ class AppRepository(
         }
         db.prayerLogDao().insertOrUpdatePrayerLog(updated)
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPrayerLogChanged(updated)
+        appContext?.let { com.example.widget.updater.PersonalLogWidgetUpdater.updateAsync(it) }
 
         if (isCompleted && wasQadaAdded) {
             val currentCount = getQadaCount(prayerName)
@@ -1142,6 +1151,7 @@ class AppRepository(
         )
         db.dhikrHistoryDao().insertDhikrHistory(entity)
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyDhikrHistoryAdded(entity)
+        appContext?.let { com.example.widget.updater.PersonalLogWidgetUpdater.updateAsync(it) }
     }
 
     // Quran Bookmarks

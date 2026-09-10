@@ -519,6 +519,8 @@ fun HomeScreen(
     onOpenSettings: () -> Unit,
     isUpdateAvailable: Boolean = false,
     isActiveTab: Boolean = true,
+    initialOpenPersonalLog: Boolean = false,
+    onPersonalLogOpened: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val isDark = MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
@@ -531,6 +533,13 @@ fun HomeScreen(
     var showPrayerJourneySheet by remember { mutableStateOf(false) }
     var showPersonalLogSheet by remember { mutableStateOf(false) }
     var activeEvidenceNaflType by remember { mutableStateOf<NaflType?>(null) }
+
+    androidx.compose.runtime.LaunchedEffect(initialOpenPersonalLog) {
+        if (initialOpenPersonalLog) {
+            showPersonalLogSheet = true
+            onPersonalLogOpened()
+        }
+    }
 
     val homePredictiveState = rememberPredictiveBackState()
     val isHomeOverlayActive = showPrayerMode != null || showPrayerJourneySheet || showPersonalLogSheet || showDuaModal || showHadithModal || activeEvidenceNaflType != null

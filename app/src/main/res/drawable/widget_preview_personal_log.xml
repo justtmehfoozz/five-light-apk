@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <!-- 1. Outer Container Card -->
+    <path
+        android:fillColor="@color/widget_background"
+        android:strokeColor="@color/widget_border"
+        android:strokeWidth="1.2"
+        android:pathData="M24,10 H296 A14,14 0 0 1 310,24 V156 A14,14 0 0 1 296,170 H24 A14,14 0 0 1 10,156 V24 A14,14 0 0 1 24,10 Z" />
+
+    <!-- 2. Header: Celestial Diamond Star -->
+    <path
+        android:fillColor="@color/widget_accent_gold"
+        android:pathData="M32,19 C32,22 34,24 37,24 C34,24 32,26 32,29 C32,26 30,24 27,24 C30,24 32,22 32,19 Z" />
+
+    <!-- Header Title ("Today's Journey") -->
+    <path
+        android:fillColor="@color/widget_primary_text"
+        android:pathData="M44,21 H124 A3,3 0 0 1 127,24 V25 A3,3 0 0 1 124,28 H44 A3,3 0 0 1 41,25 V24 A3,3 0 0 1 44,21 Z" />
+
+    <!-- Date (Right) -->
+    <path
+        android:fillColor="@color/widget_tertiary_text"
+        android:pathData="M242,21 H288 A2.5,2.5 0 0 1 290.5,23.5 V24.5 A2.5,2.5 0 0 1 288,27 H242 A2.5,2.5 0 0 1 239.5,24.5 V23.5 A2.5,2.5 0 0 1 242,21 Z" />
+
+    <!-- 3. Row 1: Dhikr Row -->
+    <path
+        android:fillColor="@color/widget_surface_subtle"
+        android:strokeColor="@color/widget_border"
+        android:strokeWidth="0.75"
+        android:pathData="M30,38 H290 A8,8 0 0 1 298,46 V66 A8,8 0 0 1 290,74 H30 A8,8 0 0 1 22,66 V46 A8,8 0 0 1 30,38 Z" />
+
+    <!-- Dhikr Icon / Beads -->
+    <path
+        android:fillColor="@color/widget_accent_gold"
+        android:pathData="M38,56 A4,4 0 1,1 38,55.9 Z" />
+
+    <!-- Dhikr Label -->
+    <path
+        android:fillColor="@color/widget_primary_text"
+        android:pathData="M50,52 H92 A3,3 0 0 1 95,55 V57 A3,3 0 0 1 92,60 H50 A3,3 0 0 1 47,57 V55 A3,3 0 0 1 50,52 Z" />
+
+    <!-- Dhikr Count ("342 counts") -->
+    <path
+        android:fillColor="@color/widget_accent_gold"
+        android:pathData="M236,52 H286 A3,3 0 0 1 289,55 V57 A3,3 0 0 1 286,60 H236 A3,3 0 0 1 233,57 V55 A3,3 0 0 1 236,52 Z" />
+
+    <!-- 4. Row 2: Quran Row -->
+    <path
+        android:fillColor="@color/widget_surface_subtle"
+        android:strokeColor="@color/widget_border"
+        android:strokeWidth="0.75"
+        android:pathData="M30,80 H290 A8,8 0 0 1 298,88 V108 A8,8 0 0 1 290,116 H30 A8,8 0 0 1 22,108 V88 A8,8 0 0 1 30,80 Z" />
+
+    <!-- Quran Icon -->
+    <path
+        android:fillColor="@color/widget_accent_gold"
+        android:pathData="M34,92 H42 V104 H34 Z" />
+
+    <!-- Quran Label -->
+    <path
+        android:fillColor="@color/widget_primary_text"
+        android:pathData="M50,94 H96 A3,3 0 0 1 99,97 V99 A3,3 0 0 1 96,102 H50 A3,3 0 0 1 47,99 V97 A3,3 0 0 1 50,94 Z" />
+
+    <!-- Quran Status ("Read Today ✓") -->
+    <path
+        android:fillColor="@color/widget_accent_green"
+        android:pathData="M224,94 H286 A3,3 0 0 1 289,97 V99 A3,3 0 0 1 286,102 H224 A3,3 0 0 1 221,99 V97 A3,3 0 0 1 224,94 Z" />
+
+    <!-- 5. Row 3: Fard Prayers Row -->
+    <path
+        android:fillColor="@color/widget_surface_subtle"
+        android:strokeColor="@color/widget_border"
+        android:strokeWidth="0.75"
+        android:pathData="M30,122 H290 A8,8 0 0 1 298,130 V150 A8,8 0 0 1 290,158 H30 A8,8 0 0 1 22,150 V130 A8,8 0 0 1 30,122 Z" />
+
+    <!-- Mosque/Prayer Icon -->
+    <path
+        android:fillColor="@color/widget_accent_gold"
+        android:pathData="M35,134 H41 V146 H35 Z" />
+
+    <!-- Prayer Label -->
+    <path
+        android:fillColor="@color/widget_primary_text"
+        android:pathData="M50,136 H120 A3,3 0 0 1 123,139 V141 A3,3 0 0 1 120,144 H50 A3,3 0 0 1 47,141 V139 A3,3 0 0 1 50,136 Z" />
+
+    <!-- Prayer Progress ("4 / 5") -->
+    <path
+        android:fillColor="@color/widget_accent_gold"
+        android:pathData="M256,136 H286 A3,3 0 0 1 289,139 V141 A3,3 0 0 1 286,144 H256 A3,3 0 0 1 253,141 V139 A3,3 0 0 1 256,136 Z" />
+</vector>

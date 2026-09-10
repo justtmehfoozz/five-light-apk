@@ -1,4 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="splash_bg">#000000</color>
+
+    <!-- FiveLight Minimal Dark Glass Widgets (Dark Theme: Deep black, obsidian, charcoal, soft white text) -->
+    <color name="widget_background">#0E0E12</color>
+    <color name="widget_surface_subtle">#18181E</color>
+    <color name="widget_border">#1FFFFFFF</color>
+    <color name="widget_primary_text">#F2F2F5</color>
+    <color name="widget_secondary_text">#A1A1AA</color>
+    <color name="widget_tertiary_text">#666672</color>
+    <color name="widget_accent_gold">#F2F2F5</color>
+    <color name="widget_accent_gold_subtle">#1AFFFFFF</color>
+    <color name="widget_accent_green">#F2F2F5</color>
 </resources>
