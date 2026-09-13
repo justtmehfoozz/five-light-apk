@@ -72,43 +72,50 @@
             </intent-filter>
         </receiver>
 
-        <!-- FiveLight Personal Log Widget -->
-        <receiver
-            android:name=".widget.personal.PersonalLogWidgetReceiver"
-            android:exported="true"
-            android:label="@string/widget_personal_log_title">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/personal_log_widget_info" />
-        </receiver>
-
-        <!-- FiveLight Current Prayer Widget -->
+        <!-- FiveLight Jetpack Glance Widgets -->
         <receiver
             android:name=".widget.prayer.PrayerWidgetReceiver"
             android:exported="true"
-            android:label="@string/widget_prayer_title">
+            android:label="@string/widget_prayer_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.example.widget.ACTION_UPDATE_PRAYER" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/prayer_widget_info" />
         </receiver>
 
-        <!-- FiveLight Daily Ayah Widget -->
         <receiver
             android:name=".widget.ayah.DailyAyahWidgetReceiver"
             android:exported="true"
-            android:label="@string/widget_daily_ayah_title">
+            android:label="@string/widget_daily_ayah_label">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/daily_ayah_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.log.PersonalLogWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_personal_log_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/personal_log_widget_info" />
         </receiver>
 
         <provider

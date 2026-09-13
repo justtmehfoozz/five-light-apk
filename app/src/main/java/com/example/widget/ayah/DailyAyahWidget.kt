@@ -1,20 +1,21 @@
 package com.example.widget.ayah
 
 import android.content.Context
-import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.glance.Button
+import androidx.glance.ButtonDefaults
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
-import androidx.glance.ImageProvider
-import androidx.glance.LocalContext
+import androidx.glance.GlanceTheme
 import androidx.glance.LocalSize
-import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
+import androidx.glance.appwidget.GlanceAppWidgetReceiver
 import androidx.glance.appwidget.SizeMode
+import androidx.glance.appwidget.action.ActionCallback
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.provideContent
-import androidx.glance.background
 import androidx.glance.layout.Alignment
 import androidx.glance.layout.Box
 import androidx.glance.layout.Column
@@ -23,258 +24,243 @@ import androidx.glance.layout.Spacer
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
-import androidx.glance.layout.padding
-import androidx.glance.text.FontFamily
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
-import androidx.glance.unit.ColorProvider
-import com.example.R
-import com.example.widget.core.FiveLightWidgetColors
-import com.example.widget.core.FiveLightWidgetTheme
-import com.example.widget.core.RefreshAyahActionCallback
-import com.example.widget.core.WidgetConstants
-import com.example.widget.core.WidgetSizeClass
-import com.example.widget.state.DailyAyahStateReader
-import com.example.widget.state.DailyAyahWidgetState
+import com.example.data.util.DailyContentProvider
+import com.example.data.util.DailyReflection
+import com.example.widget.theme.WidgetTheme
+import com.example.widget.util.WidgetUpdateHelper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.time.LocalDate
 
 /**
- * FiveLight Daily Ayah Widget.
- * Spiritual Quranic reminder with dark translucent glass aesthetics.
- * Pure Arabic & translation presentation without noisy explanation boxes.
+ * FiveLight Daily Ayah Widget using Jetpack Glance.
+ * Presents authoritative Quranic verse with prominent RTL Arabic typography,
+ * secondary translation, and subtle reference.
  */
 class DailyAyahWidget : GlanceAppWidget() {
 
-    override val sizeMode: SizeMode = SizeMode.Responsive(
+    override val sizeMode = SizeMode.Responsive(
         setOf(
-            WidgetConstants.SIZE_SMALL,
-            WidgetConstants.SIZE_MEDIUM,
-            WidgetConstants.SIZE_LARGE
+            DpSize(220.dp, 110.dp), // Medium
+            DpSize(260.dp, 220.dp)  // Large
         )
     )
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val state = DailyAyahStateReader.readState(context)
+        val appContext = context.applicationContext
+        val reflection = withContext(Dispatchers.IO) {
+            getDailyAyah(appContext)
+        }
 
         provideContent {
-            val currentContext = LocalContext.current
-            val colors = FiveLightWidgetTheme.resolveColors(currentContext)
-            DailyAyahWidgetContent(state = state, colors = colors)
+            GlanceTheme {
+                val size = LocalSize.current
+                val isLarge = size.height >= 180.dp && size.width >= 240.dp
+
+                Box(modifier = WidgetTheme.frostedGlassContainer()) {
+                    if (isLarge) {
+                        LargeDailyAyahLayout(reflection)
+                    } else {
+                        MediumDailyAyahLayout(reflection)
+                    }
+                }
+            }
+        }
+    }
+
+    companion object {
+        private const val PREFS_NAME = "fivelight_widget_prefs"
+        private const val KEY_AYAH_OFFSET = "key_ayah_offset"
+
+        fun getDailyAyah(context: Context): DailyReflection {
+            val reflections = DailyContentProvider.getReflections()
+            if (reflections.isEmpty()) {
+                return DailyReflection(
+                    id = 1,
+                    arabic = "أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ",
+                    translation = "Indeed, in the remembrance of Allah do hearts find rest.",
+                    reference = "13:28",
+                    surahNumber = 13,
+                    verseNumber = 28
+                )
+            }
+
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val offset = prefs.getInt(KEY_AYAH_OFFSET, 0)
+            val dayEpoch = try {
+                LocalDate.now().toEpochDay()
+            } catch (_: Exception) {
+                System.currentTimeMillis() / (24 * 3600 * 1000L)
+            }
+
+            val totalIndex = ((dayEpoch + offset) % reflections.size).let {
+                val rem = (it % reflections.size).toInt()
+                if (rem < 0) rem + reflections.size else rem
+            }
+
+            val item = reflections[totalIndex]
+            // Format reference strictly as surah:verse if available
+            val refFormatted = if (item.surahNumber > 0 && item.verseNumber > 0) {
+                "${item.surahNumber}:${item.verseNumber}"
+            } else {
+                item.reference
+            }
+
+            return item.copy(reference = refFormatted)
+        }
+
+        fun cycleNextAyah(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val currentOffset = prefs.getInt(KEY_AYAH_OFFSET, 0)
+            prefs.edit().putInt(KEY_AYAH_OFFSET, currentOffset + 1).apply()
         }
     }
 }
 
-@Composable
-fun DailyAyahWidgetContent(
-    state: DailyAyahWidgetState,
-    colors: FiveLightWidgetColors
-) {
-    val size = LocalSize.current
-    val sizeClass = WidgetConstants.classifySize(size)
-
-    Box(
-        modifier = GlanceModifier
-            .fillMaxSize()
-            .background(ImageProvider(R.drawable.widget_container_background))
-            .clickable(actionRunCallback<RefreshAyahActionCallback>())
-            .padding(if (sizeClass == WidgetSizeClass.SMALL) 12.dp else 16.dp),
-        contentAlignment = Alignment.TopStart
-    ) {
-        when (sizeClass) {
-            WidgetSizeClass.SMALL -> DailyAyahSmallLayout(state = state, colors = colors)
-            WidgetSizeClass.MEDIUM -> DailyAyahMediumLayout(state = state, colors = colors)
-            WidgetSizeClass.LARGE -> DailyAyahLargeLayout(state = state, colors = colors)
-        }
-    }
-}
-
-/**
- * SMALL SIZE:
- * ✦
- *
- * Arabic snippet
- *
- * Surah reference
- */
-@Composable
-private fun DailyAyahSmallLayout(
-    state: DailyAyahWidgetState,
-    colors: FiveLightWidgetColors
-) {
+@androidx.compose.runtime.Composable
+private fun MediumDailyAyahLayout(item: DailyReflection) {
     Column(
         modifier = GlanceModifier.fillMaxSize(),
-        verticalAlignment = Alignment.Top,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        // Celestial mark at top
-        Text(
-            text = "✦",
-            style = FiveLightWidgetTheme.celestialMarkStyle(colors, fontSize = 12),
-            maxLines = 1
-        )
-
-        Spacer(modifier = GlanceModifier.defaultWeight())
-
-        // Arabic Ayah Only (Hero element)
-        Text(
-            text = state.shortArabicText.ifEmpty { state.arabicText },
-            style = TextStyle(
-                color = ColorProvider(colors.textPrimary),
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Normal,
-                fontFamily = FontFamily.Serif,
-                textAlign = TextAlign.Center
-            ),
-            maxLines = 3
-        )
-
-        Spacer(modifier = GlanceModifier.defaultWeight())
-
-        // Reference e.g. 94:6 or Surah name
-        val ref = state.reference.ifEmpty { "${state.surahNumber}:${state.verseNumber}" }
-        Text(
-            text = ref,
-            style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
-            maxLines = 1
-        )
-    }
-}
-
-/**
- * MEDIUM SIZE:
- * Daily Ayah
- *
- * Arabic
- *
- * Translation
- *
- * Reference
- */
-@Composable
-private fun DailyAyahMediumLayout(
-    state: DailyAyahWidgetState,
-    colors: FiveLightWidgetColors
-) {
-    Column(
-        modifier = GlanceModifier.fillMaxSize(),
-        verticalAlignment = Alignment.Top,
+        verticalAlignment = Alignment.CenterVertically,
         horizontalAlignment = Alignment.Start
     ) {
-        // Header
+        // Subtle Title
         Text(
-            text = "✦ Daily Ayah",
-            style = FiveLightWidgetTheme.headerStyle(colors, fontSize = 12),
-            maxLines = 1
+            text = "Daily Ayah",
+            style = WidgetTheme.titleStyle
         )
 
-        Spacer(modifier = GlanceModifier.defaultWeight())
+        Spacer(modifier = GlanceModifier.height(4.dp))
 
-        // Arabic
+        // Visually dominant Arabic verse (RTL)
         Text(
-            text = state.shortArabicText.ifEmpty { state.arabicText },
+            text = item.arabic,
             style = TextStyle(
-                color = ColorProvider(colors.textPrimary),
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Normal,
-                fontFamily = FontFamily.Serif
+                color = WidgetTheme.textPrimary,
+                fontSize = 17.sp,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.End
             ),
+            modifier = GlanceModifier.fillMaxWidth(),
             maxLines = 2
         )
 
         Spacer(modifier = GlanceModifier.height(4.dp))
 
-        // Translation
+        // Secondary Translation
         Text(
-            text = state.translation,
-            style = FiveLightWidgetTheme.supportingStyle(colors, fontSize = 12),
+            text = item.translation.removeSurrounding("\""),
+            style = WidgetTheme.bodyMutedStyle,
+            modifier = GlanceModifier.fillMaxWidth(),
             maxLines = 2
         )
 
-        Spacer(modifier = GlanceModifier.defaultWeight())
+        Spacer(modifier = GlanceModifier.height(3.dp))
 
-        // Reference
+        // Subtle Reference
         Text(
-            text = state.reference,
-            style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
-            maxLines = 1
+            text = item.reference,
+            style = WidgetTheme.captionStyle
         )
     }
 }
 
-/**
- * LARGE SIZE:
- * Today's Reflection
- *
- * Arabic verse
- *
- * Translation
- *
- * Surah reference
- */
-@Composable
-private fun DailyAyahLargeLayout(
-    state: DailyAyahWidgetState,
-    colors: FiveLightWidgetColors
-) {
+@androidx.compose.runtime.Composable
+private fun LargeDailyAyahLayout(item: DailyReflection) {
     Column(
         modifier = GlanceModifier.fillMaxSize(),
         verticalAlignment = Alignment.Top,
         horizontalAlignment = Alignment.Start
     ) {
-        // Header
+        // Header row with "Daily Ayah" and subtle shuffle action
         Row(
             modifier = GlanceModifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "✦ Today's Reflection",
-                style = FiveLightWidgetTheme.headerStyle(colors, fontSize = 12),
-                maxLines = 1
+                text = "Daily Ayah",
+                style = WidgetTheme.titleStyle,
+                modifier = GlanceModifier.defaultWeight()
             )
-            Spacer(modifier = GlanceModifier.defaultWeight())
-            Text(
-                text = state.dateFormatted,
-                style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
-                maxLines = 1
+
+            Button(
+                text = "↻ Next",
+                onClick = actionRunCallback<ShuffleAyahActionCallback>(),
+                colors = ButtonDefaults.buttonColors(
+                    backgroundColor = WidgetTheme.pillBackground,
+                    contentColor = WidgetTheme.textMuted
+                )
             )
         }
 
-        Spacer(modifier = GlanceModifier.defaultWeight())
-
-        // Arabic verse
-        Text(
-            text = state.arabicText,
-            style = TextStyle(
-                color = ColorProvider(colors.textPrimary),
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Normal,
-                fontFamily = FontFamily.Serif
-            ),
-            maxLines = 3
-        )
-
         Spacer(modifier = GlanceModifier.height(8.dp))
 
-        // Translation
-        Text(
-            text = state.translation,
-            style = TextStyle(
-                color = ColorProvider(colors.textSecondary),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Normal,
-                fontFamily = FontFamily.SansSerif
-            ),
-            maxLines = 3
-        )
+        // Prominent Arabic verse with generous spacing
+        Column(
+            modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = item.arabic,
+                style = TextStyle(
+                    color = WidgetTheme.textPrimary,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Normal,
+                    textAlign = TextAlign.End
+                ),
+                modifier = GlanceModifier.fillMaxWidth()
+            )
 
-        Spacer(modifier = GlanceModifier.defaultWeight())
+            Spacer(modifier = GlanceModifier.height(10.dp))
 
-        // Surah reference
+            Text(
+                text = item.translation.removeSurrounding("\""),
+                style = TextStyle(
+                    color = WidgetTheme.textSecondary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Normal,
+                    textAlign = TextAlign.Start
+                ),
+                modifier = GlanceModifier.fillMaxWidth()
+            )
+        }
+
+        Spacer(modifier = GlanceModifier.height(6.dp))
+
+        // Minimal reference at bottom
         Text(
-            text = state.reference,
-            style = FiveLightWidgetTheme.metadataStyle(colors, fontSize = 11),
-            maxLines = 1
+            text = item.reference,
+            style = WidgetTheme.captionStyle
         )
+    }
+}
+
+class ShuffleAyahActionCallback : ActionCallback {
+    override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: androidx.glance.action.ActionParameters) {
+        try {
+            DailyAyahWidget.cycleNextAyah(context.applicationContext)
+            DailyAyahWidget().update(context, glanceId)
+        } catch (e: Exception) {
+            android.util.Log.e("DailyAyahWidget", "Failed cycling ayah", e)
+        }
+    }
+}
+
+class DailyAyahWidgetReceiver : GlanceAppWidgetReceiver() {
+    override val glanceAppWidget: GlanceAppWidget = DailyAyahWidget()
+
+    override fun onReceive(context: Context, intent: android.content.Intent) {
+        super.onReceive(context, intent)
+        val action = intent.action
+        if (action == android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE ||
+            action == android.content.Intent.ACTION_DATE_CHANGED ||
+            action == android.content.Intent.ACTION_TIMEZONE_CHANGED ||
+            action == android.content.Intent.ACTION_TIME_CHANGED) {
+            WidgetUpdateHelper.triggerDailyAyahWidgetUpdate(context)
+        }
     }
 }

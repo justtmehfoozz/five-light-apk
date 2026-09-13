@@ -1,9 +1,9 @@
 <resources>
     <string name="app_name">FiveLight</string>
-    <string name="widget_personal_log_title">Personal Log</string>
-    <string name="widget_personal_log_description">View your daily Dhikr, Quran, and prayer journey reflection.</string>
-    <string name="widget_prayer_title">Prayer Times</string>
-    <string name="widget_prayer_description">Track upcoming prayers, remaining time, and your daily Salah journey.</string>
-    <string name="widget_daily_ayah_title">Daily Ayah</string>
-    <string name="widget_daily_ayah_description">Daily Quran verse with Arabic text, translation, and spiritual reflection.</string>
+    <string name="widget_prayer_label">FiveLight Prayer</string>
+    <string name="widget_prayer_desc">Frosted-glass prayer times and astronomical arc</string>
+    <string name="widget_daily_ayah_label">FiveLight Daily Ayah</string>
+    <string name="widget_daily_ayah_desc">Authoritative daily Quranic verse and reflection</string>
+    <string name="widget_personal_log_label">FiveLight Personal Log</string>
+    <string name="widget_personal_log_desc">Daily worship summary, 7-day indicator, and quick logging</string>
 </resources>
