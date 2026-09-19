@@ -296,3 +296,30 @@ data class RightNowItem(
     val actionType: RightNowActionType,
     val naflType: NaflType? = null
 )
+
+/**
+ * Phase 2: Arabic Word Explorer models
+ */
+@Immutable
+data class QuranWordInfo(
+    val tokenIndex: Int,
+    val exactArabic: String,
+    val transliteration: String,
+    val meaning: String,
+    val lemma: String,
+    val root: String,
+    val partOfSpeech: String,
+    val surahNumber: Int = 0,
+    val verseNumber: Int = 0
+)
+
+@Immutable
+data class WordOccurrence(
+    val surahNumber: Int,
+    val verseNumber: Int,
+    val surahNameEnglish: String,
+    val surahNameArabic: String,
+    val textArabic: String,
+    val textEnglish: String
+)
+

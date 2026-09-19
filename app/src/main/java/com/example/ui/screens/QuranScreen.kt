@@ -35,6 +35,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.foundation.lazy.LazyListState
@@ -158,14 +159,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import com.example.data.db.BookmarkEntity
 import com.example.data.model.QuranLastRead
+import com.example.data.model.QuranWordInfo
 import com.example.data.model.Surah
 import com.example.data.model.Verse
 import com.example.data.util.QuranData
 import com.example.ui.components.PageHeader
 import com.example.ui.components.SegmentedTabs
 import com.example.ui.components.SurahOverviewContent
+import com.example.ui.components.WordExplorerBottomSheet
 import com.example.ui.theme.ArabicTextStyle
 import com.example.ui.theme.SerifHeaderFont
 
@@ -220,6 +229,7 @@ fun QuranScreen(
     var surahSubTab by rememberSaveable { mutableIntStateOf(0) } // 0: Read, 1: Overview & Map
     var showFontSizeControls by remember { mutableStateOf(false) }
     var activeLensVerse by remember { mutableStateOf<Verse?>(null) }
+    var activeWordInfo by remember { mutableStateOf<QuranWordInfo?>(null) }
     var quickActionSurah by remember { mutableStateOf<Surah?>(null) }
     var contextMenuVerse by remember { mutableStateOf<Verse?>(null) }
     var feedbackMessage by remember { mutableStateOf<String?>(null) }
@@ -622,9 +632,16 @@ fun QuranScreen(
                         modifier = Modifier.fillMaxSize()
                     ) { activeSubTab ->
                     if (activeSubTab == 1) {
+                        val currentReadingVerseNumber = remember(listState.firstVisibleItemIndex, displayVerses, hasBismillah) {
+                            val visibleIdx = listState.firstVisibleItemIndex
+                            val verseIdx = if (hasBismillah) (visibleIdx - 1).coerceAtLeast(0) else visibleIdx
+                            displayVerses.getOrNull(verseIdx)?.verseNumber ?: 1
+                        }
+
                         SurahOverviewContent(
                             surah = selectedSurah,
                             overview = surahOverview,
+                            currentReadingVerseNumber = currentReadingVerseNumber,
                             listState = overviewListState,
                             onNavigateToVerse = { verseNum ->
                                 surahSubTab = 0
@@ -689,6 +706,7 @@ fun QuranScreen(
                                         state = listState,
                                         flingBehavior = naturalFlingBehavior,
                                         verticalArrangement = Arrangement.spacedBy(4.dp),
+                                        contentPadding = PaddingValues(top = 8.dp, bottom = 140.dp),
                                         modifier = Modifier.fillMaxSize()
                                     ) {
                                         if (selectedSurah.number != 9 && displayVerses.none { it.verseNumber == 0 }) {
@@ -730,7 +748,8 @@ fun QuranScreen(
                                                     onPlayAudio = onPlayBismillah,
                                                     onToggleBookmark = onBookmarkBismillah,
                                                     onOpenLens = onLensBismillah,
-                                                    onLongClick = onLongClickBismillah
+                                                    onLongClick = onLongClickBismillah,
+                                                    onWordClick = { wordInfo -> activeWordInfo = wordInfo }
                                                 )
                                             }
                                         }
@@ -765,7 +784,8 @@ fun QuranScreen(
                                                 onPlayAudio = onPlay,
                                                 onToggleBookmark = onBookmark,
                                                 onOpenLens = onLens,
-                                                onLongClick = onLong
+                                                onLongClick = onLong,
+                                                onWordClick = { wordInfo -> activeWordInfo = wordInfo }
                                             )
                                         }
 
@@ -1194,7 +1214,30 @@ fun QuranScreen(
                     onToggleBookmark(menuVerse, isMenuVerseBookmarked)
                     feedbackMessage = if (isMenuVerseBookmarked) "Bookmark removed" else "Bookmark saved"
                 },
+                onExploreWords = {
+                    val verseWords = QuranData.getWordsForVerse(context, menuVerse.surahNumber, menuVerse.verseNumber)
+                    if (verseWords.isNotEmpty()) {
+                        activeWordInfo = verseWords.first()
+                    }
+                },
                 onDismiss = { contextMenuVerse = null }
+            )
+        }
+
+        // Word Explorer Bottom Sheet (Phase 2: Arabic Word Explorer)
+        if (activeWordInfo != null) {
+            WordExplorerBottomSheet(
+                wordInfo = activeWordInfo!!,
+                onNavigateToVerse = { surahNum, verseNum ->
+                    val surahMeta = QuranData.SURAHS_DIRECTORY.find { it.number == surahNum }
+                    if (surahMeta != null) {
+                        onSaveScrollPosition(surahNum, (verseNum - 1).coerceAtLeast(0))
+                        onSelectSurah(surahMeta)
+                        isReadingViewActive = true
+                        surahSubTab = 0
+                    }
+                },
+                onDismiss = { activeWordInfo = null }
             )
         }
 
@@ -1644,100 +1687,97 @@ internal fun SurahReaderSubNav(
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isAppInDarkTheme()
-    val containerBg = if (isDark) Color(0xFF1B1F1C) else Color(0xFFEFF2EE)
-    val borderCol = if (isDark) Color(0xFF2E342F) else Color(0xFFD8DCD6)
-    val activePillBg = if (isDark) Color(0xFF2C352E) else Color(0xFF1E2621)
-    val activeTextColor = if (isDark) Color(0xFFF2F4F0) else Color(0xFFFFFFFF)
-    val inactiveTextColor = if (isDark) Color(0xFF9EA39B) else Color(0xFF676E64)
+    val textPrimary = Color.semanticPrimaryText
+    val textMuted = Color.semanticMutedText
+    val accentCol = Color.semanticPrimaryAccent
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 4.dp, bottom = 4.dp),
+            .padding(top = 2.dp, bottom = 4.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .clip(CircleShape)
-                .background(containerBg)
-                .border(
-                    width = 1.dp,
-                    color = borderCol,
-                    shape = CircleShape
-                )
-                .padding(3.dp)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(32.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            // "Read" tab
+            val isReadSelected = selectedTab == 0
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onTabSelected(0) }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .semantics {
+                        role = Role.Tab
+                        selected = isReadSelected
+                        stateDescription = if (isReadSelected) "Read, selected" else "Read, not selected"
+                    }
+                    .testTag("surah_subtab_read")
             ) {
-                // "Read" tab
-                val isReadSelected = selectedTab == 0
+                Text(
+                    text = "Read",
+                    fontFamily = SpaceGrotesk,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = if (isReadSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        fontSize = 13.5.sp,
+                        letterSpacing = 0.3.sp
+                    ),
+                    color = if (isReadSelected) textPrimary else textMuted
+                )
+                Spacer(modifier = Modifier.height(4.dp))
                 Box(
                     modifier = Modifier
-                        .height(34.dp)
-                        .widthIn(min = 96.dp)
-                        .clip(CircleShape)
-                        .background(if (isReadSelected) activePillBg else Color.Transparent)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { onTabSelected(0) }
-                        .padding(horizontal = 18.dp)
-                        .semantics {
-                            role = Role.Tab
-                            selected = isReadSelected
-                            stateDescription = if (isReadSelected) "Read, selected" else "Read, not selected"
-                        }
-                        .testTag("surah_subtab_read"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Read",
-                        fontFamily = SpaceGrotesk,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = if (isReadSelected) FontWeight.SemiBold else FontWeight.Medium,
-                            fontSize = 13.5.sp,
-                            letterSpacing = 0.25.sp
-                        ),
-                        color = if (isReadSelected) activeTextColor else inactiveTextColor
-                    )
-                }
+                        .width(26.dp)
+                        .height(2.dp)
+                        .background(
+                            color = if (isReadSelected) accentCol else Color.Transparent,
+                            shape = RoundedCornerShape(1.dp)
+                        )
+                )
+            }
 
-                // "Overview" tab
-                val isOverviewSelected = selectedTab == 1
+            // "Overview" tab
+            val isOverviewSelected = selectedTab == 1
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { onTabSelected(1) }
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .semantics {
+                        role = Role.Tab
+                        selected = isOverviewSelected
+                        stateDescription = if (isOverviewSelected) "Overview, selected" else "Overview, not selected"
+                    }
+                    .testTag("surah_subtab_overview")
+            ) {
+                Text(
+                    text = "Overview",
+                    fontFamily = SpaceGrotesk,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = if (isOverviewSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        fontSize = 13.5.sp,
+                        letterSpacing = 0.3.sp
+                    ),
+                    color = if (isOverviewSelected) textPrimary else textMuted
+                )
+                Spacer(modifier = Modifier.height(4.dp))
                 Box(
                     modifier = Modifier
-                        .height(34.dp)
-                        .widthIn(min = 96.dp)
-                        .clip(CircleShape)
-                        .background(if (isOverviewSelected) activePillBg else Color.Transparent)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) { onTabSelected(1) }
-                        .padding(horizontal = 18.dp)
-                        .semantics {
-                            role = Role.Tab
-                            selected = isOverviewSelected
-                            stateDescription = if (isOverviewSelected) "Overview, selected" else "Overview, not selected"
-                        }
-                        .testTag("surah_subtab_overview"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Overview",
-                        fontFamily = SpaceGrotesk,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = if (isOverviewSelected) FontWeight.SemiBold else FontWeight.Medium,
-                            fontSize = 13.5.sp,
-                            letterSpacing = 0.25.sp
-                        ),
-                        color = if (isOverviewSelected) activeTextColor else inactiveTextColor
-                    )
-                }
+                        .width(32.dp)
+                        .height(2.dp)
+                        .background(
+                            color = if (isOverviewSelected) accentCol else Color.Transparent,
+                            shape = RoundedCornerShape(1.dp)
+                        )
+                )
             }
         }
     }
@@ -1833,6 +1873,67 @@ fun VerseNumberBadge(
     }
 }
 
+@Composable
+fun WordExplorerInteractiveText(
+    textArabic: String,
+    surahNumber: Int,
+    verseNumber: Int,
+    fontSize: androidx.compose.ui.unit.TextUnit,
+    color: Color,
+    textAlign: TextAlign,
+    onWordClick: ((QuranWordInfo) -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    var layoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
+
+    // Pre-calculate token ranges in textArabic using whitespace boundary
+    val tokenList = remember(textArabic) {
+        val regex = Regex("\\S+")
+        regex.findAll(textArabic).map { matchResult ->
+            Triple(matchResult.range.first, matchResult.range.last + 1, matchResult.value)
+        }.toList()
+    }
+
+    val gestureModifier = if (onWordClick != null && tokenList.isNotEmpty()) {
+        Modifier.pointerInput(textArabic, surahNumber, verseNumber) {
+            detectTapGestures(
+                onTap = { tapOffset ->
+                    val currentLayout = layoutResult ?: return@detectTapGestures
+                    val characterOffset = currentLayout.getOffsetForPosition(tapOffset)
+                    val tappedTokenIndex = tokenList.indexOfFirst { (start, end, _) ->
+                        characterOffset in start until end
+                    }
+                    if (tappedTokenIndex >= 0) {
+                        val wordInfo = QuranData.getWordInfo(context, surahNumber, verseNumber, tappedTokenIndex)
+                        if (wordInfo != null) {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onWordClick(wordInfo)
+                        }
+                    }
+                }
+            )
+        }
+    } else {
+        Modifier
+    }
+
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+        Text(
+            text = textArabic,
+            style = ArabicTextStyle.copy(
+                fontSize = fontSize,
+                lineHeight = (fontSize.value * 2.05f).sp,
+                color = color,
+                textAlign = textAlign
+            ),
+            onTextLayout = { layoutResult = it },
+            modifier = modifier.then(gestureModifier)
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun BismillahHeader(
@@ -1848,6 +1949,7 @@ fun BismillahHeader(
     onToggleBookmark: () -> Unit,
     onOpenLens: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    onWordClick: ((QuranWordInfo) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isDark = isAppInDarkTheme()
@@ -1949,12 +2051,15 @@ fun BismillahHeader(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        // Dominant Arabic Bismillah text centered, large, prominent
-        ArabicText(
-            text = verse.textArabic,
+        // Dominant Arabic Bismillah text centered, large, prominent (Word Explorer enabled)
+        WordExplorerInteractiveText(
+            textArabic = verse.textArabic,
+            surahNumber = verse.surahNumber,
+            verseNumber = verse.verseNumber,
             fontSize = (fontSizeSp * 1.06f).sp,
             color = textPrimary,
             textAlign = TextAlign.Center,
+            onWordClick = onWordClick,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
@@ -2109,6 +2214,7 @@ fun VerseCard(
     onToggleBookmark: () -> Unit,
     onOpenLens: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
+    onWordClick: ((QuranWordInfo) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isDark = isNightMode || isAppInDarkTheme()
@@ -2283,12 +2389,15 @@ fun VerseCard(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // 1. Dominant Arabic Qur'an Text (RTL, large, generous line-height)
-        ArabicText(
-            text = verse.textArabic,
+        // 1. Dominant Arabic Qur'an Text (RTL, large, generous line-height, Word Explorer enabled)
+        WordExplorerInteractiveText(
+            textArabic = verse.textArabic,
+            surahNumber = verse.surahNumber,
+            verseNumber = verse.verseNumber,
             fontSize = fontSizeSp.sp,
             color = textPrimary,
             textAlign = TextAlign.End,
+            onWordClick = onWordClick,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -2327,6 +2436,7 @@ fun VerseContextMenuSheet(
     onCopyVerseWithTranslation: () -> Unit,
     onPlayAudio: () -> Unit,
     onToggleBookmark: () -> Unit,
+    onExploreWords: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val sheetBg = Color.semanticSurface
@@ -2575,6 +2685,44 @@ fun VerseContextMenuSheet(
                         style = MaterialTheme.typography.bodySmall,
                         color = textSecondary
                     )
+                }
+            }
+
+            // Action 6: Explore Arabic Words (Phase 2)
+            if (onExploreWords != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            onExploreWords()
+                            onDismiss()
+                        }
+                        .padding(vertical = 12.dp, horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.MenuBook,
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            text = "Explore Arabic Words",
+                            fontFamily = SpaceGrotesk,
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = textPrimary
+                        )
+                        Text(
+                            text = "Inspect root, lemma, and grammar of this verse",
+                            fontFamily = SpaceGrotesk,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = textSecondary
+                        )
+                    }
                 }
             }
         }

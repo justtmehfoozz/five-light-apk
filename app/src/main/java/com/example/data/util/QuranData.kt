@@ -161,6 +161,15 @@ object QuranData {
     @Volatile
     private var cachedSurahOverviewMap: Map<Int, SurahOverview>? = null
 
+    @Volatile
+    private var cachedVerseWordsMap: Map<String, List<com.example.data.model.QuranWordInfo>>? = null
+
+    @Volatile
+    private var cachedRootOccurrencesMap: Map<String, List<String>>? = null
+
+    @Volatile
+    private var cachedLemmaOccurrencesMap: Map<String, List<String>>? = null
+
     fun getSurahById(surahNumber: Int): Surah? {
         return SURAHS_DIRECTORY.find { it.number == surahNumber }
     }
@@ -651,4 +660,159 @@ object QuranData {
             occurrences = occurrences
         )
     }
+
+    /**
+     * Phase 2: Arabic Word Explorer methods
+     */
+    @Synchronized
+    private fun ensureWordExplorerLoaded(context: Context) {
+        if (cachedVerseWordsMap != null && cachedRootOccurrencesMap != null && cachedLemmaOccurrencesMap != null) {
+            return
+        }
+        try {
+            val jsonString = context.assets.open("quran_word_explorer.json").bufferedReader().use { it.readText() }
+            val rootObj = org.json.JSONObject(jsonString)
+
+            // 1. Verses words
+            val vObj = rootObj.getJSONObject("v")
+            val vMap = HashMap<String, List<com.example.data.model.QuranWordInfo>>(6250)
+            val vKeys = vObj.keys()
+            while (vKeys.hasNext()) {
+                val verseKey = vKeys.next()
+                val parts = verseKey.split(":")
+                val sNum = parts.getOrNull(0)?.toIntOrNull() ?: 0
+                val vNum = parts.getOrNull(1)?.toIntOrNull() ?: 0
+
+                val wordsArr = vObj.getJSONArray(verseKey)
+                val wordList = ArrayList<com.example.data.model.QuranWordInfo>(wordsArr.length())
+                for (i in 0 until wordsArr.length()) {
+                    val wTuple = wordsArr.getJSONArray(i)
+                    // [tokenIndex, exact, translit, meaning, lemma, root, pos]
+                    val tokenIdx = wTuple.getInt(0)
+                    val exact = wTuple.getString(1)
+                    val translit = wTuple.getString(2)
+                    val meaning = wTuple.getString(3)
+                    val lemma = wTuple.getString(4)
+                    val root = wTuple.getString(5)
+                    val pos = wTuple.getString(6)
+                    wordList.add(
+                        com.example.data.model.QuranWordInfo(
+                            tokenIndex = tokenIdx,
+                            exactArabic = exact,
+                            transliteration = translit,
+                            meaning = meaning,
+                            lemma = lemma,
+                            root = root,
+                            partOfSpeech = pos,
+                            surahNumber = sNum,
+                            verseNumber = vNum
+                        )
+                    )
+                }
+                vMap[verseKey] = wordList
+            }
+            cachedVerseWordsMap = vMap
+
+            // 2. Root occurrences
+            val rObj = rootObj.getJSONObject("r")
+            val rMap = HashMap<String, List<String>>(rObj.length())
+            val rKeys = rObj.keys()
+            while (rKeys.hasNext()) {
+                val rootKey = rKeys.next()
+                val occArr = rObj.getJSONArray(rootKey)
+                val occList = ArrayList<String>(occArr.length())
+                for (i in 0 until occArr.length()) {
+                    occList.add(occArr.getString(i))
+                }
+                rMap[rootKey] = occList
+            }
+            cachedRootOccurrencesMap = rMap
+
+            // 3. Lemma occurrences
+            val lObj = rootObj.getJSONObject("l")
+            val lMap = HashMap<String, List<String>>(lObj.length())
+            val lKeys = lObj.keys()
+            while (lKeys.hasNext()) {
+                val lemmaKey = lKeys.next()
+                val occArr = lObj.getJSONArray(lemmaKey)
+                val occList = ArrayList<String>(occArr.length())
+                for (i in 0 until occArr.length()) {
+                    occList.add(occArr.getString(i))
+                }
+                lMap[lemmaKey] = occList
+            }
+            cachedLemmaOccurrencesMap = lMap
+        } catch (e: Exception) {
+            android.util.Log.e("QuranData", "Error loading Word Explorer data", e)
+            cachedVerseWordsMap = emptyMap()
+            cachedRootOccurrencesMap = emptyMap()
+            cachedLemmaOccurrencesMap = emptyMap()
+        }
+    }
+
+    fun getWordsForVerse(context: Context, surahNumber: Int, verseNumber: Int): List<com.example.data.model.QuranWordInfo> {
+        ensureWordExplorerLoaded(context)
+        val key = "$surahNumber:$verseNumber"
+        return cachedVerseWordsMap?.get(key) ?: emptyList()
+    }
+
+    fun getWordInfo(context: Context, surahNumber: Int, verseNumber: Int, tokenIndex: Int): com.example.data.model.QuranWordInfo? {
+        val words = getWordsForVerse(context, surahNumber, verseNumber)
+        return words.getOrNull(tokenIndex)
+    }
+
+    fun getOccurrencesForRoot(context: Context, root: String): List<com.example.data.model.WordOccurrence> {
+        if (root.isBlank()) return emptyList()
+        ensureWordExplorerLoaded(context)
+        ensureDataLoaded(context)
+        val verseRefs = cachedRootOccurrencesMap?.get(root) ?: emptyList()
+        val occurrences = ArrayList<com.example.data.model.WordOccurrence>(verseRefs.size)
+        for (ref in verseRefs) {
+            val parts = ref.split(":")
+            if (parts.size != 2) continue
+            val sNum = parts[0].toIntOrNull() ?: continue
+            val vNum = parts[1].toIntOrNull() ?: continue
+            val sMeta = SURAHS_DIRECTORY.find { it.number == sNum } ?: continue
+            val verse = getVerseByKey(context, ref)
+            occurrences.add(
+                com.example.data.model.WordOccurrence(
+                    surahNumber = sNum,
+                    verseNumber = vNum,
+                    surahNameEnglish = sMeta.nameEnglish,
+                    surahNameArabic = sMeta.nameArabic,
+                    textArabic = verse?.textArabic ?: "",
+                    textEnglish = verse?.textEnglish ?: ""
+                )
+            )
+        }
+        return occurrences
+    }
+
+    fun getOccurrencesForLemma(context: Context, lemma: String): List<com.example.data.model.WordOccurrence> {
+        if (lemma.isBlank()) return emptyList()
+        ensureWordExplorerLoaded(context)
+        ensureDataLoaded(context)
+        val verseRefs = cachedLemmaOccurrencesMap?.get(lemma) ?: emptyList()
+        val occurrences = ArrayList<com.example.data.model.WordOccurrence>(verseRefs.size)
+        for (ref in verseRefs) {
+            val parts = ref.split(":")
+            if (parts.size != 2) continue
+            val sNum = parts[0].toIntOrNull() ?: continue
+            val vNum = parts[1].toIntOrNull() ?: continue
+            val sMeta = SURAHS_DIRECTORY.find { it.number == sNum } ?: continue
+            val verse = getVerseByKey(context, ref)
+            occurrences.add(
+                com.example.data.model.WordOccurrence(
+                    surahNumber = sNum,
+                    verseNumber = vNum,
+                    surahNameEnglish = sMeta.nameEnglish,
+                    surahNameArabic = sMeta.nameArabic,
+                    textArabic = verse?.textArabic ?: "",
+                    textEnglish = verse?.textEnglish ?: ""
+                )
+            )
+        }
+        return occurrences
+    }
 }
+

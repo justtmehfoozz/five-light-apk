@@ -110,8 +110,8 @@ val Typography = Typography(
 val ArabicTextStyle = TextStyle(
     fontFamily = AmiriFont,
     fontWeight = FontWeight.Normal,
-    fontSize = 13.sp,
-    lineHeight = 18.sp,
+    fontSize = 18.sp,
+    lineHeight = 36.sp,
     letterSpacing = 0.sp
 )
 

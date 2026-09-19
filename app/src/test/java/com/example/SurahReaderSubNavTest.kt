@@ -74,9 +74,7 @@ class SurahReaderSubNavTest {
 
         // Verify Overview elements are displayed
         composeTestRule.onNodeWithTag("surah_overview_content").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("surah_overview_header_card").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("metric_revelation").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("metric_verses").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("surah_overview_metadata").assertIsDisplayed()
 
         // Verify section card for Al-Fatihah (section 1, verses 1-7)
         composeTestRule.onNodeWithTag("surah_map_section_1").performScrollTo().assertIsDisplayed()
@@ -119,8 +117,7 @@ class SurahReaderSubNavTest {
         }
 
         composeTestRule.onNodeWithTag("surah_overview_content").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("surah_overview_header_card").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("metric_revelation").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("surah_overview_metadata").assertIsDisplayed()
 
         // Check section 1
         composeTestRule.onNodeWithTag("surah_map_section_1").performScrollTo().assertIsDisplayed()
