@@ -8,8 +8,4 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <color name="widget_glass_bg">#EEFAF8F5</color>
-    <color name="widget_glass_border">#1F000000</color>
-    <color name="widget_pill_bg">#12000000</color>
-    <color name="widget_button_bg">#18000000</color>
 </resources>

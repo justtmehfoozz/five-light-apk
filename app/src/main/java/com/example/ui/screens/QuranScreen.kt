@@ -53,6 +53,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -69,6 +70,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -158,6 +165,7 @@ import com.example.data.model.Verse
 import com.example.data.util.QuranData
 import com.example.ui.components.PageHeader
 import com.example.ui.components.SegmentedTabs
+import com.example.ui.components.SurahOverviewContent
 import com.example.ui.theme.ArabicTextStyle
 import com.example.ui.theme.SerifHeaderFont
 
@@ -209,6 +217,7 @@ fun QuranScreen(
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) } // 0: All Surahs, 1: Bookmarks
     var isReadingViewActive by rememberSaveable { mutableStateOf(false) }
+    var surahSubTab by rememberSaveable { mutableIntStateOf(0) } // 0: Read, 1: Overview & Map
     var showFontSizeControls by remember { mutableStateOf(false) }
     var activeLensVerse by remember { mutableStateOf<Verse?>(null) }
     var quickActionSurah by remember { mutableStateOf<Surah?>(null) }
@@ -216,7 +225,14 @@ fun QuranScreen(
     var feedbackMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(isReadingViewActive) {
+        if (!isReadingViewActive) {
+            surahSubTab = 0
+        }
         onReadingModeChange(isReadingViewActive)
+    }
+
+    LaunchedEffect(selectedSurah?.number) {
+        surahSubTab = 0
     }
 
     val context = LocalContext.current
@@ -255,6 +271,7 @@ fun QuranScreen(
     LaunchedEffect(initialOpenReadingView) {
         if (initialOpenReadingView && selectedSurah != null) {
             isReadingViewActive = true
+            surahSubTab = 0
             onReadingModeChange(true)
             onResetInitialReadingView()
         }
@@ -283,8 +300,12 @@ fun QuranScreen(
             } else if (contextMenuVerse != null) {
                 contextMenuVerse = null
             } else if (isReadingViewActive) {
-                isReadingViewActive = false
-                onReadingModeChange(false)
+                if (surahSubTab == 1) {
+                    surahSubTab = 0
+                } else {
+                    isReadingViewActive = false
+                    onReadingModeChange(false)
+                }
             }
         }
     )
@@ -320,6 +341,17 @@ fun QuranScreen(
                 saver = androidx.compose.foundation.lazy.LazyListState.Saver
             ) {
                 androidx.compose.foundation.lazy.LazyListState(firstVisibleItemIndex = initialScrollIndex)
+            }
+
+            val overviewListState = rememberSaveable(
+                currentSurah.number,
+                saver = androidx.compose.foundation.lazy.LazyListState.Saver
+            ) {
+                androidx.compose.foundation.lazy.LazyListState()
+            }
+
+            val surahOverview = remember(selectedSurah.number, context) {
+                QuranData.getSurahOverview(context, selectedSurah.number)
             }
 
             val displayVerses = remember(selectedSurah.number, verses) {
@@ -482,8 +514,12 @@ fun QuranScreen(
                 ) {
                     IconButton(
                         onClick = {
-                            isReadingViewActive = false
-                            onReadingModeChange(false)
+                            if (surahSubTab == 1) {
+                                surahSubTab = 0
+                            } else {
+                                isReadingViewActive = false
+                                onReadingModeChange(false)
+                            }
                         },
                         modifier = Modifier.testTag("quran_reader_back_btn")
                     ) {
@@ -526,8 +562,25 @@ fun QuranScreen(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Subtle, clearly visible Read / Overview sub-navigation
+                SurahReaderSubNav(
+                    selectedTab = surahSubTab,
+                    onTabSelected = { index ->
+                        surahSubTab = index
+                        if (index == 1) {
+                            showFontSizeControls = false
+                        }
+                    },
+                    modifier = Modifier.testTag("surah_reader_subtabs")
+                )
+
                 // 7. Reading Progress Indicator (strictly scroll position only, theme accent, rendered in draw phase to prevent recompositions)
-                ReadingProgressBar(listState = listState)
+                if (surahSubTab == 0) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    ReadingProgressBar(listState = listState)
+                }
 
                 // Font Size Slider Overlay
                 if (showFontSizeControls) {
@@ -555,140 +608,179 @@ fun QuranScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Verses List with Shimmer Skeletons
-                AnimatedContent(
-                    targetState = displayVerses.isEmpty(),
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(150))
-                    },
-                    label = "verses_loading_transition"
-                ) { isLoading ->
-                    if (isLoading) {
-                        val infiniteTransition = rememberInfiniteTransition(label = "quran_skeleton_shimmer")
-                        val shimmerAlpha by infiniteTransition.animateFloat(
-                            initialValue = 0.06f,
-                            targetValue = 0.10f,
-                            animationSpec = infiniteRepeatable(
-                                animation = tween(durationMillis = 1350, easing = LinearEasing),
-                                repeatMode = RepeatMode.Reverse
-                            ),
-                            label = "shimmer_alpha"
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    AnimatedContent(
+                        targetState = surahSubTab,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
+                        },
+                        label = "surah_subtab_transition",
+                        modifier = Modifier.fillMaxSize()
+                    ) { activeSubTab ->
+                    if (activeSubTab == 1) {
+                        SurahOverviewContent(
+                            surah = selectedSurah,
+                            overview = surahOverview,
+                            listState = overviewListState,
+                            onNavigateToVerse = { verseNum ->
+                                surahSubTab = 0
+                                coroutineScope.launch {
+                                    val targetVerseIndex = if (displayVerses.isNotEmpty()) {
+                                        val match = displayVerses.indexOfFirst { it.verseNumber == verseNum }
+                                        if (match >= 0) {
+                                            if (hasBismillah) match + 1 else match
+                                        } else 0
+                                    } else 0
+                                    if (isReducedMotion) {
+                                        listState.scrollToItem(targetVerseIndex)
+                                    } else {
+                                        listState.animateScrollToItem(targetVerseIndex)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
                         )
-
-                        LazyColumn(
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            items(4, contentType = { "verse_skeleton" }) {
-                                VerseCardSkeleton(
-                                    isNightMode = isNightReadingMode,
-                                    shimmerAlpha = shimmerAlpha
-                                )
-                            }
-                            item(contentType = "reader_spacer") {
-                                Spacer(modifier = Modifier.height(140.dp))
-                            }
-                        }
                     } else {
-                        val bookmarkedKeys = remember(bookmarks) {
-                            bookmarks.map { "${it.surahNumber}_${it.verseNumber}" }.toSet()
-                        }
+                        // Verses List with Shimmer Skeletons
+                        AnimatedContent(
+                            targetState = displayVerses.isEmpty(),
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(150))
+                            },
+                            label = "verses_loading_transition"
+                        ) { isLoading ->
+                            if (isLoading) {
+                                val infiniteTransition = rememberInfiniteTransition(label = "quran_skeleton_shimmer")
+                                val shimmerAlpha by infiniteTransition.animateFloat(
+                                    initialValue = 0.06f,
+                                    targetValue = 0.10f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(durationMillis = 1350, easing = LinearEasing),
+                                        repeatMode = RepeatMode.Reverse
+                                    ),
+                                    label = "shimmer_alpha"
+                                )
 
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            LazyColumn(
-                                state = listState,
-                                flingBehavior = naturalFlingBehavior,
-                                verticalArrangement = Arrangement.spacedBy(4.dp),
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                if (selectedSurah.number != 9 && displayVerses.none { it.verseNumber == 0 }) {
-                                    item(
-                                        key = "bismillah_header_${selectedSurah.number}",
-                                        contentType = "bismillah_header"
+                                LazyColumn(
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(4, contentType = { "verse_skeleton" }) {
+                                        VerseCardSkeleton(
+                                            isNightMode = isNightReadingMode,
+                                            shimmerAlpha = shimmerAlpha
+                                        )
+                                    }
+                                    item(contentType = "reader_spacer") {
+                                        Spacer(modifier = Modifier.height(140.dp))
+                                    }
+                                }
+                            } else {
+                                val bookmarkedKeys = remember(bookmarks) {
+                                    bookmarks.map { "${it.surahNumber}_${it.verseNumber}" }.toSet()
+                                }
+
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    LazyColumn(
+                                        state = listState,
+                                        flingBehavior = naturalFlingBehavior,
+                                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                                        modifier = Modifier.fillMaxSize()
                                     ) {
-                                        val bismillahVerse = remember(selectedSurah.number) {
-                                            com.example.data.util.QuranData.getSurahBismillah(selectedSurah.number) ?: Verse(
-                                                surahNumber = selectedSurah.number,
-                                                verseNumber = 0,
-                                                textArabic = com.example.data.util.QuranData.BISMILLAH_ARABIC,
-                                                textEnglish = com.example.data.util.QuranData.BISMILLAH_ENGLISH,
-                                                audioUrl = com.example.data.util.QuranData.BISMILLAH_AUDIO_URL,
-                                                verseKey = "${selectedSurah.number}:0"
-                                            )
-                                        }
-                                        val isBismillahBookmarked = bookmarkedKeys.contains("${bismillahVerse.surahNumber}_${bismillahVerse.verseNumber}")
-                                        
+                                        if (selectedSurah.number != 9 && displayVerses.none { it.verseNumber == 0 }) {
+                                            item(
+                                                key = "bismillah_header_${selectedSurah.number}",
+                                                contentType = "bismillah_header"
+                                            ) {
+                                                val bismillahVerse = remember(selectedSurah.number) {
+                                                    com.example.data.util.QuranData.getSurahBismillah(selectedSurah.number) ?: Verse(
+                                                        surahNumber = selectedSurah.number,
+                                                        verseNumber = 0,
+                                                        textArabic = com.example.data.util.QuranData.BISMILLAH_ARABIC,
+                                                        textEnglish = com.example.data.util.QuranData.BISMILLAH_ENGLISH,
+                                                        audioUrl = com.example.data.util.QuranData.BISMILLAH_AUDIO_URL,
+                                                        verseKey = "${selectedSurah.number}:0"
+                                                    )
+                                                }
+                                                val isBismillahBookmarked = bookmarkedKeys.contains("${bismillahVerse.surahNumber}_${bismillahVerse.verseNumber}")
 
-                                        val onPlayBismillah = remember(bismillahVerse) { { onPlayVerseAudio(bismillahVerse) } }
-                                        val onBookmarkBismillah = remember(bismillahVerse, isBismillahBookmarked) { { onToggleBookmark(bismillahVerse, isBismillahBookmarked) } }
-                                        val onLensBismillah = remember(bismillahVerse) { { activeLensVerse = bismillahVerse } }
-                                        val onLongClickBismillah = remember(bismillahVerse) {
-                                            {
-                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                contextMenuVerse = bismillahVerse
+                                                val onPlayBismillah = remember(bismillahVerse) { { onPlayVerseAudio(bismillahVerse) } }
+                                                val onBookmarkBismillah = remember(bismillahVerse, isBismillahBookmarked) { { onToggleBookmark(bismillahVerse, isBismillahBookmarked) } }
+                                                val onLensBismillah = remember(bismillahVerse) { { activeLensVerse = bismillahVerse } }
+                                                val onLongClickBismillah = remember(bismillahVerse) {
+                                                    {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                        contextMenuVerse = bismillahVerse
+                                                    }
+                                                }
+
+                                                BismillahHeader(
+                                                    verse = bismillahVerse,
+                                                    fontSizeSp = fontSizeSp,
+                                                    showTranslation = showEnglishTranslation,
+                                                    isPlayingAudioProvider = isPlayingAudioProvider,
+                                                    isLoadingAudioProvider = isLoadingAudioProvider,
+                                                    isBookmarked = isBismillahBookmarked,
+                                                    playingSurahNumberProvider = playingSurahNumberProvider,
+                                                    playingVerseNumberProvider = playingVerseNumberProvider,
+                                                    onPlayAudio = onPlayBismillah,
+                                                    onToggleBookmark = onBookmarkBismillah,
+                                                    onOpenLens = onLensBismillah,
+                                                    onLongClick = onLongClickBismillah
+                                                )
                                             }
                                         }
 
-                                        BismillahHeader(
-                                            verse = bismillahVerse,
-                                            fontSizeSp = fontSizeSp,
-                                            showTranslation = showEnglishTranslation,
-                                            isPlayingAudioProvider = isPlayingAudioProvider,
-                                            isLoadingAudioProvider = isLoadingAudioProvider,
-                                            isBookmarked = isBismillahBookmarked,
-                                            playingSurahNumberProvider = playingSurahNumberProvider,
-                                            playingVerseNumberProvider = playingVerseNumberProvider,
-                                            onPlayAudio = onPlayBismillah,
-                                            onToggleBookmark = onBookmarkBismillah,
-                                            onOpenLens = onLensBismillah,
-                                            onLongClick = onLongClickBismillah
-                                        )
-                                    }
-                                }
+                                        items(
+                                            items = displayVerses,
+                                            key = { it.verseKey },
+                                            contentType = { "verse_card" }
+                                        ) { verse ->
+                                            val isBookmarked = bookmarkedKeys.contains("${verse.surahNumber}_${verse.verseNumber}")
 
-                                items(
-                                    items = displayVerses,
-                                    key = { it.verseKey },
-                                    contentType = { "verse_card" }
-                                ) { verse ->
-                                    val isBookmarked = bookmarkedKeys.contains("${verse.surahNumber}_${verse.verseNumber}")
+                                            val onPlay = remember(verse) { { onPlayVerseAudio(verse) } }
+                                            val onBookmark = remember(verse, isBookmarked) { { onToggleBookmark(verse, isBookmarked) } }
+                                            val onLens = remember(verse) { { activeLensVerse = verse } }
+                                            val onLong = remember(verse) {
+                                                {
+                                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                    contextMenuVerse = verse
+                                                }
+                                            }
 
-                                    val onPlay = remember(verse) { { onPlayVerseAudio(verse) } }
-                                    val onBookmark = remember(verse, isBookmarked) { { onToggleBookmark(verse, isBookmarked) } }
-                                    val onLens = remember(verse) { { activeLensVerse = verse } }
-                                    val onLong = remember(verse) {
-                                        {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            contextMenuVerse = verse
+                                            VerseCard(
+                                                verse = verse,
+                                                fontSizeSp = fontSizeSp,
+                                                showTranslation = showEnglishTranslation,
+                                                isNightMode = isNightReadingMode,
+                                                playingSurahNumberProvider = playingSurahNumberProvider,
+                                                playingVerseNumberProvider = playingVerseNumberProvider,
+                                                isPlayingAudioProvider = isPlayingAudioProvider,
+                                                isLoadingAudioProvider = isLoadingAudioProvider,
+                                                isBookmarked = isBookmarked,
+                                                onPlayAudio = onPlay,
+                                                onToggleBookmark = onBookmark,
+                                                onOpenLens = onLens,
+                                                onLongClick = onLong
+                                            )
+                                        }
+
+                                        item(
+                                            key = "reader_bottom_spacer",
+                                            contentType = "reader_spacer"
+                                        ) {
+                                            Spacer(modifier = Modifier.height(180.dp))
                                         }
                                     }
-
-                                    VerseCard(
-                                        verse = verse,
-                                        fontSizeSp = fontSizeSp,
-                                        showTranslation = showEnglishTranslation,
-                                        isNightMode = isNightReadingMode,
-                                        playingSurahNumberProvider = playingSurahNumberProvider,
-                                        playingVerseNumberProvider = playingVerseNumberProvider,
-                                        isPlayingAudioProvider = isPlayingAudioProvider,
-                                        isLoadingAudioProvider = isLoadingAudioProvider,
-                                        isBookmarked = isBookmarked,
-                                        onPlayAudio = onPlay,
-                                        onToggleBookmark = onBookmark,
-                                        onOpenLens = onLens,
-                                        onLongClick = onLong
-                                    )
-                                }
-
-                                item(
-                                    key = "reader_bottom_spacer",
-                                    contentType = "reader_spacer"
-                                ) {
-                                    Spacer(modifier = Modifier.height(180.dp))
                                 }
                             }
                         }
                     }
+                }
                 }
             }
         } else {
@@ -1536,6 +1628,115 @@ fun SurahQuickActionSheet(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Subtle, clearly visible sub-navigation between the "Read" verses view
+ * and the "Overview" structure/map view. Fits naturally below the Surah header.
+ */
+@Composable
+internal fun SurahReaderSubNav(
+    selectedTab: Int,
+    onTabSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isDark = isAppInDarkTheme()
+    val containerBg = if (isDark) Color(0xFF1B1F1C) else Color(0xFFEFF2EE)
+    val borderCol = if (isDark) Color(0xFF2E342F) else Color(0xFFD8DCD6)
+    val activePillBg = if (isDark) Color(0xFF2C352E) else Color(0xFF1E2621)
+    val activeTextColor = if (isDark) Color(0xFFF2F4F0) else Color(0xFFFFFFFF)
+    val inactiveTextColor = if (isDark) Color(0xFF9EA39B) else Color(0xFF676E64)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 4.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .clip(CircleShape)
+                .background(containerBg)
+                .border(
+                    width = 1.dp,
+                    color = borderCol,
+                    shape = CircleShape
+                )
+                .padding(3.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                // "Read" tab
+                val isReadSelected = selectedTab == 0
+                Box(
+                    modifier = Modifier
+                        .height(34.dp)
+                        .widthIn(min = 96.dp)
+                        .clip(CircleShape)
+                        .background(if (isReadSelected) activePillBg else Color.Transparent)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onTabSelected(0) }
+                        .padding(horizontal = 18.dp)
+                        .semantics {
+                            role = Role.Tab
+                            selected = isReadSelected
+                            stateDescription = if (isReadSelected) "Read, selected" else "Read, not selected"
+                        }
+                        .testTag("surah_subtab_read"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Read",
+                        fontFamily = SpaceGrotesk,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = if (isReadSelected) FontWeight.SemiBold else FontWeight.Medium,
+                            fontSize = 13.5.sp,
+                            letterSpacing = 0.25.sp
+                        ),
+                        color = if (isReadSelected) activeTextColor else inactiveTextColor
+                    )
+                }
+
+                // "Overview" tab
+                val isOverviewSelected = selectedTab == 1
+                Box(
+                    modifier = Modifier
+                        .height(34.dp)
+                        .widthIn(min = 96.dp)
+                        .clip(CircleShape)
+                        .background(if (isOverviewSelected) activePillBg else Color.Transparent)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) { onTabSelected(1) }
+                        .padding(horizontal = 18.dp)
+                        .semantics {
+                            role = Role.Tab
+                            selected = isOverviewSelected
+                            stateDescription = if (isOverviewSelected) "Overview, selected" else "Overview, not selected"
+                        }
+                        .testTag("surah_subtab_overview"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Overview",
+                        fontFamily = SpaceGrotesk,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = if (isOverviewSelected) FontWeight.SemiBold else FontWeight.Medium,
+                            fontSize = 13.5.sp,
+                            letterSpacing = 0.25.sp
+                        ),
+                        color = if (isOverviewSelected) activeTextColor else inactiveTextColor
+                    )
                 }
             }
         }

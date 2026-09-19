@@ -94,6 +94,29 @@ data class Surah(
 )
 
 @Immutable
+data class SurahSection(
+    val sectionNumber: Int,
+    val startVerse: Int,
+    val endVerse: Int,
+    val verseCount: Int,
+    val openingExcerpt: String = ""
+) {
+    val verseRangeDisplay: String get() = if (startVerse == endVerse) "Verse $startVerse" else "Verses $startVerse–$endVerse"
+}
+
+@Immutable
+data class SurahOverview(
+    val surahNumber: Int,
+    val revelationPlace: String,
+    val revelationOrder: Int,
+    val juzDisplay: String,
+    val juzNumbers: List<Int>,
+    val versesCount: Int,
+    val sectionCount: Int,
+    val sections: List<SurahSection>
+)
+
+@Immutable
 data class Verse(
     val surahNumber: Int,
     val verseNumber: Int,

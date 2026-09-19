@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import androidx.compose.runtime.Immutable
 import com.example.data.model.Surah
+import com.example.data.model.SurahOverview
+import com.example.data.model.SurahSection
 import com.example.data.model.Verse
 
 @Immutable
@@ -156,6 +158,9 @@ object QuranData {
     @Volatile
     private var cachedTranslationIdentityMap: Map<String, String>? = null
 
+    @Volatile
+    private var cachedSurahOverviewMap: Map<Int, SurahOverview>? = null
+
     fun getSurahById(surahNumber: Int): Surah? {
         return SURAHS_DIRECTORY.find { it.number == surahNumber }
     }
@@ -168,10 +173,18 @@ object QuranData {
             cachedVerseIdentityMap = identityMap
             cachedTranslationIdentityMap = transMap
         }
+        if (cachedSurahOverviewMap == null) {
+            cachedSurahOverviewMap = loadAllSurahOverviewsFromAssets(context)
+        }
     }
 
     fun preload(context: Context) {
         ensureDataLoaded(context)
+    }
+
+    fun getSurahOverview(context: Context, surahNumber: Int): SurahOverview? {
+        ensureDataLoaded(context)
+        return cachedSurahOverviewMap?.get(surahNumber)
     }
 
     fun getVersesForSurah(context: Context, surahNumber: Int): List<Verse> {
@@ -288,6 +301,100 @@ object QuranData {
         }
 
         return ParsedQuranData(surahMap, identityVerseMap, identityTranslationMap)
+    }
+
+    private fun loadAllSurahOverviewsFromAssets(context: Context): Map<Int, SurahOverview> {
+        val overviewMap = HashMap<Int, SurahOverview>(114)
+        try {
+            context.assets.open("surah_structure.json").use { inputStream ->
+                android.util.JsonReader(java.io.InputStreamReader(inputStream, "UTF-8")).use { reader ->
+                    reader.beginObject()
+                    while (reader.hasNext()) {
+                        val surahKey = reader.nextName()
+                        val keyNum = surahKey.toIntOrNull() ?: 0
+                        
+                        var sNum = keyNum
+                        var revPlace = ""
+                        var revOrder = 0
+                        var juzDisp = ""
+                        val juzNums = ArrayList<Int>()
+                        var vCount = 0
+                        var secCount = 0
+                        val secList = ArrayList<SurahSection>()
+
+                        reader.beginObject()
+                        while (reader.hasNext()) {
+                            when (reader.nextName()) {
+                                "surahNumber" -> sNum = reader.nextInt()
+                                "revelationPlace" -> revPlace = reader.nextString()
+                                "revelationOrder" -> revOrder = reader.nextInt()
+                                "juzDisplay" -> juzDisp = reader.nextString()
+                                "juzNumbers" -> {
+                                    reader.beginArray()
+                                    while (reader.hasNext()) {
+                                        juzNums.add(reader.nextInt())
+                                    }
+                                    reader.endArray()
+                                }
+                                "versesCount" -> vCount = reader.nextInt()
+                                "sectionCount" -> secCount = reader.nextInt()
+                                "sections" -> {
+                                    reader.beginArray()
+                                    while (reader.hasNext()) {
+                                        reader.beginObject()
+                                        var secNum = 0
+                                        var sVerse = 0
+                                        var eVerse = 0
+                                        var vCnt = 0
+                                        var excerpt = ""
+                                        while (reader.hasNext()) {
+                                            when (reader.nextName()) {
+                                                "sectionNumber" -> secNum = reader.nextInt()
+                                                "startVerse" -> sVerse = reader.nextInt()
+                                                "endVerse" -> eVerse = reader.nextInt()
+                                                "verseCount" -> vCnt = reader.nextInt()
+                                                "openingExcerpt" -> excerpt = reader.nextString()
+                                                else -> reader.skipValue()
+                                            }
+                                        }
+                                        reader.endObject()
+                                        secList.add(
+                                            SurahSection(
+                                                sectionNumber = secNum,
+                                                startVerse = sVerse,
+                                                endVerse = eVerse,
+                                                verseCount = vCnt,
+                                                openingExcerpt = excerpt
+                                            )
+                                        )
+                                    }
+                                    reader.endArray()
+                                }
+                                else -> reader.skipValue()
+                            }
+                        }
+                        reader.endObject()
+
+                        if (sNum > 0) {
+                            overviewMap[sNum] = SurahOverview(
+                                surahNumber = sNum,
+                                revelationPlace = revPlace,
+                                revelationOrder = revOrder,
+                                juzDisplay = juzDisp,
+                                juzNumbers = juzNums,
+                                versesCount = vCount,
+                                sectionCount = secCount,
+                                sections = secList
+                            )
+                        }
+                    }
+                    reader.endObject()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("QuranData", "Error parsing surah_structure.json: ${e.message}", e)
+        }
+        return overviewMap
     }
 
     /**

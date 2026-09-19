@@ -1,8 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="splash_bg">#000000</color>
-    <color name="widget_glass_bg">#E6141416</color>
-    <color name="widget_glass_border">#26FFFFFF</color>
-    <color name="widget_pill_bg">#1FFFFFFF</color>
-    <color name="widget_button_bg">#24FFFFFF</color>
 </resources>

@@ -80,6 +80,7 @@ import com.example.data.util.DuaItem
 import android.view.KeyEvent
 import com.example.ui.components.ExploreSearchScope
 import com.example.ui.components.ExpandedQuranPlayerSheet
+import com.example.ui.components.FiveLightEdgeVignette
 import com.example.ui.components.NavItem
 import com.example.ui.components.SereneBottomNavBar
 import com.example.ui.components.rememberDockSelectorController
@@ -705,6 +706,9 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                         pagerState.currentPage == 4 && exploreSubRoute == "adhkar" -> ExploreSearchScope.DAILY_ADHKAR
                         else -> ExploreSearchScope.GLOBAL_EXPLORE
                     }
+
+                    // Persistent app-wide Top and Bottom Edge Vignette
+                    FiveLightEdgeVignette()
 
                     // Floating Dock overlay sitting directly over content
                     SereneBottomNavBar(

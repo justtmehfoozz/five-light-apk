@@ -130,6 +130,76 @@ class QuranDataTest {
         assertEquals("55:18", QuranData.getVerse(context, 55, 18)?.verseKey)
         assertEquals("55:21", QuranData.getVerse(context, 55, 21)?.verseKey)
     }
+
+    @Test
+    fun testSurahOverviewDataIntegrityForAll114Surahs() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+
+        for (surahNum in 1..114) {
+            val overview = QuranData.getSurahOverview(context, surahNum)
+            assertNotNull("Surah $surahNum overview should not be null", overview)
+            assertEquals("Surah number must match", surahNum, overview?.surahNumber)
+            assertTrue("Surah $surahNum versesCount must be positive", (overview?.versesCount ?: 0) > 0)
+            assertTrue("Surah $surahNum sectionCount must be positive", (overview?.sectionCount ?: 0) > 0)
+            assertTrue("Surah $surahNum sections must not be empty", overview?.sections?.isNotEmpty() == true)
+            assertTrue("Surah $surahNum juzDisplay must not be blank", overview?.juzDisplay?.isNotBlank() == true)
+        }
+    }
+
+    @Test
+    fun testKeySurahOverviewsSpecificDetails() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+
+        // 1. Surah Al-Fatihah (1)
+        val fatihah = QuranData.getSurahOverview(context, 1)
+        assertNotNull(fatihah)
+        assertEquals(1, fatihah?.surahNumber)
+        assertEquals("Makkah", fatihah?.revelationPlace)
+        assertTrue(fatihah?.sections?.size ?: 0 >= 1)
+
+        // 2. Surah Al-Baqarah (2)
+        val baqarah = QuranData.getSurahOverview(context, 2)
+        assertNotNull(baqarah)
+        assertEquals(2, baqarah?.surahNumber)
+        assertEquals("Madinah", baqarah?.revelationPlace)
+        assertTrue(baqarah?.sections?.size ?: 0 >= 3)
+
+        // 3. Surah Ali 'Imran (3)
+        val aliImran = QuranData.getSurahOverview(context, 3)
+        assertNotNull(aliImran)
+        assertEquals(3, aliImran?.surahNumber)
+        assertTrue(aliImran?.sections?.isNotEmpty() == true)
+
+        // 4. Surah An-Nisa (4)
+        val anNisa = QuranData.getSurahOverview(context, 4)
+        assertNotNull(anNisa)
+        assertEquals(4, anNisa?.surahNumber)
+        assertTrue(anNisa?.sections?.isNotEmpty() == true)
+
+        // 5. Surah Ya-Sin (36)
+        val yasin = QuranData.getSurahOverview(context, 36)
+        assertNotNull(yasin)
+        assertEquals(36, yasin?.surahNumber)
+        assertTrue(yasin?.sections?.isNotEmpty() == true)
+
+        // 6. Surah Al-Mulk (67)
+        val mulk = QuranData.getSurahOverview(context, 67)
+        assertNotNull(mulk)
+        assertEquals(67, mulk?.surahNumber)
+        assertTrue(mulk?.sections?.isNotEmpty() == true)
+
+        // 7. Surah Al-Ikhlas (112)
+        val ikhlas = QuranData.getSurahOverview(context, 112)
+        assertNotNull(ikhlas)
+        assertEquals(112, ikhlas?.surahNumber)
+        assertTrue(ikhlas?.sections?.isNotEmpty() == true)
+
+        // 8. Surah An-Nas (114)
+        val nas = QuranData.getSurahOverview(context, 114)
+        assertNotNull(nas)
+        assertEquals(114, nas?.surahNumber)
+        assertTrue(nas?.sections?.isNotEmpty() == true)
+    }
 }
 
 
