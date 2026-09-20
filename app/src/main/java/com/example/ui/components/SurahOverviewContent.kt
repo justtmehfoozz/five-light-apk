@@ -404,8 +404,10 @@ private fun SurahMapTimelineRow(
                     color = if (isCurrentSection) accentCol else textMuted
                 )
 
+                val resolvedTitle = section.displayTitle(isSingle)
+
                 Text(
-                    text = if (isSingle) "Complete Surah" else "Section ${section.sectionNumber}",
+                    text = resolvedTitle,
                     style = MaterialTheme.typography.titleSmall.copy(
                         fontFamily = SpaceGrotesk,
                         fontWeight = if (isCurrentSection) FontWeight.Bold else FontWeight.SemiBold,
@@ -430,6 +432,25 @@ private fun SurahMapTimelineRow(
                 ),
                 color = if (isCurrentSection) textPrimary.copy(alpha = 0.85f) else textSecondary
             )
+
+            // Tertiary: Verified Theme / Structural Description (if present in dataset and distinct from title)
+            val verifiedDescription = when {
+                section.description.isNotBlank() && section.description != section.displayTitle(isSingle) -> section.description
+                section.theme.isNotBlank() && section.theme != section.displayTitle(isSingle) -> section.theme
+                else -> ""
+            }
+
+            if (verifiedDescription.isNotBlank()) {
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = verifiedDescription,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontFamily = SpaceGrotesk,
+                        fontSize = 12.sp
+                    ),
+                    color = textMuted
+                )
+            }
         }
     }
 }

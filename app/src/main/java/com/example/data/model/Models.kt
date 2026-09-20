@@ -99,9 +99,26 @@ data class SurahSection(
     val startVerse: Int,
     val endVerse: Int,
     val verseCount: Int,
+    val title: String = "",
+    val theme: String = "",
+    val description: String = "",
     val openingExcerpt: String = ""
 ) {
     val verseRangeDisplay: String get() = if (startVerse == endVerse) "Verse $startVerse" else "Verses $startVerse–$endVerse"
+
+    /**
+     * Resolves the verified title if present, falling back to verified theme/description,
+     * or minimal generic fallback "Section $sectionNumber" / "Complete Surah".
+     */
+    fun displayTitle(isSingle: Boolean = false): String {
+        return when {
+            title.isNotBlank() -> title
+            theme.isNotBlank() -> theme
+            description.isNotBlank() -> description
+            isSingle -> "Complete Surah"
+            else -> "Section $sectionNumber"
+        }
+    }
 }
 
 @Immutable

@@ -355,14 +355,20 @@ object QuranData {
                                         var sVerse = 0
                                         var eVerse = 0
                                         var vCnt = 0
+                                        var secTitle = ""
+                                        var secTheme = ""
+                                        var secDesc = ""
                                         var excerpt = ""
                                         while (reader.hasNext()) {
-                                            when (reader.nextName()) {
-                                                "sectionNumber" -> secNum = reader.nextInt()
-                                                "startVerse" -> sVerse = reader.nextInt()
-                                                "endVerse" -> eVerse = reader.nextInt()
-                                                "verseCount" -> vCnt = reader.nextInt()
-                                                "openingExcerpt" -> excerpt = reader.nextString()
+                                            when (val field = reader.nextName()) {
+                                                "sectionNumber", "section_number", "number" -> secNum = reader.nextInt()
+                                                "startVerse", "start_verse", "fromVerse" -> sVerse = reader.nextInt()
+                                                "endVerse", "end_verse", "toVerse" -> eVerse = reader.nextInt()
+                                                "verseCount", "verse_count", "versesCount" -> vCnt = reader.nextInt()
+                                                "title", "sectionTitle", "section_title", "name" -> secTitle = reader.nextString()
+                                                "theme", "keyTheme", "key_theme", "mainTheme" -> secTheme = reader.nextString()
+                                                "description", "summary", "structuralDescription", "structural_description" -> secDesc = reader.nextString()
+                                                "openingExcerpt", "opening_excerpt" -> excerpt = reader.nextString()
                                                 else -> reader.skipValue()
                                             }
                                         }
@@ -373,6 +379,9 @@ object QuranData {
                                                 startVerse = sVerse,
                                                 endVerse = eVerse,
                                                 verseCount = vCnt,
+                                                title = secTitle,
+                                                theme = secTheme,
+                                                description = secDesc,
                                                 openingExcerpt = excerpt
                                             )
                                         )
