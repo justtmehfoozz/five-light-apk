@@ -767,7 +767,7 @@ object QuranData {
 
     fun getWordInfo(context: Context, surahNumber: Int, verseNumber: Int, tokenIndex: Int): com.example.data.model.QuranWordInfo? {
         val words = getWordsForVerse(context, surahNumber, verseNumber)
-        return words.getOrNull(tokenIndex)
+        return words.firstOrNull { it.tokenIndex == tokenIndex }
     }
 
     fun getOccurrencesForRoot(context: Context, root: String): List<com.example.data.model.WordOccurrence> {

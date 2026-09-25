@@ -38,8 +38,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.CityLocation
 import com.example.data.model.HijriDate
 import com.example.data.model.IslamicDateState
+import com.example.data.model.PrayerItem
 import com.example.data.util.PrayerDisplayUtils
 import com.example.ui.components.PageHeader
 import com.example.ui.components.RegisterPredictiveBackHandler
@@ -65,7 +67,7 @@ object ExploreUsageTracker {
     }
 
     fun getOrderedCategories(context: Context): List<String> {
-        val defaultOrder = listOf("dua", "names", "calendar")
+        val defaultOrder = listOf("dua", "names", "mosques", "calendar")
         val counts = defaultOrder.associateWith { getUsageCount(context, it) }
 
         val maxCount = counts.values.maxOrNull() ?: 0
@@ -103,6 +105,8 @@ data class FeaturedCandidate(
 fun ExploreScreen(
     hijriDate: HijriDate,
     islamicDateState: IslamicDateState? = null,
+    selectedCity: CityLocation? = null,
+    nextPrayer: PrayerItem? = null,
     activeSubRoute: String = "main",
     onSubRouteChange: (String) -> Unit = {},
     targetDuaCategory: String? = null,
@@ -138,6 +142,7 @@ fun ExploreScreen(
             "main" -> {
                 ExploreMainContent(
                     hijriDate = hijriDate,
+                    selectedCity = selectedCity,
                     onNavigate = { destination -> onSubRouteChange(destination) },
                     modifier = modifier
                 )
@@ -202,6 +207,13 @@ fun ExploreScreen(
                     }
                 }
             }
+            "mosques" -> {
+                MosqueFinderScreen(
+                    onBack = { onSubRouteChange("main") },
+                    selectedCity = selectedCity,
+                    nextPrayer = nextPrayer
+                )
+            }
         }
     }
 }
@@ -209,6 +221,7 @@ fun ExploreScreen(
 @Composable
 fun ExploreMainContent(
     hijriDate: HijriDate = HijriDate(day = 1, monthName = "Muharram", monthArabic = "محرم", monthNumber = 1, year = 1448),
+    selectedCity: CityLocation? = null,
     onNavigate: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -242,6 +255,20 @@ fun ExploreMainContent(
                 badgeText = "FEATURED",
                 destination = "adhkar",
                 testTag = "explore_card_adhkar"
+            )
+        )
+
+        // 2. Mosques Near You
+        candidates.add(
+            FeaturedCandidate(
+                id = "mosques",
+                title = "Mosques Near You",
+                description = "Locate nearby masjids, jamia prayer halls, and get instant turn-by-turn directions",
+                actionText = "Find Mosques",
+                icon = Icons.Filled.Place,
+                badgeText = "NEAR YOU",
+                destination = "mosques",
+                testTag = "explore_card_mosques_featured"
             )
         )
 
@@ -304,6 +331,15 @@ fun ExploreMainContent(
                 badgeText = "99",
                 testTag = "explore_card_names",
                 destination = "names"
+            ),
+            "mosques" to CategoryData(
+                id = "mosques",
+                title = "Mosques Near You",
+                subtitle = "Find masjids & prayer spaces",
+                icon = Icons.Filled.Place,
+                badgeText = "MAP",
+                testTag = "explore_card_mosques",
+                destination = "mosques"
             ),
             "calendar" to CategoryData(
                 id = "calendar",
@@ -414,23 +450,43 @@ fun ExploreMainContent(
                         modifier = Modifier.padding(bottom = 10.dp)
                     )
 
-                    val topTwo = orderedCategoryIds.take(2).mapNotNull { categoryDefinitions[it] }
-                    val third = orderedCategoryIds.drop(2).firstOrNull()?.let { categoryDefinitions[it] }
+                    val categories = orderedCategoryIds.mapNotNull { categoryDefinitions[it] }
 
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // Top two items in a responsive 2-column grid
-                        if (topTwo.size == 2) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                topTwo.forEach { category ->
-                                    CategoryGridCard(
+                        val chunks = categories.chunked(2)
+                        chunks.forEach { chunk ->
+                            if (chunk.size == 2) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    chunk.forEach { category ->
+                                        CategoryGridCard(
+                                            key = category.id,
+                                            title = category.title,
+                                            subtitle = category.subtitle,
+                                            icon = category.icon,
+                                            badgeText = category.badgeText,
+                                            onClick = { handleCategoryClick(category.destination) },
+                                            isDark = isDark,
+                                            cardBg = cardBg,
+                                            cardBorder = cardBorder,
+                                            textPrimary = textPrimary,
+                                            textSecondary = textSecondary,
+                                            accentColor = accentColor,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .testTag(category.testTag)
+                                        )
+                                    }
+                                }
+                            } else {
+                                chunk.firstOrNull()?.let { category ->
+                                    CategoryWideCard(
                                         key = category.id,
                                         title = category.title,
                                         subtitle = category.subtitle,
                                         icon = category.icon,
-                                        badgeText = category.badgeText,
                                         onClick = { handleCategoryClick(category.destination) },
                                         isDark = isDark,
                                         cardBg = cardBg,
@@ -438,30 +494,10 @@ fun ExploreMainContent(
                                         textPrimary = textPrimary,
                                         textSecondary = textSecondary,
                                         accentColor = accentColor,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag(category.testTag)
+                                        modifier = Modifier.testTag(category.testTag)
                                     )
                                 }
                             }
-                        }
-
-                        // Third item rendered as the wide banner card
-                        third?.let { category ->
-                            CategoryWideCard(
-                                key = category.id,
-                                title = category.title,
-                                subtitle = category.subtitle,
-                                icon = category.icon,
-                                onClick = { handleCategoryClick(category.destination) },
-                                isDark = isDark,
-                                cardBg = cardBg,
-                                cardBorder = cardBorder,
-                                textPrimary = textPrimary,
-                                textSecondary = textSecondary,
-                                accentColor = accentColor,
-                                modifier = Modifier.testTag(category.testTag)
-                            )
                         }
                     }
                 }

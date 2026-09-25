@@ -95,6 +95,7 @@ import com.example.data.audio.SurahDownloadStatus
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -109,6 +110,8 @@ import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -157,6 +160,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -228,6 +232,7 @@ fun QuranScreen(
     var isReadingViewActive by rememberSaveable { mutableStateOf(false) }
     var surahSubTab by rememberSaveable { mutableIntStateOf(0) } // 0: Read, 1: Overview & Map
     var showFontSizeControls by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
     var activeLensVerse by remember { mutableStateOf<Verse?>(null) }
     var activeWordInfo by remember { mutableStateOf<QuranWordInfo?>(null) }
     var quickActionSurah by remember { mutableStateOf<Surah?>(null) }
@@ -516,12 +521,12 @@ fun QuranScreen(
             ) {
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Reader Header Bar
-                Row(
+                // Reader Header Bar: Independent 3-zone layout (Start: Back, Center: True centered Surah identity, End: Overflow ⋮)
+                Box(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    contentAlignment = Alignment.Center
                 ) {
+                    // TOP-LEFT: Back button
                     IconButton(
                         onClick = {
                             if (surahSubTab == 1) {
@@ -531,7 +536,9 @@ fun QuranScreen(
                                 onReadingModeChange(false)
                             }
                         },
-                        modifier = Modifier.testTag("quran_reader_back_btn")
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .testTag("quran_reader_back_btn")
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -540,33 +547,112 @@ fun QuranScreen(
                         )
                     }
 
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    // TRUE SCREEN CENTER: Surah identity (English name + Verse count • Arabic name)
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(horizontal = 48.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         Text(
                             text = selectedSurah.nameEnglish,
-                            style = MaterialTheme.typography.titleLarge.copy(fontFamily = SerifHeaderFont),
-                            color = textPrimary
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontFamily = SerifHeaderFont,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 20.sp
+                            ),
+                            color = textPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "${selectedSurah.nameArabic} • ${if (selectedSurah.number == 1) 6 else selectedSurah.versesCount} Verses",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = Color.semanticMutedText
+                            text = "${selectedSurah.versesCount} • ${selectedSurah.nameArabic}",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontFamily = SpaceGrotesk,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Normal
+                            ),
+                            color = Color.semanticMutedText,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
                         )
                     }
 
-                    Row {
-                        IconButton(onClick = onToggleEnglish) {
+                    // TOP-RIGHT: Three-dot overflow menu (Translation + Text size)
+                    Box(
+                        modifier = Modifier.align(Alignment.CenterEnd)
+                    ) {
+                        IconButton(
+                            onClick = { showOverflowMenu = !showOverflowMenu },
+                            modifier = Modifier.testTag("quran_reader_overflow_btn")
+                        ) {
                             Icon(
-                                imageVector = Icons.Outlined.Translate,
-                                contentDescription = "Toggle Translation",
-                                tint = if (showEnglishTranslation) MaterialTheme.colorScheme.primary else textPrimary.copy(alpha = 0.5f)
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Reader options",
+                                tint = textPrimary
                             )
                         }
 
-                        IconButton(onClick = { showFontSizeControls = !showFontSizeControls }) {
-                            Icon(
-                                imageVector = Icons.Outlined.FormatSize,
-                                contentDescription = "Font Size",
-                                tint = textPrimary
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = { showOverflowMenu = false },
+                            modifier = Modifier
+                                .background(Color.semanticSurfaceElevated)
+                                .border(
+                                    width = 0.5.dp,
+                                    color = Color.semanticBorder.copy(alpha = 0.35f),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "Translation",
+                                        fontFamily = SpaceGrotesk,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (showEnglishTranslation) MaterialTheme.colorScheme.primary else textPrimary
+                                    )
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    onToggleEnglish()
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Translate,
+                                        contentDescription = null,
+                                        tint = if (showEnglishTranslation) MaterialTheme.colorScheme.primary else textPrimary.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "Text size",
+                                        fontFamily = SpaceGrotesk,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = textPrimary
+                                    )
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    showFontSizeControls = !showFontSizeControls
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Outlined.FormatSize,
+                                        contentDescription = null,
+                                        tint = textPrimary.copy(alpha = 0.7f),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             )
                         }
                     }
@@ -1873,6 +1959,13 @@ fun VerseNumberBadge(
     }
 }
 
+data class ArabicTokenRange(
+    val tokenIndex: Int,
+    val start: Int,
+    val end: Int,
+    val text: String
+)
+
 @Composable
 fun WordExplorerInteractiveText(
     textArabic: String,
@@ -1888,11 +1981,16 @@ fun WordExplorerInteractiveText(
     val haptic = LocalHapticFeedback.current
     var layoutResult by remember { mutableStateOf<androidx.compose.ui.text.TextLayoutResult?>(null) }
 
-    // Pre-calculate token ranges in textArabic using whitespace boundary
+    // Pre-calculate token ranges in textArabic using whitespace boundary with exact tokenIndex
     val tokenList = remember(textArabic) {
         val regex = Regex("\\S+")
-        regex.findAll(textArabic).map { matchResult ->
-            Triple(matchResult.range.first, matchResult.range.last + 1, matchResult.value)
+        regex.findAll(textArabic).mapIndexed { index, matchResult ->
+            ArabicTokenRange(
+                tokenIndex = index,
+                start = matchResult.range.first,
+                end = matchResult.range.last + 1,
+                text = matchResult.value
+            )
         }.toList()
     }
 
@@ -1901,16 +1999,68 @@ fun WordExplorerInteractiveText(
             detectTapGestures(
                 onTap = { tapOffset ->
                     val currentLayout = layoutResult ?: return@detectTapGestures
-                    val characterOffset = currentLayout.getOffsetForPosition(tapOffset)
-                    val tappedTokenIndex = tokenList.indexOfFirst { (start, end, _) ->
-                        characterOffset in start until end
-                    }
-                    if (tappedTokenIndex >= 0) {
-                        val wordInfo = QuranData.getWordInfo(context, surahNumber, verseNumber, tappedTokenIndex)
-                        if (wordInfo != null) {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onWordClick(wordInfo)
+                    val lineCount = currentLayout.lineCount
+                    if (lineCount == 0) return@detectTapGestures
+
+                    // 1. Vertical boundary: ensure tap is within valid text line vertical range
+                    val lineIndex = currentLayout.getLineForVerticalPosition(tapOffset.y)
+                    if (lineIndex < 0 || lineIndex >= lineCount) return@detectTapGestures
+
+                    val lineTop = currentLayout.getLineTop(lineIndex)
+                    val lineBottom = currentLayout.getLineBottom(lineIndex)
+                    if (tapOffset.y < lineTop || tapOffset.y > lineBottom) return@detectTapGestures
+
+                    // 2. Horizontal boundary: ensure tap is within rendered line horizontal bounds
+                    val lineLeft = currentLayout.getLineLeft(lineIndex)
+                    val lineRight = currentLayout.getLineRight(lineIndex)
+                    if (tapOffset.x < lineLeft || tapOffset.x > lineRight) return@detectTapGestures
+
+                    // 3. Exact character offset at tap position
+                    val charOffset = currentLayout.getOffsetForPosition(tapOffset)
+                    if (charOffset < 0 || charOffset >= textArabic.length) return@detectTapGestures
+
+                    // 4. Strict token containment: character must be strictly within candidate token range
+                    val candidateToken = tokenList.firstOrNull { charOffset in it.start until it.end }
+                        ?: return@detectTapGestures
+
+                    // 5. Visual glyph bounding box check: calculate exact rendered geometry of the candidate word
+                    var wordLeft = Float.MAX_VALUE
+                    var wordRight = Float.MIN_VALUE
+                    var wordTop = Float.MAX_VALUE
+                    var wordBottom = Float.MIN_VALUE
+                    var hasValidGlyph = false
+
+                    for (i in candidateToken.start until candidateToken.end) {
+                        if (i in 0 until textArabic.length) {
+                            val charBox = currentLayout.getBoundingBox(i)
+                            if (charBox.width > 0f && charBox.height > 0f) {
+                                wordLeft = minOf(wordLeft, charBox.left)
+                                wordRight = maxOf(wordRight, charBox.right)
+                                wordTop = minOf(wordTop, charBox.top)
+                                wordBottom = maxOf(wordBottom, charBox.bottom)
+                                hasValidGlyph = true
+                            }
                         }
+                    }
+
+                    if (!hasValidGlyph) return@detectTapGestures
+
+                    // Strict horizontal check: tap must be within the word's glyph bounds (with minimal 2px tolerance)
+                    val hTolerance = 2f
+                    if (tapOffset.x < (wordLeft - hTolerance) || tapOffset.x > (wordRight + hTolerance)) {
+                        return@detectTapGestures
+                    }
+
+                    // Strict vertical check: tap must be within the word's line height
+                    if (tapOffset.y < lineTop || tapOffset.y > lineBottom) {
+                        return@detectTapGestures
+                    }
+
+                    // 6. Linguistic database lookup: verify this token is an actual Quranic Arabic word (and not a waqf pause sign)
+                    val wordInfo = QuranData.getWordInfo(context, surahNumber, verseNumber, candidateToken.tokenIndex)
+                    if (wordInfo != null) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onWordClick(wordInfo)
                     }
                 }
             )
@@ -1991,10 +2141,21 @@ fun BismillahHeader(
         label = "bismillahActiveHighlight"
     )
 
+    val longPressModifier = if (onLongClick != null) {
+        Modifier.pointerInput(verse.verseKey) {
+            detectTapGestures(
+                onLongPress = { onLongClick() }
+            )
+        }
+    } else {
+        Modifier
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .then(motionModifier)
+            .then(longPressModifier)
             .clip(RoundedCornerShape(14.dp))
             .drawBehind {
                 if (activeAlpha > 0.005f) {
@@ -2013,11 +2174,7 @@ fun BismillahHeader(
                     )
                 }
             }
-            .padding(top = 16.dp, bottom = 20.dp, start = 12.dp, end = 8.dp)
-            .combinedClickable(
-                onClick = { onOpenLens?.invoke() },
-                onLongClick = onLongClick
-            ),
+            .padding(top = 16.dp, bottom = 20.dp, start = 12.dp, end = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // 4. Subtle tapered divider ABOVE Bismillah (approx 1px, 48% screen width, faded edges, tiny diamond)
@@ -2256,10 +2413,21 @@ fun VerseCard(
         label = "verseActiveHighlight"
     )
 
+    val longPressModifier = if (onLongClick != null) {
+        Modifier.pointerInput(verse.verseKey) {
+            detectTapGestures(
+                onLongPress = { onLongClick() }
+            )
+        }
+    } else {
+        Modifier
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .then(motionModifier)
+            .then(longPressModifier)
             .clip(RoundedCornerShape(12.dp))
             .drawBehind {
                 if (activeAlpha > 0.005f) {
@@ -2278,10 +2446,6 @@ fun VerseCard(
                     )
                 }
             }
-            .combinedClickable(
-                onClick = { onOpenLens?.invoke() },
-                onLongClick = onLongClick
-            )
             .padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp)
     ) {
         // Verse Header: Arabic-Indic Number Badge on Start, Action Icons on End

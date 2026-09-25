@@ -121,10 +121,6 @@ fun SurahOverviewContent(
         "$place$order"
     }
 
-    val versesText = remember(juzText, surah.versesCount) {
-        "$juzText · ${surah.versesCount} verses"
-    }
-
     LazyColumn(
         state = listState,
         modifier = modifier
@@ -157,7 +153,7 @@ fun SurahOverviewContent(
                 Spacer(modifier = Modifier.height(2.dp))
 
                 Text(
-                    text = versesText,
+                    text = juzText,
                     style = MaterialTheme.typography.bodySmall.copy(
                         fontFamily = SpaceGrotesk,
                         fontSize = 13.sp,
@@ -287,6 +283,17 @@ private fun SurahMapTimelineRow(
     val surfaceElevated = Color.semanticSurfaceElevated
 
     val formattedNumber = String.format("%02d", section.sectionNumber)
+    val baseSectionLabel = "Section $formattedNumber"
+
+    val hasMeaningfulTitle = section.title.isNotBlank() &&
+        !section.title.equals("Section", ignoreCase = true) &&
+        !section.title.startsWith("Section ", ignoreCase = true)
+
+    val sectionHeaderTitle = when {
+        hasMeaningfulTitle -> "${section.title} · $baseSectionLabel"
+        section.theme.isNotBlank() && !section.theme.equals("Section", ignoreCase = true) && !section.theme.startsWith("Section ", ignoreCase = true) -> "${section.theme} · $baseSectionLabel"
+        else -> baseSectionLabel
+    }
 
     Row(
         modifier = modifier
@@ -389,42 +396,26 @@ private fun SurahMapTimelineRow(
                 .weight(1f)
                 .padding(bottom = 16.dp)
         ) {
-            // Section Title Line
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = formattedNumber,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontFamily = SpaceGrotesk,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 11.5.sp
-                    ),
-                    color = if (isCurrentSection) accentCol else textMuted
-                )
-
-                val resolvedTitle = section.displayTitle(isSingle)
-
-                Text(
-                    text = resolvedTitle,
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontFamily = SpaceGrotesk,
-                        fontWeight = if (isCurrentSection) FontWeight.Bold else FontWeight.SemiBold,
-                        fontSize = 14.5.sp
-                    ),
-                    color = textPrimary
-                )
-            }
+            // Section Title Line (Single coherent title: "Section 01" or "Opening · Section 01")
+            Text(
+                text = sectionHeaderTitle,
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontFamily = SpaceGrotesk,
+                    fontWeight = if (isCurrentSection) FontWeight.Bold else FontWeight.SemiBold,
+                    fontSize = 14.5.sp,
+                    letterSpacing = (-0.1).sp
+                ),
+                color = textPrimary
+            )
 
             Spacer(modifier = Modifier.height(2.dp))
 
             // Secondary: Verse Range & optional subtle Reading status
             Text(
                 text = if (isCurrentSection) {
-                    "${section.verseRangeDisplay} • ${section.verseCount} ${if (section.verseCount == 1) "verse" else "verses"} · Reading"
+                    "${section.verseRangeDisplay} · ${section.verseCount} ${if (section.verseCount == 1) "verse" else "verses"} · Reading"
                 } else {
-                    "${section.verseRangeDisplay} • ${section.verseCount} ${if (section.verseCount == 1) "verse" else "verses"}"
+                    "${section.verseRangeDisplay} · ${section.verseCount} ${if (section.verseCount == 1) "verse" else "verses"}"
                 },
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontFamily = SpaceGrotesk,
@@ -435,8 +426,8 @@ private fun SurahMapTimelineRow(
 
             // Tertiary: Verified Theme / Structural Description (if present in dataset and distinct from title)
             val verifiedDescription = when {
-                section.description.isNotBlank() && section.description != section.displayTitle(isSingle) -> section.description
-                section.theme.isNotBlank() && section.theme != section.displayTitle(isSingle) -> section.theme
+                section.description.isNotBlank() && !sectionHeaderTitle.contains(section.description) -> section.description
+                section.theme.isNotBlank() && !sectionHeaderTitle.contains(section.theme) -> section.theme
                 else -> ""
             }
 

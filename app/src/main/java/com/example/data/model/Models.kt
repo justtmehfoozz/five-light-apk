@@ -108,7 +108,8 @@ data class SurahSection(
 
     /**
      * Resolves the verified title if present, falling back to verified theme/description,
-     * or minimal generic fallback "Section $sectionNumber" / "Complete Surah".
+     * or minimal generic fallback "Complete Surah" / "Section".
+     * Avoids repeating the section number so "04 Section 4" is prevented.
      */
     fun displayTitle(isSingle: Boolean = false): String {
         return when {
@@ -116,7 +117,7 @@ data class SurahSection(
             theme.isNotBlank() -> theme
             description.isNotBlank() -> description
             isSingle -> "Complete Surah"
-            else -> "Section $sectionNumber"
+            else -> "Section"
         }
     }
 }

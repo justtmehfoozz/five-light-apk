@@ -646,10 +646,14 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                             4 -> {
                                 val hijriDate by viewModel.hijriDate.collectAsStateWithLifecycle()
                                 val islamicDateState by viewModel.islamicDateState.collectAsStateWithLifecycle()
+                                val selectedCity by viewModel.selectedCity.collectAsStateWithLifecycle()
+                                val nextPrayer by viewModel.nextPrayer.collectAsStateWithLifecycle()
 
                                 ExploreScreen(
                                     hijriDate = hijriDate,
                                     islamicDateState = islamicDateState,
+                                    selectedCity = selectedCity,
+                                    nextPrayer = nextPrayer,
                                     activeSubRoute = exploreSubRoute,
                                     onSubRouteChange = { 
                                         exploreSubRoute = it
