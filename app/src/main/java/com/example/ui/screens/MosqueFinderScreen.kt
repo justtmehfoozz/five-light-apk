@@ -61,57 +61,50 @@ private const val DARK_MAP_STYLE = """
 [
   {
     "elementType": "geometry",
-    "stylers": [{"color": "#141518"}]
-  },
-  {
-    "elementType": "labels.icon",
-    "stylers": [{"visibility": "off"}]
+    "stylers": [{"color": "#18191e"}]
   },
   {
     "elementType": "labels.text.fill",
-    "stylers": [{"color": "#727782"}]
+    "stylers": [{"color": "#8c92a4"}]
   },
   {
     "elementType": "labels.text.stroke",
-    "stylers": [{"color": "#141518"}]
+    "stylers": [{"color": "#18191e"}]
   },
   {
     "featureType": "administrative",
     "elementType": "geometry",
-    "stylers": [{"color": "#2a2c33"}]
+    "stylers": [{"color": "#333742"}]
+  },
+  {
+    "featureType": "landscape",
+    "elementType": "geometry",
+    "stylers": [{"color": "#1e2026"}]
   },
   {
     "featureType": "poi",
-    "stylers": [{"visibility": "off"}]
+    "elementType": "geometry",
+    "stylers": [{"color": "#252830"}]
   },
   {
     "featureType": "road",
-    "elementType": "geometry.fill",
-    "stylers": [{"color": "#202227"}]
-  },
-  {
-    "featureType": "road",
-    "elementType": "labels.text.fill",
-    "stylers": [{"color": "#8c919a"}]
+    "elementType": "geometry",
+    "stylers": [{"color": "#2c2f38"}]
   },
   {
     "featureType": "road.highway",
     "elementType": "geometry",
-    "stylers": [{"color": "#2c2f37"}]
+    "stylers": [{"color": "#3d424f"}]
   },
   {
     "featureType": "transit",
-    "stylers": [{"visibility": "off"}]
+    "elementType": "geometry",
+    "stylers": [{"color": "#252830"}]
   },
   {
     "featureType": "water",
     "elementType": "geometry",
-    "stylers": [{"color": "#0c0d10"}]
-  },
-  {
-    "featureType": "water",
-    "elementType": "labels.text.fill",
-    "stylers": [{"color": "#4a505b"}]
+    "stylers": [{"color": "#101216"}]
   }
 ]
 """
@@ -120,57 +113,55 @@ private const val LIGHT_MAP_STYLE = """
 [
   {
     "elementType": "geometry",
-    "stylers": [{"color": "#f5f4ef"}]
-  },
-  {
-    "elementType": "labels.icon",
-    "stylers": [{"visibility": "off"}]
+    "stylers": [{"color": "#f7f6f2"}]
   },
   {
     "elementType": "labels.text.fill",
-    "stylers": [{"color": "#63615a"}]
+    "stylers": [{"color": "#4a4f5c"}]
   },
   {
     "elementType": "labels.text.stroke",
-    "stylers": [{"color": "#f5f4ef"}]
+    "stylers": [{"color": "#ffffff"}]
   },
   {
     "featureType": "administrative",
     "elementType": "geometry",
-    "stylers": [{"color": "#dcdacf"}]
+    "stylers": [{"color": "#cfd4dc"}]
+  },
+  {
+    "featureType": "landscape",
+    "elementType": "geometry",
+    "stylers": [{"color": "#ebe9e1"}]
   },
   {
     "featureType": "poi",
-    "stylers": [{"visibility": "off"}]
+    "elementType": "geometry",
+    "stylers": [{"color": "#e2e0d8"}]
   },
   {
     "featureType": "road",
-    "elementType": "geometry.fill",
+    "elementType": "geometry",
     "stylers": [{"color": "#ffffff"}]
   },
   {
     "featureType": "road",
     "elementType": "geometry.stroke",
-    "stylers": [{"color": "#e6e4dc"}]
+    "stylers": [{"color": "#d6d4cb"}]
   },
   {
     "featureType": "road.highway",
-    "elementType": "geometry.fill",
-    "stylers": [{"color": "#eceae2"}]
+    "elementType": "geometry",
+    "stylers": [{"color": "#f8c976"}]
   },
   {
     "featureType": "transit",
-    "stylers": [{"visibility": "off"}]
+    "elementType": "geometry",
+    "stylers": [{"color": "#e5e3db"}]
   },
   {
     "featureType": "water",
     "elementType": "geometry",
-    "stylers": [{"color": "#dbe3ed"}]
-  },
-  {
-    "featureType": "water",
-    "elementType": "labels.text.fill",
-    "stylers": [{"color": "#768597"}]
+    "stylers": [{"color": "#c4d8ea"}]
   }
 ]
 """
@@ -358,17 +349,19 @@ fun MosqueFinderScreen(
     var defaultMarkerBitmap by remember { mutableStateOf<BitmapDescriptor?>(null) }
     var selectedMarkerBitmap by remember { mutableStateOf<BitmapDescriptor?>(null) }
 
-    // Safe background MapsInitializer
+    // Safe background MapsInitializer with diagnostic logging
     LaunchedEffect(Unit) {
         try {
+            android.util.Log.d("Google Maps Android API", "Initializing Google Maps SDK Renderer...")
             com.google.android.gms.maps.MapsInitializer.initialize(
                 context.applicationContext,
                 com.google.android.gms.maps.MapsInitializer.Renderer.LATEST
-            ) {
+            ) { renderer ->
+                android.util.Log.d("Google Maps Android API", "MapsInitializer completed with renderer: $renderer")
                 isMapReady = true
             }
         } catch (e: Exception) {
-            android.util.Log.w("MosqueFinderScreen", "MapsInitializer: ${e.message}")
+            android.util.Log.e("Google Maps Android API", "MapsInitializer error: ${e.message}", e)
         }
     }
 
@@ -445,7 +438,10 @@ fun MosqueFinderScreen(
         GoogleMap(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraPositionState,
-            onMapLoaded = { isMapReady = true },
+            onMapLoaded = {
+                android.util.Log.d("Google Maps Android API", "GoogleMap onMapLoaded callback triggered. Camera: ${cameraPositionState.position.target}, Zoom: ${cameraPositionState.position.zoom}")
+                isMapReady = true
+            },
             uiSettings = MapUiSettings(
                 zoomControlsEnabled = false,
                 myLocationButtonEnabled = false,

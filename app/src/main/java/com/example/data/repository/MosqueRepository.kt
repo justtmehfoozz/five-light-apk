@@ -100,9 +100,14 @@ class MosqueRepository(private val context: Context) {
                 Place.Field.USER_RATING_COUNT
             )
 
+            val includedTypesList = listOf("mosque")
+            val maxCount = 20
+
+            Log.d(tag, "--> SearchNearbyRequest INPUTS: lat=$lat, lng=$lng, radiusMeters=$radiusMeters, maxResultCount=$maxCount, includedTypes=$includedTypesList")
+
             val request = SearchNearbyRequest.builder(circle, placeFields)
-                .setIncludedTypes(listOf("mosque", "place_of_worship"))
-                .setMaxResultCount(20)
+                .setIncludedTypes(includedTypesList)
+                .setMaxResultCount(maxCount)
                 .build()
 
             client.searchNearby(request)
@@ -123,10 +128,14 @@ class MosqueRepository(private val context: Context) {
                             isOpenNow = true
                         )
                     }
+                    Log.d(tag, "<-- SearchNearbyRequest SUCCESS: resultCount=${list.size}")
+                    list.forEachIndexed { idx, m ->
+                        Log.d(tag, "    #$idx [ID: ${m.id}] Name: ${m.name}, Dist: ${m.formattedDistance}, LatLng: (${m.latitude}, ${m.longitude})")
+                    }
                     continuation.resume(list)
                 }
                 .addOnFailureListener { e ->
-                    Log.w(tag, "Places searchNearby failure: ${e.message}")
+                    Log.e(tag, "<-- SearchNearbyRequest FAILURE: exception=${e.javaClass.simpleName}, message=${e.message}", e)
                     continuation.resume(emptyList())
                 }
         } catch (e: Exception) {
