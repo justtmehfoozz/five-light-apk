@@ -202,34 +202,15 @@ fun MosqueFinderScreen(
         mutableStateOf(LocationHelper.hasLocationPermission(context))
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        hasLocationPermission = granted
+    var userLocation by remember {
+        mutableStateOf<LatLng?>(
+            selectedCity?.let { LatLng(it.latitude, it.longitude) } ?: LatLng(21.4225, 39.8262)
+        )
     }
-
-    // Default coordinates based on GPS or User's Selected City
-    val userLat = remember(hasLocationPermission, selectedCity) {
-        if (hasLocationPermission) {
-            val loc = LocationHelper.getLastKnownLocation(context)
-            loc?.latitude ?: selectedCity?.latitude ?: 21.4225
-        } else {
-            selectedCity?.latitude ?: 21.4225
-        }
+    var userLocalityName by remember {
+        mutableStateOf<String?>(selectedCity?.cityName)
     }
-
-    val userLng = remember(hasLocationPermission, selectedCity) {
-        if (hasLocationPermission) {
-            val loc = LocationHelper.getLastKnownLocation(context)
-            loc?.longitude ?: selectedCity?.longitude ?: 39.8262
-        } else {
-            selectedCity?.longitude ?: 39.8262
-        }
-    }
-
-    val userLatLng = remember(userLat, userLng) { LatLng(userLat, userLng) }
+    var isLocating by remember { mutableStateOf(false) }
 
     // Map & Search state
     var selectedRadiusMeters by remember { mutableStateOf(5000.0) }
@@ -241,28 +222,16 @@ fun MosqueFinderScreen(
     var mosques by remember { mutableStateOf<List<Mosque>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var selectedMosque by remember { mutableStateOf<Mosque?>(null) }
-    var searchCenter by remember { mutableStateOf(userLatLng) }
+    var searchCenter by remember {
+        mutableStateOf(
+            selectedCity?.let { LatLng(it.latitude, it.longitude) } ?: LatLng(21.4225, 39.8262)
+        )
+    }
     var showSearchThisArea by remember { mutableStateOf(false) }
 
     // Map Camera State
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(userLatLng, 14f)
-    }
-
-    // Detect when user pans camera far away (>1.2km) to show "Search this area"
-    LaunchedEffect(cameraPositionState.isMoving) {
-        if (!cameraPositionState.isMoving) {
-            val target = cameraPositionState.position.target
-            val dist = FloatArray(1)
-            Location.distanceBetween(
-                searchCenter.latitude,
-                searchCenter.longitude,
-                target.latitude,
-                target.longitude,
-                dist
-            )
-            showSearchThisArea = dist[0] > 1200f
-        }
+        position = CameraPosition.fromLatLngZoom(searchCenter, 14.5f)
     }
 
     // Fetch Mosques function
@@ -285,17 +254,103 @@ fun MosqueFinderScreen(
         }
     }
 
-    // Debounced query execution when searchQuery changes
+    // Function to resolve user location and trigger discovery
+    fun resolveAndCenterLocation(animateCamera: Boolean = true) {
+        coroutineScope.launch {
+            isLocating = true
+            val freshLocation = if (hasLocationPermission) {
+                LocationHelper.getFreshLocation(context) ?: LocationHelper.getLastKnownLocation(context)
+            } else null
+
+            val targetLat: Double
+            val targetLng: Double
+            val locationName: String
+
+            if (freshLocation != null) {
+                targetLat = freshLocation.latitude
+                targetLng = freshLocation.longitude
+                val cityObj = LocationHelper.resolveCityLocation(context, freshLocation)
+                locationName = cityObj.cityName.takeIf { it.isNotBlank() && it != "Device Location" } ?: "Current Location"
+            } else if (selectedCity != null) {
+                targetLat = selectedCity.latitude
+                targetLng = selectedCity.longitude
+                locationName = selectedCity.cityName
+            } else {
+                targetLat = 21.4225
+                targetLng = 39.8262
+                locationName = "Makkah"
+            }
+
+            val targetLatLng = LatLng(targetLat, targetLng)
+            userLocation = targetLatLng
+            userLocalityName = locationName
+            searchCenter = targetLatLng
+            isLocating = false
+
+            if (animateCamera) {
+                cameraPositionState.animate(
+                    update = CameraUpdateFactory.newLatLngZoom(targetLatLng, 14.5f),
+                    durationMs = 600
+                )
+            }
+
+            fetchMosques(targetLatLng, selectedRadiusMeters, searchQuery)
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        hasLocationPermission = granted
+        if (granted) {
+            resolveAndCenterLocation(animateCamera = true)
+        }
+    }
+
+    // Auto-request location permissions and resolve fresh location on initial launch
+    LaunchedEffect(Unit) {
+        if (!hasLocationPermission) {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+        resolveAndCenterLocation(animateCamera = true)
+    }
+
+    // Re-resolve when permission state changes
+    LaunchedEffect(hasLocationPermission) {
+        if (hasLocationPermission) {
+            resolveAndCenterLocation(animateCamera = true)
+        }
+    }
+
+    // Detect when user pans camera far away (>1.2km) to show "Search this area"
+    LaunchedEffect(cameraPositionState.isMoving) {
+        if (!cameraPositionState.isMoving) {
+            val target = cameraPositionState.position.target
+            val dist = FloatArray(1)
+            Location.distanceBetween(
+                searchCenter.latitude,
+                searchCenter.longitude,
+                target.latitude,
+                target.longitude,
+                dist
+            )
+            showSearchThisArea = dist[0] > 1200f
+        }
+    }
+
+    // Debounced query execution when searchQuery or radius changes
     LaunchedEffect(searchQuery, selectedRadiusMeters) {
         if (searchQuery.isNotEmpty()) {
             delay(350)
         }
         fetchMosques(searchCenter, selectedRadiusMeters, searchQuery)
-    }
-
-    // Initial load
-    LaunchedEffect(userLat, userLng) {
-        fetchMosques(LatLng(userLat, userLng), selectedRadiusMeters, searchQuery)
     }
 
     // Markers state and lifecycle-safe initialization
@@ -381,12 +436,7 @@ fun MosqueFinderScreen(
         }
 
         fun centerOnUser() {
-            coroutineScope.launch {
-                cameraPositionState.animate(
-                    update = CameraUpdateFactory.newLatLngZoom(userLatLng, 14.5f),
-                    durationMs = 500
-                )
-            }
+            resolveAndCenterLocation(animateCamera = true)
         }
 
         // =======================================================================
@@ -543,8 +593,15 @@ fun MosqueFinderScreen(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                            val headerSubtitle = when {
+                                isLocating -> "Locating near you..."
+                                !userLocalityName.isNullOrBlank() -> "Near $userLocalityName"
+                                selectedCity != null -> "Near ${selectedCity.cityName}"
+                                hasLocationPermission -> "Near Current Location"
+                                else -> "Showing nearby"
+                            }
                             Text(
-                                text = if (hasLocationPermission) "Locating near you" else (selectedCity?.cityName ?: "Showing nearby"),
+                                text = headerSubtitle,
                                 fontFamily = SpaceGrotesk,
                                 fontSize = 11.sp,
                                 color = textSecondary,
@@ -778,7 +835,11 @@ fun MosqueFinderScreen(
                         )
 
                         val subtitleText = buildString {
-                            append("${mosques.size} nearby")
+                            if (isLoading) {
+                                append("Searching nearby...")
+                            } else {
+                                append("${mosques.size} nearby")
+                            }
                             if (nextPrayer != null) {
                                 append(" • Next: ${nextPrayer.name.displayName} ${nextPrayer.timeFormatted}")
                             }

@@ -19,9 +19,9 @@ android {
     targetSdk = 36
     versionCode = 10
     versionName = "1.12"
+    manifestPlaceholders["MAPS_API_KEY"] = "DEFAULT_MAPS_API_KEY"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    manifestPlaceholders["MAPS_API_KEY"] = "DEFAULT_MAPS_API_KEY"
   }
 
   signingConfigs {

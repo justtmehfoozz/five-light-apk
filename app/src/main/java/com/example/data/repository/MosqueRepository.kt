@@ -1,6 +1,7 @@
 package com.example.data.repository
 
 import android.content.Context
+import android.content.pm.PackageManager
 import android.location.Location
 import android.util.Log
 import com.example.BuildConfig
@@ -15,21 +16,38 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
-import kotlin.math.cos
-import kotlin.math.sqrt
 
 class MosqueRepository(private val context: Context) {
 
     private val tag = "MosqueRepository"
 
     init {
+        ensurePlacesInitialized()
+    }
+
+    private fun ensurePlacesInitialized() {
         try {
+            if (Places.isInitialized()) return
+
             val key = try {
-                BuildConfig::class.java.getField("MAPS_API_KEY").get(null) as? String ?: ""
+                val fromBuildConfig = BuildConfig::class.java.getField("MAPS_API_KEY").get(null) as? String
+                if (!fromBuildConfig.isNullOrBlank() && fromBuildConfig != "DEFAULT_MAPS_API_KEY") {
+                    fromBuildConfig
+                } else {
+                    val appInfo = context.packageManager.getApplicationInfo(
+                        context.packageName,
+                        PackageManager.GET_META_DATA
+                    )
+                    val fromManifest = appInfo.metaData?.getString("com.google.android.geo.API_KEY")
+                    if (!fromManifest.isNullOrBlank() && fromManifest != "DEFAULT_MAPS_API_KEY") {
+                        fromManifest
+                    } else ""
+                }
             } catch (_: Exception) {
                 ""
             }
-            if (key.isNotBlank() && key != "DEFAULT_MAPS_API_KEY" && !Places.isInitialized()) {
+
+            if (key.isNotBlank()) {
                 Places.initializeWithNewPlacesApiEnabled(context.applicationContext, key)
             }
         } catch (e: Exception) {
@@ -43,20 +61,16 @@ class MosqueRepository(private val context: Context) {
         radiusMeters: Double = 5000.0,
         searchQuery: String = ""
     ): List<Mosque> = withContext(Dispatchers.IO) {
+        ensurePlacesInitialized()
         val liveResults = searchPlacesNearby(centerLat, centerLng, radiusMeters)
-        val finalResults = if (liveResults.isNotEmpty()) {
-            liveResults
-        } else {
-            generateCuratedMosques(centerLat, centerLng, radiusMeters)
-        }
 
         val filtered = if (searchQuery.isNotBlank()) {
-            finalResults.filter {
+            liveResults.filter {
                 it.name.contains(searchQuery, ignoreCase = true) ||
                         it.address.contains(searchQuery, ignoreCase = true)
             }
         } else {
-            finalResults
+            liveResults
         }
 
         filtered.sortedBy { it.distanceMeters ?: Double.MAX_VALUE }
@@ -118,64 +132,6 @@ class MosqueRepository(private val context: Context) {
         } catch (e: Exception) {
             Log.w(tag, "Places SDK invocation exception: ${e.message}")
             continuation.resume(emptyList())
-        }
-    }
-
-    /**
-     * Generates geographically anchored authentic Islamic centers and Masjids around
-     * the specified coordinates. This guarantees the user always gets a rich, reliable,
-     * and responsive map experience even before providing a custom billing key.
-     */
-    fun generateCuratedMosques(
-        userLat: Double,
-        userLng: Double,
-        radiusMeters: Double
-    ): List<Mosque> {
-        // Relative offsets in latitude/longitude degrees (~111km per lat deg, ~111*cos(lat) per lon deg)
-        val latDegPerMeter = 1.0 / 111111.0
-        val lngDegPerMeter = 1.0 / (111111.0 * cos(Math.toRadians(userLat)).coerceAtLeast(0.1))
-
-        data class Seed(
-            val name: String,
-            val address: String,
-            val offsetMetersX: Double,
-            val offsetMetersY: Double,
-            val rating: Double,
-            val reviews: Int
-        )
-
-        val seeds = listOf(
-            Seed("Central Jamia Masjid", "Main Boulevard, City Center", 250.0, 320.0, 4.9, 312),
-            Seed("Masjid Al-Noor", "Al-Noor Ave & Peace Street", -450.0, 520.0, 4.8, 184),
-            Seed("Masjid Al-Farooq & Islamic Center", "North Community Crescent", 820.0, -350.0, 4.9, 420),
-            Seed("Masjid Bilal Habashi", "East Bilal Park Road", -720.0, -680.0, 4.7, 95),
-            Seed("Masjid Umar Ibn Al-Khattab", "Heritage Gardens Sector 4", 1250.0, 940.0, 4.8, 256),
-            Seed("Masjid Al-Taqwa", "Garden Way & South Crescent", -1400.0, 1100.0, 4.6, 78),
-            Seed("Masjid As-Salam & Community Space", "Salam Ring Road", 1800.0, -1350.0, 4.9, 142),
-            Seed("Islamic Cultural Society & Masjid", "Civic Center District", -2100.0, -1800.0, 4.8, 510)
-        )
-
-        return seeds.mapNotNull { seed ->
-            val dist = sqrt(seed.offsetMetersX * seed.offsetMetersX + seed.offsetMetersY * seed.offsetMetersY)
-            if (dist > radiusMeters) return@mapNotNull null
-
-            val mosqueLat = userLat + (seed.offsetMetersY * latDegPerMeter)
-            val mosqueLng = userLng + (seed.offsetMetersX * lngDegPerMeter)
-
-            val distanceCalc = FloatArray(1)
-            Location.distanceBetween(userLat, userLng, mosqueLat, mosqueLng, distanceCalc)
-
-            Mosque(
-                id = "curated_${seed.name.hashCode()}",
-                name = seed.name,
-                address = seed.address,
-                latitude = mosqueLat,
-                longitude = mosqueLng,
-                distanceMeters = distanceCalc[0].toDouble(),
-                rating = seed.rating,
-                userRatingsTotal = seed.reviews,
-                isOpenNow = true
-            )
         }
     }
 }

@@ -11,8 +11,13 @@ import com.example.data.model.CalcMethod
 import com.example.data.model.CityLocation
 import com.example.data.model.HijriDateMethod
 import com.example.data.model.Madhab
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
+import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.Locale
 import java.util.TimeZone
+import kotlin.coroutines.resume
 
 data class RegionalPrayerSettings(
     val calcMethod: CalcMethod,
@@ -45,6 +50,39 @@ object LocationHelper {
             } catch (_: SecurityException) {}
         }
         return bestLocation
+    }
+
+    suspend fun getFreshLocation(context: Context): Location? {
+        if (!hasLocationPermission(context)) return null
+        return suspendCancellableCoroutine { continuation ->
+            try {
+                val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+                val cts = CancellationTokenSource()
+                continuation.invokeOnCancellation { cts.cancel() }
+
+                fusedClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cts.token)
+                    .addOnSuccessListener { loc ->
+                        if (loc != null) {
+                            continuation.resume(loc)
+                        } else {
+                            fusedClient.lastLocation
+                                .addOnSuccessListener { lastLoc ->
+                                    continuation.resume(lastLoc ?: getLastKnownLocation(context))
+                                }
+                                .addOnFailureListener {
+                                    continuation.resume(getLastKnownLocation(context))
+                                }
+                        }
+                    }
+                    .addOnFailureListener {
+                        continuation.resume(getLastKnownLocation(context))
+                    }
+            } catch (_: SecurityException) {
+                continuation.resume(null)
+            } catch (_: Exception) {
+                continuation.resume(getLastKnownLocation(context))
+            }
+        }
     }
 
     fun resolveCityLocation(context: Context, location: Location): CityLocation {
