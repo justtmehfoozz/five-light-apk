@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.BuildConfig
 import com.example.data.model.CityLocation
 import com.example.data.model.Mosque
 import com.example.data.model.PrayerItem
@@ -220,9 +221,29 @@ fun MosqueFinderScreen(
     }
     var showSearchThisArea by remember { mutableStateOf(false) }
 
-    // Map Camera State
+    // Map Camera State for Minimal Diagnostic Map (Standard Google Roadmap, fixed coordinates)
+    val diagnosticCenter = remember { LatLng(19.0760, 72.8777) }
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(searchCenter, 14.5f)
+        position = CameraPosition.fromLatLngZoom(diagnosticCenter, 13f)
+    }
+
+    // Safe API Key & Environment Diagnostics
+    LaunchedEffect(Unit) {
+        val apiKey = try {
+            BuildConfig::class.java.getField("MAPS_API_KEY").get(null) as? String ?: ""
+        } catch (_: Exception) {
+            ""
+        }
+        val isPresent = apiKey.isNotBlank() && apiKey != "DEFAULT_MAPS_API_KEY"
+        val prefix = if (apiKey.length >= 4) apiKey.substring(0, 4) else "N/A"
+        android.util.Log.i("Google Maps Android API", "==================================================")
+        android.util.Log.i("Google Maps Android API", "MAPS_API_KEY_PRESENT = $isPresent")
+        android.util.Log.i("Google Maps Android API", "MAPS_API_KEY_LENGTH = ${apiKey.length}")
+        android.util.Log.i("Google Maps Android API", "MAPS_API_KEY_PREFIX = $prefix")
+        android.util.Log.i("Google Maps Android API", "MAPS_API_KEY_SOURCE = BuildConfig / SecretsPlugin")
+        android.util.Log.i("Google Maps Android API", "PACKAGE_NAME = ${context.packageName}")
+        android.util.Log.i("Google Maps Android API", "DIAGNOSTIC_COORDINATES = ($diagnosticCenter)")
+        android.util.Log.i("Google Maps Android API", "==================================================")
     }
 
     // Fetch Mosques function
@@ -450,28 +471,10 @@ fun MosqueFinderScreen(
                 tiltGesturesEnabled = false
             ),
             properties = MapProperties(
-                isMyLocationEnabled = hasLocationPermission,
-                mapStyleOptions = MapStyleOptions(if (isDark) DARK_MAP_STYLE else LIGHT_MAP_STYLE)
+                isMyLocationEnabled = false,
+                mapStyleOptions = null
             )
-        ) {
-            mosques.forEach { mosque ->
-                val isSelected = selectedMosque?.id == mosque.id
-                Marker(
-                    state = rememberMarkerState(
-                        key = "${mosque.id}_$isSelected",
-                        position = LatLng(mosque.latitude, mosque.longitude)
-                    ),
-                    title = mosque.name,
-                    snippet = mosque.formattedDistance,
-                    icon = if (isSelected) selectedMarkerBitmap else defaultMarkerBitmap,
-                    zIndex = if (isSelected) 2f else 1f,
-                    onClick = {
-                        centerOnMosque(mosque, expandSheet = true)
-                        true
-                    }
-                )
-            }
-        }
+        )
 
         // =======================================================================
         // 2. FLOATING TOP CONTROLS (HEADER & SEARCH)
