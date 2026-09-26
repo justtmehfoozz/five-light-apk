@@ -17,8 +17,8 @@ android {
     applicationId = "com.aistudio.fivelight.pzxqva"
     minSdk = 26
     targetSdk = 36
-    versionCode = 10
-    versionName = "1.12"
+    versionCode = 11
+    versionName = "1.13"
     manifestPlaceholders["MAPS_API_KEY"] = "DEFAULT_MAPS_API_KEY"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
