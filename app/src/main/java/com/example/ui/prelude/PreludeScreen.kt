@@ -1,5 +1,8 @@
 package com.example.ui.prelude
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import android.provider.Settings
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -139,7 +142,7 @@ fun PreludeScreen(
                 modifier = Modifier.testTag("prelude_skip_button")
             ) {
                 Text(
-                    text = "Skip",
+                    text = stringResource(R.string.action_skip),
                     fontFamily = SpaceGrotesk,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
@@ -175,7 +178,7 @@ fun PreludeScreen(
                         modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp)
                     ) {
                         Text(
-                            text = "Next",
+                            text = stringResource(R.string.action_next),
                             fontFamily = SpaceGrotesk,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.SemiBold,
@@ -184,7 +187,7 @@ fun PreludeScreen(
                         Spacer(modifier = Modifier.width(6.dp))
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                            contentDescription = "Next prelude page",
+                            contentDescription = stringResource(R.string.cd_next_prelude_page),
                             tint = textColor,
                             modifier = Modifier.height(16.dp)
                         )

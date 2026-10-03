@@ -1,5 +1,8 @@
 package com.example.ui.components
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.theme.*
 
@@ -156,12 +159,12 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-enum class NavItem(val route: String, val label: String, val iconSelected: ImageVector, val iconUnselected: ImageVector) {
-    HOME("home", "Prayer", Icons.Filled.Home, Icons.Outlined.Home),
-    QIBLA("qibla", "Qibla", Icons.Filled.Explore, Icons.Outlined.Explore),
-    QURAN("quran", "Quran", Icons.Filled.AutoStories, Icons.Outlined.AutoStories),
-    TASBEEH("tasbeeh", "Tasbeeh", Icons.Filled.RadioButtonChecked, Icons.Outlined.RadioButtonUnchecked),
-    EXPLORE("explore", "Explore", Icons.Filled.Menu, Icons.Outlined.Menu)
+enum class NavItem(val route: String, val labelRes: Int, val iconSelected: ImageVector, val iconUnselected: ImageVector) {
+    HOME("home", R.string.nav_home, Icons.Filled.Home, Icons.Outlined.Home),
+    QIBLA("qibla", R.string.nav_qibla, Icons.Filled.Explore, Icons.Outlined.Explore),
+    QURAN("quran", R.string.nav_quran, Icons.Filled.AutoStories, Icons.Outlined.AutoStories),
+    TASBEEH("tasbeeh", R.string.nav_tasbeeh, Icons.Filled.RadioButtonChecked, Icons.Outlined.RadioButtonUnchecked),
+    EXPLORE("explore", R.string.nav_explore, Icons.Filled.Menu, Icons.Outlined.Menu)
 }
 
 val DOCK_SPRING_FLOAT = spring<Float>(
@@ -1106,7 +1109,7 @@ fun SereneBottomNavBar(
                                             } else {
                                                 Icon(
                                                     imageVector = if (active) item.iconSelected else item.iconUnselected,
-                                                    contentDescription = item.label,
+                                                    contentDescription = stringResource(item.labelRes),
                                                     tint = animatedIconColor,
                                                     modifier = Modifier.size(22.dp)
                                                 )

@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import android.Manifest
 import android.content.Context
 import android.content.Intent
@@ -185,7 +188,7 @@ fun RecommendedChip(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "Recommended",
+            text = stringResource(R.string.setup_recommended_badge),
             style = TextStyle(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -3521,7 +3524,7 @@ private fun MadhabBottomSheet(
                 .padding(horizontal = 24.dp, vertical = 12.dp)
         ) {
             Text(
-                text = "Asr Calculation (Madhab)",
+                text = stringResource(R.string.setup_madhab_step_title),
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color.semanticPrimaryText

@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -193,7 +196,7 @@ fun RegisterScreen(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = stringResource(R.string.action_back),
                             tint = titleColor,
                             modifier = Modifier.size(20.dp)
                         )
@@ -202,7 +205,7 @@ fun RegisterScreen(
 
                 // Eyebrow
                 Text(
-                    text = "Start your spiritual journey with FiveLight",
+                    text = stringResource(R.string.auth_create_account_eyebrow),
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontWeight = FontWeight.Medium,
                         fontSize = 13.5.sp,
@@ -215,7 +218,7 @@ fun RegisterScreen(
 
                 // Heading
                 Text(
-                    text = "Create Your Account",
+                    text = stringResource(R.string.auth_create_account_title),
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontFamily = SerifHeaderFont,
                         fontWeight = FontWeight.Normal,
@@ -261,7 +264,7 @@ fun RegisterScreen(
                     ) {
                         // Full Name Field
                         Text(
-                            text = "Full Name",
+                            text = stringResource(R.string.auth_full_name),
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 13.sp
@@ -272,7 +275,7 @@ fun RegisterScreen(
                         OutlinedTextField(
                             value = name,
                             onValueChange = { name = it },
-                            placeholder = { Text("Enter your full name") },
+                            placeholder = { Text(stringResource(R.string.auth_full_name_placeholder)) },
                             leadingIcon = {
                                 Icon(
                                     Icons.Outlined.Person,
@@ -301,7 +304,7 @@ fun RegisterScreen(
 
                         // Email Field
                         Text(
-                            text = "Email Address",
+                            text = stringResource(R.string.auth_email_address),
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 13.sp
@@ -315,7 +318,7 @@ fun RegisterScreen(
                                 email = it
                                 emailTouched = true
                             },
-                            placeholder = { Text("Enter your email address") },
+                            placeholder = { Text(stringResource(R.string.auth_email_placeholder)) },
                             leadingIcon = {
                                 Icon(
                                     Icons.Outlined.Email,
@@ -348,7 +351,7 @@ fun RegisterScreen(
 
                         // Password Field
                         Text(
-                            text = "Password",
+                            text = stringResource(R.string.auth_password),
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 13.sp

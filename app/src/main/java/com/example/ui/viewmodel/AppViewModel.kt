@@ -176,6 +176,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
     val calcMethod: StateFlow<CalcMethod> = repository.calcMethod
     val madhab: StateFlow<Madhab> = repository.madhab
     val appearanceMode: StateFlow<AppearanceMode> = repository.appearanceMode
+    val appLanguage: StateFlow<com.example.data.model.AppLanguage> = repository.appLanguage
     val timeFormat: StateFlow<TimeFormat> = repository.timeFormat
     val hijriDateMethod: StateFlow<com.example.data.model.HijriDateMethod> = repository.hijriDateMethod
     val customHijriOffset: StateFlow<Int> = repository.customHijriOffset
@@ -744,6 +745,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application), Se
 
     fun setAppearanceMode(mode: AppearanceMode) {
         repository.setAppearanceMode(mode)
+    }
+
+    fun setAppLanguage(language: com.example.data.model.AppLanguage) {
+        repository.setAppLanguage(language)
     }
 
     fun setTimeFormat(format: TimeFormat) {

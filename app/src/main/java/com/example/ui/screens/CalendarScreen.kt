@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import com.example.ui.theme.semanticPrimaryAccent
 import com.example.ui.theme.semanticAccentForeground
 import com.example.ui.theme.semanticSuccess
@@ -330,7 +333,7 @@ fun CalendarScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ChevronLeft,
-                                contentDescription = "Previous Month",
+                                contentDescription = stringResource(R.string.action_back),
                                 tint = tintLeft
                             )
                         }
@@ -391,7 +394,7 @@ fun CalendarScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ChevronRight,
-                                contentDescription = "Next Month",
+                                contentDescription = stringResource(R.string.action_next),
                                 tint = tintRight
                             )
                         }

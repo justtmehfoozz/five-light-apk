@@ -1,5 +1,8 @@
 package com.example.ui.components
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import com.example.data.util.PrayerCalc
 import com.example.ui.theme.semanticPrimaryAccent
 import com.example.ui.theme.semanticAccentForeground
@@ -11,7 +14,6 @@ import com.example.ui.theme.semanticSuccess
 import com.example.ui.theme.semanticError
 import com.example.ui.theme.semanticSurface
 import com.example.ui.theme.semanticControl
-import com.example.ui.theme.semanticSurface
 import com.example.ui.theme.semanticSurfaceElevated
 import com.example.ui.theme.semanticPrimaryText
 import com.example.ui.theme.semanticSecondaryText
@@ -204,7 +206,7 @@ fun ContinueReadingCard(
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Continue Reading",
+                                    text = stringResource(R.string.home_feature_continue_reading),
                                     fontFamily = SpaceGrotesk,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
@@ -286,7 +288,7 @@ fun ContinueReadingCard(
 
                             Column(modifier = Modifier.weight(1f, fill = false)) {
                                 Text(
-                                    text = "Continue Reading",
+                                    text = stringResource(R.string.home_feature_continue_reading),
                                     fontFamily = SpaceGrotesk,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
@@ -1390,7 +1392,7 @@ fun ReflectionOfTheDayCard(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Reflection of the Day",
+                        text = stringResource(R.string.home_feature_reflection),
                         fontFamily = SpaceGrotesk,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,

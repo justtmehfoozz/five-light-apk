@@ -1,4 +1,7 @@
 package com.example.ui.screens
+
+import androidx.compose.ui.res.stringResource
+import com.example.R
 import android.content.Intent
 import com.example.ui.components.RegisterPredictiveBackHandler
 import com.example.ui.components.rememberPredictiveBackState
@@ -542,7 +545,7 @@ fun QuranScreen(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = stringResource(R.string.action_back),
                             tint = textPrimary
                         )
                     }
@@ -610,7 +613,7 @@ fun QuranScreen(
                             DropdownMenuItem(
                                 text = {
                                     Text(
-                                        text = "Translation",
+                                        text = stringResource(R.string.quran_translation_toggle),
                                         fontFamily = SpaceGrotesk,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Medium,
@@ -634,7 +637,7 @@ fun QuranScreen(
                             DropdownMenuItem(
                                 text = {
                                     Text(
-                                        text = "Text size",
+                                        text = stringResource(R.string.quran_text_size),
                                         fontFamily = SpaceGrotesk,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Medium,

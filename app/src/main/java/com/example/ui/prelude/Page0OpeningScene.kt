@@ -1,5 +1,8 @@
 package com.example.ui.prelude
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
@@ -47,6 +50,7 @@ fun Page0OpeningScene(
     reduceMotion: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val sceneContentDescription = stringResource(R.string.cd_prelude_opening_scene)
     val isDark = isAppInDarkTheme()
     val scope = rememberCoroutineScope()
 
@@ -84,7 +88,7 @@ fun Page0OpeningScene(
             .fillMaxSize()
             .testTag("prelude_page_0")
             .semantics {
-                contentDescription = "FiveLight Opening scene"
+                contentDescription = sceneContentDescription
             }
             .pointerInput(reduceMotion) {
                 if (!reduceMotion) {
@@ -154,7 +158,7 @@ fun Page0OpeningScene(
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text(
-                    text = "FiveLight",
+                    text = stringResource(R.string.app_name),
                     fontFamily = InstrumentSerifItalic,
                     fontStyle = FontStyle.Italic,
                     fontSize = 52.sp,
@@ -172,7 +176,7 @@ fun Page0OpeningScene(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Your day, illuminated.",
+                text = stringResource(R.string.prelude_tagline),
                 fontFamily = SpaceGrotesk,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Normal,

@@ -46,8 +46,10 @@ class UpdateNotificationHelper(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val versionTitle = "FiveLight Update Available"
-        val message = "Version ${releaseInfo.versionName} (Build ${releaseInfo.versionCode}) is available to install."
+        val language = com.example.data.util.AppLocaleManager.getPersistedLanguage(context)
+        val localizedContext = com.example.data.util.AppLocaleManager.createLocalizedContext(context, language)
+        val versionTitle = localizedContext.getString(R.string.updater_notif_title)
+        val message = localizedContext.getString(R.string.updater_notif_message, releaseInfo.versionName, releaseInfo.versionCode)
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_small)

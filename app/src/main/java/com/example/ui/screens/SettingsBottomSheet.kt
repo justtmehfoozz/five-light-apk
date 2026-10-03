@@ -116,6 +116,7 @@ import com.example.ui.theme.SerifHeaderFont
 enum class PreferencesSubScreen {
     MAIN,
     PROFILE,
+    LANGUAGE,
     CITY,
     CALC_METHOD,
     MADHAB,
@@ -143,6 +144,8 @@ fun SettingsBottomSheet(
     onSelectTimeFormat: (TimeFormat) -> Unit,
     selectedAppearanceMode: AppearanceMode,
     onSelectAppearanceMode: (AppearanceMode) -> Unit,
+    selectedLanguage: com.example.data.model.AppLanguage = com.example.data.model.AppLanguage.DEFAULT,
+    onSelectLanguage: (com.example.data.model.AppLanguage) -> Unit = {},
     selectedTasbeehSound: TasbeehSound,
     onSelectTasbeehSound: (TasbeehSound) -> Unit,
     selectedHijriMethod: com.example.data.model.HijriDateMethod = com.example.data.model.HijriDateMethod.REGIONAL_INDIA,
@@ -264,6 +267,8 @@ fun SettingsBottomSheet(
                         MainPreferencesView(
                             selectedAppearanceMode = selectedAppearanceMode,
                             onSelectAppearanceMode = onSelectAppearanceMode,
+                            selectedLanguage = selectedLanguage,
+                            onSelectLanguage = onSelectLanguage,
                             selectedCity = selectedCity,
                             selectedCalcMethod = selectedCalcMethod,
                             selectedMadhab = selectedMadhab,
@@ -283,6 +288,63 @@ fun SettingsBottomSheet(
                             onNavigateTo = { activeSubScreen = it },
                             onDismiss = onDismiss
                         )
+                    }
+
+                    PreferencesSubScreen.LANGUAGE -> {
+                        SubScreenLayout(
+                            title = androidx.compose.ui.res.stringResource(com.example.R.string.settings_language),
+                            onBack = { activeSubScreen = PreferencesSubScreen.MAIN }
+                        ) {
+                            LazyColumn(
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.testTag("language_selection_list")
+                            ) {
+                                items(com.example.data.model.AppLanguage.entries, key = { it.id }) { lang ->
+                                    val isSelected = lang == selectedLanguage
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                onSelectLanguage(lang)
+                                                activeSubScreen = PreferencesSubScreen.MAIN
+                                            }
+                                            .padding(vertical = 12.dp, horizontal = 8.dp)
+                                            .testTag("pref_language_item_${lang.id.lowercase()}"),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = lang.displayName,
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            )
+                                            if (lang.nativeSubtitle.isNotBlank()) {
+                                                Text(
+                                                    text = lang.nativeSubtitle,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                        RadioButton(
+                                            selected = isSelected,
+                                            colors = androidx.compose.material3.RadioButtonDefaults.colors(
+                                                selectedColor = MaterialTheme.colorScheme.primary,
+                                                unselectedColor = Color.semanticStrongBorder
+                                            ),
+                                            onClick = {
+                                                onSelectLanguage(lang)
+                                                activeSubScreen = PreferencesSubScreen.MAIN
+                                            },
+                                            modifier = Modifier.testTag("pref_language_${lang.id.lowercase()}")
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     PreferencesSubScreen.CITY -> {
@@ -901,6 +963,8 @@ fun SettingsBottomSheet(
 fun MainPreferencesView(
     selectedAppearanceMode: AppearanceMode,
     onSelectAppearanceMode: (AppearanceMode) -> Unit,
+    selectedLanguage: com.example.data.model.AppLanguage = com.example.data.model.AppLanguage.DEFAULT,
+    onSelectLanguage: (com.example.data.model.AppLanguage) -> Unit = {},
     selectedCity: CityLocation,
     selectedCalcMethod: CalcMethod,
     selectedMadhab: Madhab,
@@ -1024,6 +1088,13 @@ fun MainPreferencesView(
                             showTitle = false
                         )
                     }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    GroupedMenuRow(
+                        label = androidx.compose.ui.res.stringResource(com.example.R.string.settings_language),
+                        value = selectedLanguage.displayName,
+                        onClick = { onNavigateTo(PreferencesSubScreen.LANGUAGE) },
+                        testTag = "pref_row_language"
+                    )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Row(
                         modifier = Modifier

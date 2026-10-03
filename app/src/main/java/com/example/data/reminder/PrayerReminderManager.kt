@@ -320,10 +320,14 @@ class PrayerReminderManager(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val lang = com.example.data.util.AppLocaleManager.getPersistedLanguage(context)
+        val localizedContext = com.example.data.util.AppLocaleManager.createLocalizedContext(context, lang)
         val isFriday = com.example.data.util.PrayerDisplayUtils.isFriday()
-        val displayName = com.example.data.util.PrayerDisplayUtils.getPrayerDisplayName(prayerName, isFriday)
-        val subtext = com.example.data.util.PrayerDisplayUtils.getPrayerPoeticSubtext(prayerName, isFriday)
-        val title = "$displayName Prayer Reminder"
+        val displayName = com.example.data.util.PrayerDisplayUtils.getLocalizedPrayerName(context, prayerName, isFriday)
+        val subtext = localizedContext.getString(R.string.notif_prayer_time_entered, displayName)
+        val title = localizedContext.getString(R.string.notif_prayer_reminder_title, displayName)
+        val snoozeLabel = localizedContext.getString(R.string.notif_action_snooze_5m)
+        val dismissLabel = localizedContext.getString(R.string.action_dismiss)
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification_small)
@@ -333,8 +337,8 @@ class PrayerReminderManager(private val context: Context) {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
             .setContentIntent(contentPendingIntent)
-            .addAction(0, "Snooze 5 min", snoozePendingIntent)
-            .addAction(0, "Dismiss", dismissPendingIntent)
+            .addAction(0, snoozeLabel, snoozePendingIntent)
+            .addAction(0, dismissLabel, dismissPendingIntent)
 
         notificationManager.notify(notificationId, builder.build())
     }

@@ -1,5 +1,8 @@
 package com.example.ui.prelude
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
@@ -59,6 +62,7 @@ fun Page5ClosingScene(
     reduceMotion: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val sceneContentDescription = stringResource(R.string.cd_prelude_closing_scene)
     val isDark = isAppInDarkTheme()
     val scope = rememberCoroutineScope()
 
@@ -103,7 +107,7 @@ fun Page5ClosingScene(
             .fillMaxSize()
             .testTag("prelude_page_5")
             .semantics {
-                contentDescription = "Five Lights closing scene"
+                contentDescription = sceneContentDescription
             },
         contentAlignment = Alignment.Center
     ) {
@@ -116,7 +120,7 @@ fun Page5ClosingScene(
         ) {
             // Main Emotion Heading
             Text(
-                text = "Made for your journey.",
+                text = stringResource(R.string.prelude_closing_title),
                 fontFamily = InstrumentSerifItalic,
                 fontStyle = FontStyle.Italic,
                 fontSize = 40.sp,
@@ -205,7 +209,7 @@ fun Page5ClosingScene(
                 }
 
                 Text(
-                    text = "FiveLight",
+                    text = stringResource(R.string.app_name),
                     fontFamily = InstrumentSerifItalic,
                     fontStyle = FontStyle.Italic,
                     fontSize = 32.sp,
@@ -247,7 +251,7 @@ fun Page5ClosingScene(
                     modifier = Modifier.padding(horizontal = 26.dp, vertical = 14.dp)
                 ) {
                     Text(
-                        text = "Begin your journey",
+                        text = stringResource(R.string.action_begin_journey),
                         fontFamily = SpaceGrotesk,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
@@ -258,7 +262,7 @@ fun Page5ClosingScene(
 
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = "Begin journey",
+                        contentDescription = stringResource(R.string.cd_begin_journey),
                         tint = buttonText,
                         modifier = Modifier.size(18.dp)
                     )

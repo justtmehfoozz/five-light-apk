@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import android.provider.Settings
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -314,7 +317,7 @@ fun PreLoginPromptScreen(
                     .padding(horizontal = 8.dp)
             ) {
                 Text(
-                    text = "Keep your journey with you.",
+                    text = stringResource(R.string.prelogin_title),
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontFamily = SerifHeaderFont,
                         fontWeight = FontWeight.Normal,
@@ -332,7 +335,7 @@ fun PreLoginPromptScreen(
                 )
 
                 Text(
-                    text = "Sign in to sync your prayers, dhikr, and reflections across your devices.",
+                    text = stringResource(R.string.prelogin_subtitle),
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontSize = 15.sp,
                         lineHeight = 22.sp
@@ -389,7 +392,7 @@ fun PreLoginPromptScreen(
                         .testTag("pre_login_primary_btn")
                 ) {
                     Text(
-                        text = "Login or Register",
+                        text = stringResource(R.string.prelogin_sign_in_or_register),
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Medium,
                             fontSize = 15.5.sp,
@@ -415,7 +418,7 @@ fun PreLoginPromptScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Continue as Guest",
+                        text = stringResource(R.string.prelogin_continue_as_guest),
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontWeight = FontWeight.Medium,
                             fontSize = 14.5.sp,

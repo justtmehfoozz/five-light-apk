@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import android.content.Context
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -86,7 +89,7 @@ fun AppUpdatesSubScreen(
     }
 
     SubScreenLayout(
-        title = "App Updates",
+        title = stringResource(R.string.updater_title),
         onBack = onBack
     ) {
         Column(
@@ -175,7 +178,7 @@ private fun CurrentVersionCard(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Official Release Build",
+                        text = stringResource(R.string.updater_official_build),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -265,7 +268,7 @@ private fun UpdateStatusCard(
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Check for Updates",
+                                text = stringResource(R.string.updater_check_now),
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -289,7 +292,7 @@ private fun UpdateStatusCard(
                         )
                     ) {
                         Text(
-                            text = "Check Now",
+                            text = stringResource(R.string.updater_check_now),
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -612,7 +615,7 @@ private fun UpdateStatusCard(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Install Update",
+                            text = stringResource(R.string.updater_install),
                             fontWeight = FontWeight.Bold
                         )
                     }

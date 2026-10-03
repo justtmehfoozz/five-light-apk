@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import com.example.ui.components.RegisterPredictiveBackHandler
 import com.example.ui.components.rememberPredictiveBackState
 
@@ -177,11 +180,7 @@ import com.example.ui.components.PageHeader
 import com.example.ui.theme.ArabicText
 import com.example.ui.theme.SerifHeaderFont
 import com.example.ui.theme.SpaceGrotesk
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import androidx.compose.runtime.mutableIntStateOf
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

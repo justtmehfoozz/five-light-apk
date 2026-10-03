@@ -1,5 +1,8 @@
 package com.example.ui.prelude
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
@@ -60,6 +63,7 @@ fun Page3QiblaScene(
     reduceMotion: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val sceneContentDescription = stringResource(R.string.cd_prelude_qibla_scene)
     val isDark = isAppInDarkTheme()
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -121,7 +125,7 @@ fun Page3QiblaScene(
             .fillMaxSize()
             .testTag("prelude_page_3")
             .semantics {
-                contentDescription = "Qibla compass scene"
+                contentDescription = sceneContentDescription
             },
         contentAlignment = Alignment.Center
     ) {
@@ -133,7 +137,7 @@ fun Page3QiblaScene(
                 .padding(horizontal = 28.dp)
         ) {
             Text(
-                text = "Find your direction.",
+                text = stringResource(R.string.prelude_qibla_title),
                 fontFamily = InstrumentSerifItalic,
                 fontStyle = FontStyle.Italic,
                 fontSize = 38.sp,
@@ -150,7 +154,7 @@ fun Page3QiblaScene(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Accurate Qibla and prayer guidance, wherever you are.",
+                text = stringResource(R.string.prelude_qibla_subtitle),
                 fontFamily = SpaceGrotesk,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Normal,

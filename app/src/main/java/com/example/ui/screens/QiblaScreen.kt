@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import com.example.ui.theme.semanticPrimaryAccent
 import com.example.ui.theme.semanticSuccess
 import com.example.ui.theme.semanticError
@@ -48,7 +51,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -93,7 +95,6 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -624,7 +625,7 @@ private fun QiblaHeader(
     subTextColor: Color
 ) {
     PageHeader(
-        title = "Qibla Compass",
+        title = stringResource(R.string.qibla_title),
         subtitle = cityLocation.fullDisplayName,
         titleColor = textColor,
         subtitleColor = subTextColor

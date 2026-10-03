@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -91,21 +94,21 @@ fun NamesOfAllahScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.action_back),
                     tint = textPrimary
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Names of Allah",
+                    text = stringResource(R.string.explore_names_of_allah),
                     fontFamily = SerifHeaderFont,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = textPrimary
                 )
                 Text(
-                    text = "The 99 Beautiful Names (Asma-ul-Husna)",
+                    text = stringResource(R.string.explore_names_subtitle),
                     fontFamily = SpaceGrotesk,
                     fontSize = 12.sp,
                     color = textSecondary

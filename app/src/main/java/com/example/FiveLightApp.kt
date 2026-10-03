@@ -10,6 +10,10 @@ class FiveLightApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        try {
+            val language = com.example.data.util.AppLocaleManager.getPersistedLanguage(this)
+            com.example.data.util.AppLocaleManager.applyAppLanguage(this, language)
+        } catch (_: Exception) {}
         ensureFirebaseInitialized(this)
     }
 

@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import android.util.Patterns
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -191,7 +194,7 @@ fun LoginScreen(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = stringResource(R.string.action_back),
                             tint = titleColor,
                             modifier = Modifier.size(20.dp)
                         )
@@ -200,7 +203,7 @@ fun LoginScreen(
 
                 // Eyebrow
                 Text(
-                    text = "Welcome back",
+                    text = stringResource(R.string.auth_welcome_back),
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontWeight = FontWeight.Medium,
                         fontSize = 14.sp,
@@ -213,7 +216,7 @@ fun LoginScreen(
 
                 // Heading
                 Text(
-                    text = "Login to your account",
+                    text = stringResource(R.string.auth_login_title),
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontFamily = SerifHeaderFont,
                         fontWeight = FontWeight.Normal,
@@ -277,7 +280,7 @@ fun LoginScreen(
                     ) {
                         // Email Field
                         Text(
-                            text = "Email Address",
+                            text = stringResource(R.string.auth_email_address),
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 13.sp
@@ -291,7 +294,7 @@ fun LoginScreen(
                                 email = it
                                 emailTouched = true
                             },
-                            placeholder = { Text("Enter your email address") },
+                            placeholder = { Text(stringResource(R.string.auth_email_placeholder)) },
                             leadingIcon = {
                                 Icon(
                                     Icons.Outlined.Email,
@@ -324,7 +327,7 @@ fun LoginScreen(
 
                         // Password Field
                         Text(
-                            text = "Password",
+                            text = stringResource(R.string.auth_password),
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontWeight = FontWeight.Medium,
                                 fontSize = 13.sp
@@ -338,7 +341,7 @@ fun LoginScreen(
                                 password = it
                                 passwordTouched = true
                             },
-                            placeholder = { Text("Enter your password") },
+                            placeholder = { Text(stringResource(R.string.auth_password_placeholder)) },
                             leadingIcon = {
                                 Icon(
                                     Icons.Outlined.Lock,
@@ -418,7 +421,7 @@ fun LoginScreen(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "Remember me",
+                                text = stringResource(R.string.auth_remember_me),
                                 style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.sp),
                                 color = titleColor
                             )
@@ -498,7 +501,7 @@ fun LoginScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Have an Issue in Login?",
+                        text = stringResource(R.string.auth_have_issue),
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontWeight = FontWeight.Medium,
                             fontSize = 14.5.sp

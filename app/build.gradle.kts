@@ -19,7 +19,7 @@ android {
     targetSdk = 36
     versionCode = 11
     versionName = "1.13"
-    manifestPlaceholders["MAPS_API_KEY"] = "AIzaSyCxD0i8QtzsUrMTHlrJWBVQjks9WT8-8R0"
+    manifestPlaceholders["MAPS_API_KEY"] = "DEFAULT_MAPS_API_KEY"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

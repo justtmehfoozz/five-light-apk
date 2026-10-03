@@ -52,9 +52,11 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             return
         }
 
+        val lang = com.example.data.util.AppLocaleManager.getPersistedLanguage(context)
+        val localizedContext = com.example.data.util.AppLocaleManager.createLocalizedContext(context, lang)
         val prayerEnum = PrayerDisplayUtils.parsePrayerName(prayerNameRaw)
         val isFriday = PrayerDisplayUtils.isFriday(prayerDate)
-        val displayName = PrayerDisplayUtils.getPrayerDisplayName(prayerEnum, isFriday)
+        val displayName = PrayerDisplayUtils.getLocalizedPrayerName(context, prayerEnum, isFriday)
 
         if (eventType == SmartPrayerNotificationManager.EVENT_TYPE_FARD) {
             val notifId = SmartPrayerNotificationManager.getNotificationId(prayerEnum, prayerDate)
@@ -65,8 +67,8 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                     val log = db.prayerLogDao().getPrayerLogForDateDirect(prayerDate)
                     val isCompleted = log != null && log.isCompleted(prayerEnum)
                     if (!isCompleted) {
-                        val title = "$displayName Prayer"
-                        val bodyText = "$displayName prayer time has entered."
+                        val title = localizedContext.getString(R.string.notif_prayer_reminder_title, displayName)
+                        val bodyText = localizedContext.getString(R.string.notif_prayer_time_entered, displayName)
                         showFardPrayerNotification(
                             context = context,
                             title = title,
@@ -105,10 +107,11 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                     val log = db.prayerLogDao().getPrayerLogForDateDirect(prayerDate)
                     val isCompleted = log != null && log.isCompleted(prayerEnum)
                     if (!isCompleted) {
-                        val bodyText = "$displayName begins in $offsetMins minutes."
+                        val title = localizedContext.getString(R.string.notif_prayer_reminder_title, displayName)
+                        val bodyText = localizedContext.getString(R.string.notif_pre_prayer_prep, displayName, offsetMins)
                         showFardPrayerNotification(
                             context = context,
-                            title = "$displayName Prayer",
+                            title = title,
                             message = bodyText,
                             notificationId = notifId,
                             prayerName = prayerEnum.name,
@@ -154,8 +157,8 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                 val manager = SmartPrayerNotificationManager(context.applicationContext)
                 if (!manager.isSmartNotificationsEnabled || !manager.isContextualRemindersEnabled) return
                 Quadruple(
-                    "Morning Has Begun",
-                    "A new day has arrived. Take a moment for morning remembrance.",
+                    localizedContext.getString(R.string.adhkar_morning),
+                    localizedContext.getString(R.string.prelude_remembrance_subtitle),
                     SmartPrayerNotificationManager.getSpecialNotificationId(prayerDate, SmartPrayerNotificationManager.SPECIAL_SLOT_CONTEXTUAL_MORNING),
                     SmartPrayerNotificationManager.CHANNEL_QUIET_REMINDER
                 )
@@ -175,8 +178,8 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                     return
                 }
                 Quadruple(
-                    "Evening Has Begun",
-                    "A moment to pause and remember Allah.",
+                    localizedContext.getString(R.string.adhkar_evening),
+                    localizedContext.getString(R.string.prelude_remembrance_subtitle),
                     SmartPrayerNotificationManager.getSpecialNotificationId(prayerDate, SmartPrayerNotificationManager.SPECIAL_SLOT_CONTEXTUAL_EVENING),
                     SmartPrayerNotificationManager.CHANNEL_QUIET_REMINDER
                 )
@@ -196,8 +199,8 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                     return
                 }
                 Quadruple(
-                    "Night Has Begun",
-                    "A quiet time for remembrance and reflection.",
+                    localizedContext.getString(R.string.home_context_night),
+                    localizedContext.getString(R.string.adhkar_before_sleep),
                     SmartPrayerNotificationManager.getSpecialNotificationId(prayerDate, SmartPrayerNotificationManager.SPECIAL_SLOT_CONTEXTUAL_NIGHT),
                     SmartPrayerNotificationManager.CHANNEL_QUIET_REMINDER
                 )
@@ -206,9 +209,10 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             SmartPrayerNotificationManager.EVENT_TYPE_NAFL_ISHRAQ -> {
                 val manager = SmartPrayerNotificationManager(context.applicationContext)
                 if (!manager.isSmartNotificationsEnabled || !manager.isNaflOpportunitiesEnabled) return
+                val ishraqName = localizedContext.getString(R.string.prayer_ishraq)
                 Quadruple(
-                    "Ishraq Opportunity",
-                    "The Ishraq prayer window is now open.",
+                    ishraqName,
+                    localizedContext.getString(R.string.home_feature_nafl_prayers),
                     SmartPrayerNotificationManager.getSpecialNotificationId(prayerDate, SmartPrayerNotificationManager.SPECIAL_SLOT_NAFL_ISHRAQ),
                     SmartPrayerNotificationManager.CHANNEL_QUIET_REMINDER
                 )
@@ -217,9 +221,10 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             SmartPrayerNotificationManager.EVENT_TYPE_NAFL_DUHA -> {
                 val manager = SmartPrayerNotificationManager(context.applicationContext)
                 if (!manager.isSmartNotificationsEnabled || !manager.isNaflOpportunitiesEnabled) return
+                val duhaName = localizedContext.getString(R.string.prayer_duha)
                 Quadruple(
-                    "Duha Opportunity",
-                    "The Duha prayer window is now open.",
+                    duhaName,
+                    localizedContext.getString(R.string.home_feature_nafl_prayers),
                     SmartPrayerNotificationManager.getSpecialNotificationId(prayerDate, SmartPrayerNotificationManager.SPECIAL_SLOT_NAFL_DUHA),
                     SmartPrayerNotificationManager.CHANNEL_QUIET_REMINDER
                 )
@@ -228,9 +233,10 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             SmartPrayerNotificationManager.EVENT_TYPE_NAFL_TAHAJJUD -> {
                 val manager = SmartPrayerNotificationManager(context.applicationContext)
                 if (!manager.isSmartNotificationsEnabled || !manager.isNaflOpportunitiesEnabled) return
+                val tahajjudName = localizedContext.getString(R.string.prayer_tahajjud)
                 Quadruple(
-                    "Tahajjud Window",
-                    "A quiet portion of the night is now open for voluntary prayer.",
+                    tahajjudName,
+                    localizedContext.getString(R.string.home_feature_nafl_prayers),
                     SmartPrayerNotificationManager.getSpecialNotificationId(prayerDate, SmartPrayerNotificationManager.SPECIAL_SLOT_NAFL_TAHAJJUD),
                     SmartPrayerNotificationManager.CHANNEL_QUIET_REMINDER
                 )
@@ -239,9 +245,10 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             SmartPrayerNotificationManager.EVENT_TYPE_NAFL_AWWABIN -> {
                 val manager = SmartPrayerNotificationManager(context.applicationContext)
                 if (!manager.isSmartNotificationsEnabled || !manager.isNaflOpportunitiesEnabled) return
+                val awwabinName = localizedContext.getString(R.string.prayer_awwabin)
                 Quadruple(
-                    "Awwabin Opportunity",
-                    "The Awwabin prayer window is now open.",
+                    awwabinName,
+                    localizedContext.getString(R.string.home_feature_nafl_prayers),
                     SmartPrayerNotificationManager.getSpecialNotificationId(prayerDate, SmartPrayerNotificationManager.SPECIAL_SLOT_NAFL_AWWABIN),
                     SmartPrayerNotificationManager.CHANNEL_QUIET_REMINDER
                 )
@@ -265,9 +272,11 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
         val prayerNameRaw = intent.getStringExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME) ?: ""
         val prayerDate = intent.getStringExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE)
             ?: java.time.LocalDate.now().toString()
+        val lang = com.example.data.util.AppLocaleManager.getPersistedLanguage(context)
+        val localizedContext = com.example.data.util.AppLocaleManager.createLocalizedContext(context, lang)
         val prayerNameEnum = PrayerDisplayUtils.parsePrayerName(prayerNameRaw)
         val isFriday = PrayerDisplayUtils.isFriday(prayerDate)
-        val displayName = PrayerDisplayUtils.getPrayerDisplayName(prayerNameEnum, isFriday)
+        val displayName = PrayerDisplayUtils.getLocalizedPrayerName(context, prayerNameEnum, isFriday)
         val notifId = SmartPrayerNotificationManager.getNotificationId(prayerNameEnum, prayerDate)
         val triggerMillis = intent.getLongExtra(SmartPrayerNotificationManager.EXTRA_TRIGGER_MILLIS, 0L)
         val windowEndMillis = intent.getLongExtra(SmartPrayerNotificationManager.EXTRA_WINDOW_END_MILLIS, 0L)
@@ -283,8 +292,8 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                 if (!isRecorded) {
                     showFardPrayerNotification(
                         context = context,
-                        title = "$displayName Prayer",
-                        message = "Did you get a chance to pray?",
+                        title = localizedContext.getString(R.string.notif_prayer_reminder_title, displayName),
+                        message = localizedContext.getString(R.string.home_context_prep, displayName),
                         notificationId = notifId,
                         prayerName = prayerNameEnum.name,
                         displayName = displayName,
@@ -496,6 +505,9 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             .setAutoCancel(true)
             .setContentIntent(openAppPendingIntent)
 
+        val lang = com.example.data.util.AppLocaleManager.getPersistedLanguage(context)
+        val localizedContext = com.example.data.util.AppLocaleManager.createLocalizedContext(context, lang)
+
         // Action Order:
         // 1. Mark as prayed (Primary action)
         // 2. Open FiveLight (Secondary action)
@@ -519,14 +531,14 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             )
             builder.addAction(
                 R.drawable.ic_notification_small,
-                "Mark as prayed",
+                localizedContext.getString(R.string.notif_action_mark_prayed),
                 markPrayedPendingIntent
             )
         }
 
         builder.addAction(
             R.drawable.ic_notification_small,
-            "Open FiveLight",
+            localizedContext.getString(R.string.app_name),
             openAppPendingIntent
         )
 
@@ -546,6 +558,9 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
         offsetMins: Int = 15
     ) {
         SmartPrayerNotificationManager.createNotificationChannels(context)
+
+        val lang = com.example.data.util.AppLocaleManager.getPersistedLanguage(context)
+        val localizedContext = com.example.data.util.AppLocaleManager.createLocalizedContext(context, lang)
 
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
             action = Intent.ACTION_VIEW
@@ -579,8 +594,8 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val title = "✓ $displayName marked as prayed"
-        val message = "Recorded in Personal Log."
+        val title = "✓ $displayName"
+        val message = localizedContext.getString(R.string.home_prayed)
 
         val builder = NotificationCompat.Builder(context, SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME)
             .setSmallIcon(R.drawable.ic_notification_small)
@@ -593,7 +608,7 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             .setContentIntent(openAppPendingIntent)
             .addAction(
                 R.drawable.ic_notification_small,
-                "Undo",
+                localizedContext.getString(R.string.notif_action_undo),
                 undoPendingIntent
             )
 

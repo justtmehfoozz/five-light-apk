@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
@@ -394,11 +397,11 @@ fun DuaLibraryMainContent(
                     .clip(CircleShape)
                     .testTag("dua_library_back_btn")
             ) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = textPrimary)
+                Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = textPrimary)
             }
             Spacer(modifier = Modifier.width(4.dp))
             PageHeader(
-                title = "Dua Library",
+                title = stringResource(R.string.explore_dua_library),
                 subtitle = "Supplications from Qur'an & Sahih Hadith",
                 titleColor = textPrimary,
                 subtitleColor = textSecondary,
@@ -1106,7 +1109,7 @@ fun DuaCategoryDetailScreen(
                     .clip(CircleShape)
                     .testTag("dua_detail_back_btn")
             ) {
-                Icon(Icons.Filled.ArrowBack, contentDescription = "Back", tint = textPrimary)
+                Icon(Icons.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = textPrimary)
             }
             Spacer(modifier = Modifier.width(4.dp))
             Column(modifier = Modifier.weight(1f)) {

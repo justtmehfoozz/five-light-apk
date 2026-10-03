@@ -1,5 +1,8 @@
 package com.example.ui.prelude
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
@@ -66,6 +69,7 @@ fun Page4PersonalizationScene(
     reduceMotion: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val sceneContentDescription = stringResource(R.string.cd_prelude_personalization_scene)
     val isDark = isAppInDarkTheme()
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -75,14 +79,21 @@ fun Page4PersonalizationScene(
     val subtitleAlpha = remember { Animatable(if (reduceMotion) 1f else 0f) }
     val subtitleOffsetY = remember { Animatable(if (reduceMotion) 0f else 6f) }
 
-    val fragments = remember {
+    val fragPrayerRhythm = stringResource(R.string.prelude_frag_prayer_rhythm)
+    val fragQuranVerses = stringResource(R.string.prelude_frag_quran_verses)
+    val fragDhikrDua = stringResource(R.string.prelude_frag_dhikr_dua)
+    val fragSpiritualGoals = stringResource(R.string.prelude_frag_spiritual_goals)
+    val fragPersonalLog = stringResource(R.string.prelude_frag_personal_log)
+    val fragCloudSync = stringResource(R.string.prelude_frag_cloud_sync)
+
+    val fragments = remember(fragPrayerRhythm, fragQuranVerses, fragDhikrDua, fragSpiritualGoals, fragPersonalLog, fragCloudSync) {
         listOf(
-            PersonalizationFragment("Prayer Rhythm", Icons.Filled.Schedule),
-            PersonalizationFragment("Quran & Verses", Icons.Filled.Book),
-            PersonalizationFragment("Dhikr & Dua", Icons.Filled.Favorite),
-            PersonalizationFragment("Spiritual Goals", Icons.Filled.AutoAwesome),
-            PersonalizationFragment("Personal Log", Icons.Filled.EventNote),
-            PersonalizationFragment("Cloud Sync", Icons.Filled.CloudDone)
+            PersonalizationFragment(fragPrayerRhythm, Icons.Filled.Schedule),
+            PersonalizationFragment(fragQuranVerses, Icons.Filled.Book),
+            PersonalizationFragment(fragDhikrDua, Icons.Filled.Favorite),
+            PersonalizationFragment(fragSpiritualGoals, Icons.Filled.AutoAwesome),
+            PersonalizationFragment(fragPersonalLog, Icons.Filled.EventNote),
+            PersonalizationFragment(fragCloudSync, Icons.Filled.CloudDone)
         )
     }
 
@@ -134,7 +145,7 @@ fun Page4PersonalizationScene(
             .fillMaxSize()
             .testTag("prelude_page_4")
             .semantics {
-                contentDescription = "Personalization scene"
+                contentDescription = sceneContentDescription
             },
         contentAlignment = Alignment.Center
     ) {
@@ -146,7 +157,7 @@ fun Page4PersonalizationScene(
                 .padding(horizontal = 28.dp)
         ) {
             Text(
-                text = "Make it yours.",
+                text = stringResource(R.string.prelude_personalization_title),
                 fontFamily = InstrumentSerifItalic,
                 fontStyle = FontStyle.Italic,
                 fontSize = 38.sp,
@@ -163,7 +174,7 @@ fun Page4PersonalizationScene(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Your worship, your progress, your FiveLight.",
+                text = stringResource(R.string.prelude_personalization_subtitle),
                 fontFamily = SpaceGrotesk,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Normal,

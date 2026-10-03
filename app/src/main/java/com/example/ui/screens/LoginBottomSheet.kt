@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -54,7 +57,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.R
 import com.example.data.auth.AuthRepository
 import com.example.data.auth.GoogleAuthException
 import com.example.ui.theme.SerifHeaderFont
@@ -268,7 +270,7 @@ private fun MainLoginOptions(
 
         // 1. Title
         Text(
-            text = "Log In to Continue",
+            text = stringResource(R.string.auth_login_to_continue),
             style = MaterialTheme.typography.headlineSmall.copy(
                 fontFamily = SerifHeaderFont,
                 fontWeight = FontWeight.Normal,
@@ -284,7 +286,7 @@ private fun MainLoginOptions(
 
         // 2. Subtitle
         Text(
-            text = "Sign in or create an account to keep everything in sync.",
+            text = stringResource(R.string.auth_login_subtitle),
             style = MaterialTheme.typography.bodyMedium.copy(
                 fontSize = 14.5.sp,
                 lineHeight = 20.sp,
@@ -335,13 +337,13 @@ private fun MainLoginOptions(
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Lock,
-                        contentDescription = "Email Login",
+                        contentDescription = stringResource(R.string.cd_email_login),
                         tint = cardContentColor,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Login with Email",
+                        text = stringResource(R.string.auth_login_with_email),
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Medium,
                             fontSize = 13.5.sp
@@ -390,13 +392,13 @@ private fun MainLoginOptions(
                     } else {
                         Image(
                             painter = painterResource(id = R.drawable.ic_google_logo),
-                            contentDescription = "Google Logo",
+                            contentDescription = stringResource(R.string.cd_google_logo),
                             modifier = Modifier.size(20.dp)
                         )
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Login with Google",
+                        text = stringResource(R.string.auth_login_with_google),
                         style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Medium,
                             fontSize = 13.5.sp
@@ -422,7 +424,7 @@ private fun MainLoginOptions(
                 color = dividerColor
             )
             Text(
-                text = "Don't have an account?",
+                text = stringResource(R.string.auth_dont_have_account),
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.Normal
@@ -467,7 +469,7 @@ private fun MainLoginOptions(
                 .testTag("register_new_account_btn")
         ) {
             Text(
-                text = "Register New Account",
+                text = stringResource(R.string.auth_register_new_account),
                 style = MaterialTheme.typography.titleMedium.copy(
                     fontWeight = FontWeight.Medium,
                     fontSize = 15.sp,
@@ -496,7 +498,7 @@ private fun MainLoginOptions(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                text = "Close",
+                text = stringResource(R.string.action_close),
                 style = MaterialTheme.typography.bodyMedium.copy(
                     fontWeight = FontWeight.Medium,
                     fontSize = 14.5.sp

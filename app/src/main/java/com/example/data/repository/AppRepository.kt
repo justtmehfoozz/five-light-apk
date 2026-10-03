@@ -8,6 +8,7 @@ import com.example.data.db.DuaCategoryEntity
 import com.example.data.db.DuaCategoryWithDuas
 import com.example.data.db.DuaEntity
 import com.example.data.db.PrayerLogEntity
+import com.example.data.model.AppLanguage
 import com.example.data.model.AppearanceMode
 import com.example.data.model.CalcMethod
 import com.example.data.model.CityLocation
@@ -16,6 +17,7 @@ import com.example.data.model.Madhab
 import com.example.data.model.PrayerItem
 import com.example.data.model.PrayerName
 import com.example.data.model.TimeFormat
+import com.example.data.util.AppLocaleManager
 import com.example.data.util.PrayerCalc
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -150,6 +152,11 @@ class AppRepository(
     private val savedCustomHijriOffset = prefs?.getInt("custom_hijri_offset", 0) ?: 0
     private val _customHijriOffset = MutableStateFlow(savedCustomHijriOffset)
     val customHijriOffset: StateFlow<Int> = _customHijriOffset
+
+    private val savedLanguageId = prefs?.getString("app_language", null)
+    private val initialAppLanguage = AppLanguage.fromId(savedLanguageId)
+    private val _appLanguage = MutableStateFlow(initialAppLanguage)
+    val appLanguage: StateFlow<AppLanguage> = _appLanguage
 
     val islamicDateRepository: IslamicDateRepository = IslamicDateRepository.getInstance(context).apply {
         updateLocation(_selectedCity.value)
@@ -570,6 +577,14 @@ class AppRepository(
         _appearanceMode.value = mode
         prefs?.edit()?.putString("appearance_mode", mode.name)
             ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
+        if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
+    }
+
+    fun setAppLanguage(language: AppLanguage) {
+        _appLanguage.value = language
+        prefs?.edit()?.putString("app_language", language.id)
+            ?.putLong("preferences_updated_at", System.currentTimeMillis())?.apply()
+        appContext?.let { AppLocaleManager.applyAppLanguage(it, language) }
         if (syncManager?.isSyncingFromRemote?.get() != true) syncManager?.notifyPreferencesChanged()
     }
 

@@ -27,6 +27,23 @@ object PrayerDisplayUtils {
         return prayerName.displayName
     }
 
+    fun getLocalizedPrayerName(context: android.content.Context, prayerName: PrayerName, isFriday: Boolean = false): String {
+        val lang = AppLocaleManager.getPersistedLanguage(context)
+        val localizedContext = AppLocaleManager.createLocalizedContext(context, lang)
+        if (prayerName == PrayerName.DHUHR && isFriday) {
+            return localizedContext.getString(com.example.R.string.home_feature_friday_moment)
+        }
+        val resId = when (prayerName) {
+            PrayerName.FAJR -> com.example.R.string.prayer_fajr
+            PrayerName.SUNRISE -> com.example.R.string.prayer_sunrise
+            PrayerName.DHUHR -> com.example.R.string.prayer_dhuhr
+            PrayerName.ASR -> com.example.R.string.prayer_asr
+            PrayerName.MAGHRIB -> com.example.R.string.prayer_maghrib
+            PrayerName.ISHA -> com.example.R.string.prayer_isha
+        }
+        return localizedContext.getString(resId)
+    }
+
     fun getPrayerDisplayName(prayerName: PrayerName, dateStr: String?): String {
         return getPrayerDisplayName(prayerName, isFriday(dateStr))
     }

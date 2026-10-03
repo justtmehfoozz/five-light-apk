@@ -106,6 +106,12 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
     private val viewModel: AppViewModel by viewModels()
     private var volumeKeyEventListener: VolumeKeyEventListener? = null
 
+    override fun attachBaseContext(newBase: Context) {
+        val language = com.example.data.util.AppLocaleManager.getPersistedLanguage(newBase)
+        val localized = com.example.data.util.AppLocaleManager.createLocalizedContext(newBase, language)
+        super.attachBaseContext(localized)
+    }
+
     override fun setVolumeKeyEventListener(listener: VolumeKeyEventListener?) {
         this.volumeKeyEventListener = listener
     }
@@ -141,9 +147,25 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
             val appearanceMode by viewModel.appearanceMode.collectAsStateWithLifecycle()
             val vibrationEnabled by viewModel.vibrationEnabled.collectAsStateWithLifecycle()
             val dhikrVolumeControlsEnabled by viewModel.dhikrVolumeControlsEnabled.collectAsStateWithLifecycle()
+            val appLanguage by viewModel.appLanguage.collectAsStateWithLifecycle()
+
+            val localizedContext = remember(appLanguage) {
+                com.example.data.util.AppLocaleManager.createLocalizedContext(this@MainActivity, appLanguage)
+            }
+            val currentConfig = androidx.compose.ui.platform.LocalConfiguration.current
+            val localizedConfiguration = remember(appLanguage, currentConfig) {
+                android.content.res.Configuration(currentConfig).apply {
+                    setLocale(appLanguage.toLocale())
+                    setLayoutDirection(appLanguage.toLocale())
+                }
+            }
 
             FiveLightTheme(appearanceMode = appearanceMode) {
                 androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.ui.platform.LocalContext provides localizedContext,
+                    androidx.compose.ui.platform.LocalConfiguration provides localizedConfiguration,
+                    androidx.compose.ui.platform.LocalLayoutDirection provides appLanguage.layoutDirection,
+                    com.example.data.util.LocalAppLanguage provides appLanguage,
                     com.example.ui.theme.LocalVibrationEnabled provides vibrationEnabled,
                     LocalVolumeKeyDispatcher provides this
                 ) {
@@ -646,14 +668,10 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                             4 -> {
                                 val hijriDate by viewModel.hijriDate.collectAsStateWithLifecycle()
                                 val islamicDateState by viewModel.islamicDateState.collectAsStateWithLifecycle()
-                                val selectedCity by viewModel.selectedCity.collectAsStateWithLifecycle()
-                                val nextPrayer by viewModel.nextPrayer.collectAsStateWithLifecycle()
 
                                 ExploreScreen(
                                     hijriDate = hijriDate,
                                     islamicDateState = islamicDateState,
-                                    selectedCity = selectedCity,
-                                    nextPrayer = nextPrayer,
                                     activeSubRoute = exploreSubRoute,
                                     onSubRouteChange = { 
                                         exploreSubRoute = it
@@ -887,6 +905,8 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                             onSelectTimeFormat = { tf -> viewModel.setTimeFormat(tf) },
                             selectedAppearanceMode = appearanceMode,
                             onSelectAppearanceMode = { mode -> viewModel.setAppearanceMode(mode) },
+                            selectedLanguage = appLanguage,
+                            onSelectLanguage = { lang -> viewModel.setAppLanguage(lang) },
                             selectedTasbeehSound = tasbeehSound,
                             onSelectTasbeehSound = { s -> viewModel.setTasbeehSound(s) },
                             selectedHijriMethod = hijriDateMethod,

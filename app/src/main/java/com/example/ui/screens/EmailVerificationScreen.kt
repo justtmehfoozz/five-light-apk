@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
@@ -149,7 +152,7 @@ fun EmailVerificationScreen(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = stringResource(R.string.action_back),
                             tint = titleColor,
                             modifier = Modifier.size(20.dp)
                         )
@@ -158,7 +161,7 @@ fun EmailVerificationScreen(
 
                 // Eyebrow
                 Text(
-                    text = "Verify your email",
+                    text = stringResource(R.string.auth_verification_title),
                     style = MaterialTheme.typography.labelLarge.copy(
                         fontWeight = FontWeight.Medium,
                         fontSize = 14.sp,
@@ -171,7 +174,7 @@ fun EmailVerificationScreen(
 
                 // Heading
                 Text(
-                    text = "Check your inbox",
+                    text = stringResource(R.string.auth_check_inbox),
                     style = MaterialTheme.typography.headlineMedium.copy(
                         fontFamily = SerifHeaderFont,
                         fontWeight = FontWeight.Normal,
@@ -185,7 +188,7 @@ fun EmailVerificationScreen(
 
                 // Description
                 Text(
-                    text = "We've sent a verification link to your email address. Please open the email and tap the verification link to continue.",
+                    text = stringResource(R.string.auth_verification_subtitle),
                     style = MaterialTheme.typography.bodyMedium.copy(
                         fontSize = 14.5.sp,
                         lineHeight = 21.sp

@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
@@ -1050,7 +1053,7 @@ fun ProfileSubScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "Sign Out",
+                                text = stringResource(R.string.action_sign_out),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.Medium
@@ -1076,7 +1079,7 @@ fun ProfileSubScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text(
-                                text = "Delete Account",
+                                text = stringResource(R.string.profile_delete_account),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = Color.semanticError,
                                 fontWeight = FontWeight.Medium
@@ -1503,7 +1506,7 @@ private fun ChangePasswordDialog(
         },
         title = {
             Text(
-                text = "Change Password",
+                text = stringResource(R.string.profile_change_password),
                 fontFamily = SpaceGrotesk,
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp
@@ -1666,7 +1669,7 @@ private fun SignOutDialog(
         },
         title = {
             Text(
-                text = "Sign Out",
+                text = stringResource(R.string.action_sign_out),
                 fontFamily = SpaceGrotesk,
                 fontWeight = FontWeight.Bold
             )
@@ -1680,7 +1683,7 @@ private fun SignOutDialog(
                 modifier = Modifier.testTag("confirm_sign_out_btn")
             ) {
                 Text(
-                    text = "Sign Out",
+                    text = stringResource(R.string.action_sign_out),
                     color = Color.semanticError,
                     fontWeight = FontWeight.Bold
                 )

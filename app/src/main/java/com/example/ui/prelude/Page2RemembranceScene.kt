@@ -1,5 +1,8 @@
 package com.example.ui.prelude
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
@@ -61,6 +64,7 @@ fun Page2RemembranceScene(
     reduceMotion: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val sceneContentDescription = stringResource(R.string.cd_prelude_remembrance_scene)
     val isDark = isAppInDarkTheme()
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -115,7 +119,7 @@ fun Page2RemembranceScene(
             .fillMaxSize()
             .testTag("prelude_page_2")
             .semantics {
-                contentDescription = "Remembrance scene"
+                contentDescription = sceneContentDescription
             },
         contentAlignment = Alignment.Center
     ) {
@@ -127,7 +131,7 @@ fun Page2RemembranceScene(
                 .padding(horizontal = 28.dp)
         ) {
             Text(
-                text = "Stay close.",
+                text = stringResource(R.string.prelude_remembrance_title),
                 fontFamily = InstrumentSerifItalic,
                 fontStyle = FontStyle.Italic,
                 fontSize = 38.sp,
@@ -144,7 +148,7 @@ fun Page2RemembranceScene(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Small moments of remembrance, throughout your day.",
+                text = stringResource(R.string.prelude_remembrance_subtitle),
                 fontFamily = SpaceGrotesk,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Normal,
@@ -273,7 +277,7 @@ fun Page2RemembranceScene(
                         )
 
                         Text(
-                            text = "\"Indeed, in the remembrance of Allah do hearts find rest.\"",
+                            text = stringResource(R.string.prelude_verse_translation),
                             fontFamily = SerifHeaderFont,
                             fontStyle = FontStyle.Italic,
                             fontSize = 15.sp,

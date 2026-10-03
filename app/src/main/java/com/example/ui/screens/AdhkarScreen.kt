@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import com.example.ui.components.RegisterPredictiveBackHandler
@@ -442,12 +445,12 @@ fun AdhkarScreen(
                 IconButton(onClick = onBack) {
                     Icon(
                         imageVector = Icons.Filled.ArrowBack,
-                        contentDescription = "Back",
+                        contentDescription = stringResource(R.string.action_back),
                         tint = Color.semanticPrimaryText
                     )
                 }
                 Text(
-                    text = "Daily Adhkar",
+                    text = stringResource(R.string.explore_daily_adhkar),
                     fontFamily = SerifHeaderFont,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,

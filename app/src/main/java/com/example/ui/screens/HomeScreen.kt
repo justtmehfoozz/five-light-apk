@@ -129,12 +129,10 @@ import com.example.data.model.PrayerName
 import com.example.data.util.HijriCalc
 import com.example.ui.components.NavItem
 import com.example.ui.components.PageHeader
-import com.example.ui.theme.AmiriFont
 import com.example.ui.theme.InstrumentSerifItalic
 import com.example.ui.theme.PillActiveBg
 import com.example.ui.theme.PillActiveText
 import com.example.ui.theme.PillInactiveBg
-import com.example.ui.theme.PillInactiveBorder
 import com.example.ui.theme.SpaceGrotesk
 import com.example.ui.theme.getPrayerGradient
 import com.example.ui.theme.getPrayerGradientColors
@@ -147,14 +145,12 @@ import kotlin.math.sin
 
 import androidx.compose.foundation.layout.statusBarsPadding
 
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalContext
@@ -163,7 +159,6 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.runtime.rememberCoroutineScope
@@ -183,7 +178,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.snap
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.offset
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.runtime.LaunchedEffect

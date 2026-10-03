@@ -1,5 +1,8 @@
 package com.example.ui.prelude
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
@@ -72,6 +75,7 @@ fun Page1PrayerScene(
     reduceMotion: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val sceneContentDescription = stringResource(R.string.cd_prelude_prayer_scene)
     val isDark = isAppInDarkTheme()
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
@@ -94,13 +98,19 @@ fun Page1PrayerScene(
     var hasInteracted by remember { mutableStateOf(false) }
     var containerWidthPx by remember { mutableFloatStateOf(0f) }
 
-    val prayers = remember {
+    val fajrName = stringResource(R.string.prayer_fajr)
+    val dhuhrName = stringResource(R.string.prayer_dhuhr)
+    val asrName = stringResource(R.string.prayer_asr)
+    val maghribName = stringResource(R.string.prayer_maghrib)
+    val ishaName = stringResource(R.string.prayer_isha)
+
+    val prayers = remember(fajrName, dhuhrName, asrName, maghribName, ishaName) {
         listOf(
-            PrayerMomentItem("Fajr", "05:12 AM"),
-            PrayerMomentItem("Dhuhr", "12:30 PM"),
-            PrayerMomentItem("Asr", "03:45 PM", isKey = true),
-            PrayerMomentItem("Maghrib", "06:50 PM"),
-            PrayerMomentItem("Isha", "08:15 PM")
+            PrayerMomentItem(fajrName, "05:12 AM"),
+            PrayerMomentItem(dhuhrName, "12:30 PM"),
+            PrayerMomentItem(asrName, "03:45 PM", isKey = true),
+            PrayerMomentItem(maghribName, "06:50 PM"),
+            PrayerMomentItem(ishaName, "08:15 PM")
         )
     }
 
@@ -150,7 +160,7 @@ fun Page1PrayerScene(
             .fillMaxSize()
             .testTag("prelude_page_1")
             .semantics {
-                contentDescription = "Prayer timeline scene"
+                contentDescription = sceneContentDescription
             },
         contentAlignment = Alignment.Center
     ) {
@@ -162,7 +172,7 @@ fun Page1PrayerScene(
                 .padding(horizontal = 28.dp)
         ) {
             Text(
-                text = "Begin with what matters.",
+                text = stringResource(R.string.prelude_prayer_title),
                 fontFamily = InstrumentSerifItalic,
                 fontStyle = FontStyle.Italic,
                 fontSize = 38.sp,
@@ -179,7 +189,7 @@ fun Page1PrayerScene(
             Spacer(modifier = Modifier.height(10.dp))
 
             Text(
-                text = "Your prayers, your day, beautifully in rhythm.",
+                text = stringResource(R.string.prelude_prayer_subtitle),
                 fontFamily = SpaceGrotesk,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Normal,

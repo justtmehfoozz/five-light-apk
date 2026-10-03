@@ -1,5 +1,8 @@
 package com.example.ui.screens
 
+import androidx.compose.ui.res.stringResource
+import com.example.R
+
 import com.example.ui.theme.semanticPrimaryAccent
 import com.example.ui.theme.semanticAccentForeground
 import com.example.ui.theme.semanticSuccess
@@ -120,13 +123,13 @@ fun SmartPrayerNotificationsSubScreen(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
+                    contentDescription = stringResource(R.string.action_back),
                     tint = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface
                 )
             }
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "Smart Prayer Notifications",
+                text = stringResource(R.string.settings_prayer_notifications),
                 style = MaterialTheme.typography.headlineMedium.copy(fontFamily = SerifHeaderFont),
                 color = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface
             )
@@ -154,13 +157,13 @@ fun SmartPrayerNotificationsSubScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = "Notification Permission Required",
+                                text = stringResource(R.string.notif_permission_required),
                                 style = MaterialTheme.typography.titleSmall,
                                 color = if (isDark) Color(0xFFFF6B6B) else MaterialTheme.colorScheme.error,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "To receive prayer time alerts and spiritual reminders, please enable notifications.",
+                                text = stringResource(R.string.notif_permission_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -203,13 +206,13 @@ fun SmartPrayerNotificationsSubScreen(
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "Smart Prayer Notifications",
+                                text = stringResource(R.string.settings_prayer_notifications),
                                 style = MaterialTheme.typography.titleSmall,
                                 color = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = "Calm, contextual notifications for prayer times, pre-prayer preparation, and voluntary windows.",
+                                text = stringResource(R.string.notif_calm_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant,
                                 lineHeight = 18.sp
