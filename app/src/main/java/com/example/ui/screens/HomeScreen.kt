@@ -1681,8 +1681,14 @@ fun DailyPrayersSection(
             )
         }
 
-        val chunkedPrayers = remember(dailyPrayers) { dailyPrayers.chunked(2) }
-        chunkedPrayers.forEach { pair ->
+        val gridPairs = remember(dailyPrayers) {
+            dailyPrayers.filter { it.name != PrayerName.ISHA }.chunked(2)
+        }
+        val ishaPrayer = remember(dailyPrayers) {
+            dailyPrayers.find { it.name == PrayerName.ISHA }
+        }
+
+        gridPairs.forEach { pair ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1716,11 +1722,31 @@ fun DailyPrayersSection(
                         )
                     }
                 }
-
-                if (pair.size == 1) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
             }
+        }
+
+        if (ishaPrayer != null) {
+            val status = com.example.data.db.PrayerLogEntity.resolvePrayerStatus(
+                todayLog, ishaPrayer.name, ishaPrayer.timeMillis, todayStr, todayStr
+            )
+            val isCurrent = currentPrayerContext.currentPrayerName == ishaPrayer.name
+            val currentProgress = if (isCurrent) currentPrayerContext.progress else 0f
+
+            PrayerGridCard(
+                prayer = ishaPrayer,
+                status = status,
+                onToggle = { onTogglePrayer(ishaPrayer.name) },
+                onSetStatus = { s -> onSetPrayerStatus(ishaPrayer.name, s) },
+                isFriday = isFriday,
+                isCurrent = isCurrent,
+                currentProgress = currentProgress,
+                isReducedMotion = isReducedMotion,
+                onShowUndoSnackbar = onShowUndoSnackbar,
+                onShowMessageSnackbar = onShowMessageSnackbar,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min)
+            )
         }
     }
 }
@@ -2041,104 +2067,106 @@ fun PrayerGridCard(
                 onClick = { handleTickTap() },
                 onLongClick = { handleLongClick() }
             )
-            .padding(16.dp)
             .testTag("prayer_card_${prayer.name.id}")
     ) {
         val barColors = remember(prayer.name) {
             getPrayerProgressBarColors(prayer.name)
         }
 
+        // Upper-Right Progress Bar positioned with exact equal 20dp top & right insets from card bounds
+        if (isCurrent && highlightProgress > 0.001f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 20.dp, end = 20.dp),
+                contentAlignment = Alignment.TopEnd
+            ) {
+                Canvas(
+                    modifier = Modifier
+                        .width(52.dp)
+                        .height(4.dp)
+                        .clip(CircleShape)
+                ) {
+                    val w = size.width
+                    val h = size.height
+                    val cornerRadius = CornerRadius(h / 2f, h / 2f)
+
+                    // 1. Draw Empty Track
+                    drawRoundRect(
+                        color = barColors.trackColor,
+                        topLeft = Offset.Zero,
+                        size = Size(w, h),
+                        cornerRadius = cornerRadius
+                    )
+
+                    // 2. Draw Filled Segment with Multi-Layer Soft Outer Glow (NO white dot)
+                    val effectiveProgress = animatedProgress.coerceIn(0f, 1f)
+                    val filledWidth = w * effectiveProgress
+                    if (filledWidth > 0f) {
+                        // Layer 1: Wide diffused halo
+                        val spread1 = 6.dp.toPx()
+                        drawRoundRect(
+                            color = barColors.glowColor.copy(alpha = (0.22f * highlightProgress).coerceIn(0f, 1f)),
+                            topLeft = Offset(-spread1 / 2f, -spread1 / 2f),
+                            size = Size(filledWidth + spread1, h + spread1),
+                            cornerRadius = CornerRadius((h + spread1) / 2f)
+                        )
+
+                        // Layer 2: Medium soft halo
+                        val spread2 = 4.dp.toPx()
+                        drawRoundRect(
+                            color = barColors.glowColor.copy(alpha = (0.38f * highlightProgress).coerceIn(0f, 1f)),
+                            topLeft = Offset(-spread2 / 2f, -spread2 / 2f),
+                            size = Size(filledWidth + spread2, h + spread2),
+                            cornerRadius = CornerRadius((h + spread2) / 2f)
+                        )
+
+                        // Layer 3: Inner intense glow
+                        val spread3 = 2.dp.toPx()
+                        drawRoundRect(
+                            color = barColors.glowColor.copy(alpha = (0.60f * highlightProgress).coerceIn(0f, 1f)),
+                            topLeft = Offset(-spread3 / 2f, -spread3 / 2f),
+                            size = Size(filledWidth + spread3, h + spread3),
+                            cornerRadius = CornerRadius((h + spread3) / 2f)
+                        )
+
+                        // Layer 4: Advancing endpoint soft radial diffusion (NO white dot)
+                        val endGlowRadius = 10.dp.toPx()
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    barColors.glowColor.copy(alpha = (0.90f * highlightProgress).coerceIn(0f, 1f)),
+                                    barColors.glowColor.copy(alpha = (0.30f * highlightProgress).coerceIn(0f, 1f)),
+                                    Color.Transparent
+                                ),
+                                center = Offset(filledWidth, h / 2f),
+                                radius = endGlowRadius
+                            ),
+                            center = Offset(filledWidth, h / 2f),
+                            radius = endGlowRadius
+                        )
+
+                        // Layer 5: Main crisp filled colored bar
+                        drawRoundRect(
+                            color = barColors.filledColor,
+                            topLeft = Offset.Zero,
+                            size = Size(filledWidth, h),
+                            cornerRadius = cornerRadius
+                        )
+                    }
+                }
+            }
+        }
+
+        // Main Card Content Container
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
-                // Upper Header Row: Icon on left, Upper-Right Compact Progress Bar on right
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    HandDrawnSkyIcon(prayerName = prayer.name, isFriday = isFriday, modifier = Modifier.size(24.dp))
-
-                    if (isCurrent && highlightProgress > 0.001f) {
-                        Canvas(
-                            modifier = Modifier
-                                .padding(top = 4.dp, end = 4.dp)
-                                .width(52.dp)
-                                .height(4.dp)
-                                .clip(CircleShape)
-                        ) {
-                            val w = size.width
-                            val h = size.height
-                            val cornerRadius = CornerRadius(h / 2f, h / 2f)
-
-                            // 1. Draw Empty Track
-                            drawRoundRect(
-                                color = barColors.trackColor,
-                                topLeft = Offset.Zero,
-                                size = Size(w, h),
-                                cornerRadius = cornerRadius
-                            )
-
-                            // 2. Draw Filled Segment with Multi-Layer Soft Outer Glow (Reference style, NO white dot)
-                            val effectiveProgress = animatedProgress.coerceIn(0f, 1f)
-                            val filledWidth = w * effectiveProgress
-                            if (filledWidth > 0f) {
-                                // Layer 1: Wide diffused halo radiating above and below filled bar
-                                val spread1 = 8.dp.toPx()
-                                drawRoundRect(
-                                    color = barColors.glowColor.copy(alpha = (0.22f * highlightProgress).coerceIn(0f, 1f)),
-                                    topLeft = Offset(-spread1 / 2f, -spread1 / 2f),
-                                    size = Size(filledWidth + spread1, h + spread1),
-                                    cornerRadius = CornerRadius((h + spread1) / 2f)
-                                )
-
-                                // Layer 2: Medium soft halo
-                                val spread2 = 5.dp.toPx()
-                                drawRoundRect(
-                                    color = barColors.glowColor.copy(alpha = (0.38f * highlightProgress).coerceIn(0f, 1f)),
-                                    topLeft = Offset(-spread2 / 2f, -spread2 / 2f),
-                                    size = Size(filledWidth + spread2, h + spread2),
-                                    cornerRadius = CornerRadius((h + spread2) / 2f)
-                                )
-
-                                // Layer 3: Inner intense glow
-                                val spread3 = 2.dp.toPx()
-                                drawRoundRect(
-                                    color = barColors.glowColor.copy(alpha = (0.60f * highlightProgress).coerceIn(0f, 1f)),
-                                    topLeft = Offset(-spread3 / 2f, -spread3 / 2f),
-                                    size = Size(filledWidth + spread3, h + spread3),
-                                    cornerRadius = CornerRadius((h + spread3) / 2f)
-                                )
-
-                                // Layer 4: Advancing endpoint soft radial diffusion (NO white dot / marker)
-                                val endGlowRadius = 12.dp.toPx()
-                                drawCircle(
-                                    brush = Brush.radialGradient(
-                                        colors = listOf(
-                                            barColors.glowColor.copy(alpha = (0.90f * highlightProgress).coerceIn(0f, 1f)),
-                                            barColors.glowColor.copy(alpha = (0.30f * highlightProgress).coerceIn(0f, 1f)),
-                                            Color.Transparent
-                                        ),
-                                        center = Offset(filledWidth, h / 2f),
-                                        radius = endGlowRadius
-                                    ),
-                                    center = Offset(filledWidth, h / 2f),
-                                    radius = endGlowRadius
-                                )
-
-                                // Layer 5: Main crisp filled colored bar
-                                drawRoundRect(
-                                    color = barColors.filledColor,
-                                    topLeft = Offset.Zero,
-                                    size = Size(filledWidth, h),
-                                    cornerRadius = cornerRadius
-                                )
-                            }
-                        }
-                    }
-                }
+                HandDrawnSkyIcon(prayerName = prayer.name, isFriday = isFriday, modifier = Modifier.size(24.dp))
 
                 Spacer(modifier = Modifier.height(10.dp))
 
