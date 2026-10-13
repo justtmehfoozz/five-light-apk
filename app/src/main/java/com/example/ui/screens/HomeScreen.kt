@@ -77,6 +77,18 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import com.example.data.util.DailyContentProvider
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.Animatable
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -596,16 +608,52 @@ fun HomeScreen(
         }
     }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    var currentSnackbarJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    val showUndoSnackbar: (String, () -> Unit) -> Unit = remember(snackbarHostState, coroutineScope) {
+        { message, onUndo ->
+            currentSnackbarJob?.cancel()
+            currentSnackbarJob = coroutineScope.launch {
+                snackbarHostState.currentSnackbarData?.dismiss()
+                val result = snackbarHostState.showSnackbar(
+                    message = message,
+                    actionLabel = "Undo",
+                    duration = SnackbarDuration.Short
+                )
+                if (result == SnackbarResult.ActionPerformed) {
+                    onUndo()
+                }
+            }
+        }
+    }
+
+    val showMessageSnackbar: (String) -> Unit = remember(snackbarHostState, coroutineScope) {
+        { message ->
+            currentSnackbarJob?.cancel()
+            currentSnackbarJob = coroutineScope.launch {
+                snackbarHostState.currentSnackbarData?.dismiss()
+                snackbarHostState.showSnackbar(
+                    message = message,
+                    duration = SnackbarDuration.Short
+                )
+            }
+        }
+    }
+
     val homeFlingBehavior = rememberNaturalFlingBehavior()
 
-    androidx.compose.foundation.lazy.LazyColumn(
-        state = listState,
-        flingBehavior = homeFlingBehavior,
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .background(MaterialTheme.colorScheme.background)
     ) {
+        androidx.compose.foundation.lazy.LazyColumn(
+            state = listState,
+            flingBehavior = homeFlingBehavior,
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
         // 1. HEADER
         item(key = "home_header") {
             PageHeader(
@@ -727,7 +775,9 @@ fun HomeScreen(
                     isFriday = isFriday,
                     onTogglePrayer = onTogglePrayer,
                     onSetPrayerStatus = onSetPrayerStatus,
-                    isReducedMotion = isReducedMotion
+                    isReducedMotion = isReducedMotion,
+                    onShowUndoSnackbar = showUndoSnackbar,
+                    onShowMessageSnackbar = showMessageSnackbar
                 )
             }
         }
@@ -1142,6 +1192,14 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 96.dp, start = 16.dp, end = 16.dp)
+        )
     }
 }
 
@@ -1565,6 +1623,8 @@ fun DailyPrayersSection(
     onTogglePrayer: (PrayerName) -> Unit,
     onSetPrayerStatus: (PrayerName, com.example.data.model.PrayerStatus) -> Unit,
     isReducedMotion: Boolean,
+    onShowUndoSnackbar: (message: String, onUndo: () -> Unit) -> Unit = { _, _ -> },
+    onShowMessageSnackbar: (message: String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val dailyPrayers = remember(prayerTimes) {
@@ -1638,6 +1698,8 @@ fun DailyPrayersSection(
                             isCurrent = isCurrent,
                             currentProgress = currentProgress,
                             isReducedMotion = isReducedMotion,
+                            onShowUndoSnackbar = onShowUndoSnackbar,
+                            onShowMessageSnackbar = onShowMessageSnackbar,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -1662,14 +1724,109 @@ fun PrayerGridCard(
     isCurrent: Boolean = false,
     currentProgress: Float = 0f,
     isReducedMotion: Boolean = false,
+    onShowUndoSnackbar: (message: String, onUndo: () -> Unit) -> Unit = { _, _ -> },
+    onShowMessageSnackbar: (message: String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val isDark = androidx.compose.material3.MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
+    val haptic = LocalHapticFeedback.current
+    val coroutineScope = rememberCoroutineScope()
     var showMenu by remember { mutableStateOf(false) }
+
+    val nowMillis = System.currentTimeMillis()
+    val isFutureByTime = nowMillis < prayer.timeMillis
+    val isFuture = status == com.example.data.model.PrayerStatus.FUTURE || isFutureByTime
 
     val isPrayed = status == com.example.data.model.PrayerStatus.PRAYED
     val isMissed = status == com.example.data.model.PrayerStatus.MISSED
-    val isFuture = status == com.example.data.model.PrayerStatus.FUTURE
+
+    val displayName = getPrayerDisplayName(prayer.name, isFriday)
+
+    // Localized card scale animation (1.0 -> 0.97 -> 1.0)
+    val cardScale = remember { Animatable(1f) }
+
+    // Tiny horizontal shake animation (0 -> -10 -> 10 -> -6 -> 6 -> 0)
+    val shakeOffset = remember { Animatable(0f) }
+
+    fun triggerFutureRestriction() {
+        if (!isReducedMotion) {
+            coroutineScope.launch {
+                shakeOffset.animateTo(-10f, tween(50))
+                shakeOffset.animateTo(10f, tween(50))
+                shakeOffset.animateTo(-6f, tween(50))
+                shakeOffset.animateTo(6f, tween(50))
+                shakeOffset.animateTo(0f, tween(50))
+            }
+        }
+        onShowMessageSnackbar("$displayName hasn't started yet")
+    }
+
+    fun triggerStatusChange(targetStatus: com.example.data.model.PrayerStatus) {
+        val previousStatus = status
+        if (targetStatus == previousStatus) return
+
+        // Scale animation 1.0 -> 0.97 -> 1.0
+        if (!isReducedMotion) {
+            coroutineScope.launch {
+                cardScale.animateTo(0.97f, tween(100))
+                cardScale.animateTo(1.0f, tween(150))
+            }
+        }
+
+        // Light haptic feedback
+        try {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        } catch (_: Exception) {}
+
+        // Write to Personal Log immediately
+        onSetStatus(targetStatus)
+
+        // Messaging
+        val msg = when (targetStatus) {
+            com.example.data.model.PrayerStatus.PRAYED -> "$displayName marked as prayed"
+            com.example.data.model.PrayerStatus.MISSED -> "$displayName marked as missed"
+            com.example.data.model.PrayerStatus.NEEDS_INPUT -> {
+                if (previousStatus == com.example.data.model.PrayerStatus.PRAYED) {
+                    "$displayName unmarked"
+                } else {
+                    "$displayName reset"
+                }
+            }
+            else -> "$displayName updated"
+        }
+
+        onShowUndoSnackbar(msg) {
+            onSetStatus(previousStatus)
+        }
+    }
+
+    fun handleTickTap() {
+        if (isFuture) {
+            triggerFutureRestriction()
+            return
+        }
+
+        val targetStatus = when (status) {
+            com.example.data.model.PrayerStatus.PRAYED -> com.example.data.model.PrayerStatus.NEEDS_INPUT
+            com.example.data.model.PrayerStatus.NEEDS_INPUT,
+            com.example.data.model.PrayerStatus.MISSED,
+            com.example.data.model.PrayerStatus.FUTURE -> com.example.data.model.PrayerStatus.PRAYED
+        }
+
+        triggerStatusChange(targetStatus)
+    }
+
+    fun handleLongClick() {
+        if (isFuture) {
+            triggerFutureRestriction()
+            return
+        }
+
+        try {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        } catch (_: Exception) {}
+
+        showMenu = true
+    }
 
     val (targetStart, targetEnd) = getSeasonalPrayerGradientColors(prayer.name, prayer.timeMillis, isFriday)
     val animStartColorState = animateColorAsState(
@@ -1713,7 +1870,7 @@ fun PrayerGridCard(
             label = "grid_pulse_alpha_${prayer.name.id}"
         ).value
     } else {
-        0.85f // Stable, subtle highlight when reduced motion is requested
+        0.85f
     }
     val pulseAlpha = if (isCurrent) rawPulseAlpha else 0.85f
     val effectiveGlowAlpha = (if (isCurrent) pulseAlpha else 0f) * highlightProgress
@@ -1748,7 +1905,7 @@ fun PrayerGridCard(
         )
     }
 
-    // Restrained variation of existing gradient for progressive fill (keeps text/icons 100% readable)
+    // Restrained variation of existing gradient for progressive fill
     val progressFillBrush = remember(animStartColorState.value, animEndColorState.value, highlightProgress) {
         val s = animStartColorState.value
         val e = animEndColorState.value
@@ -1770,12 +1927,16 @@ fun PrayerGridCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            // Three restrained outer glow layers outside the card boundary
+            .graphicsLayer {
+                scaleX = cardScale.value
+                scaleY = cardScale.value
+                translationX = shakeOffset.value
+            }
             .drawBehind {
                 if (effectiveGlowAlpha > 0.001f) {
                     val baseRadiusPx = 24.dp.toPx()
 
-                    // Layer 1: ~14dp wide, alpha ~0.08
+                    // Layer 1
                     val spread1 = 14.dp.toPx()
                     drawRoundRect(
                         color = glowColor.copy(alpha = 0.08f * effectiveGlowAlpha),
@@ -1784,7 +1945,7 @@ fun PrayerGridCard(
                         cornerRadius = CornerRadius(baseRadiusPx + spread1)
                     )
 
-                    // Layer 2: ~10dp wide, alpha ~0.12
+                    // Layer 2
                     val spread2 = 10.dp.toPx()
                     drawRoundRect(
                         color = glowColor.copy(alpha = 0.12f * effectiveGlowAlpha),
@@ -1793,7 +1954,7 @@ fun PrayerGridCard(
                         cornerRadius = CornerRadius(baseRadiusPx + spread2)
                     )
 
-                    // Layer 3: ~6dp wide, alpha ~0.18
+                    // Layer 3
                     val spread3 = 6.dp.toPx()
                     drawRoundRect(
                         color = glowColor.copy(alpha = 0.18f * effectiveGlowAlpha),
@@ -1814,7 +1975,6 @@ fun PrayerGridCard(
                 shape = RoundedCornerShape(24.dp)
             )
             .drawWithContent {
-                // Progressive visual fill representing elapsed time (drawn before content so text/icons/controls are on top)
                 if (animatedProgress > 0.001f && highlightProgress > 0.001f) {
                     val fillWidth = size.width * animatedProgress
                     drawRect(
@@ -1822,7 +1982,6 @@ fun PrayerGridCard(
                         topLeft = Offset.Zero,
                         size = Size(fillWidth, size.height)
                     )
-                    // Soft leading edge highlight
                     val edgeWidth = 6.dp.toPx()
                     val edgeStart = (fillWidth - edgeWidth).coerceAtLeast(0f)
                     drawRect(
@@ -1836,7 +1995,6 @@ fun PrayerGridCard(
                     )
                 }
                 drawContent()
-                // Radial highlight overlay top-left
                 drawRect(
                     brush = Brush.radialGradient(
                         colors = listOf(Color.White.copy(alpha = 0.15f), Color.Transparent),
@@ -1846,14 +2004,8 @@ fun PrayerGridCard(
                 )
             }
             .combinedClickable(
-                onClick = {
-                    if (!isFuture) {
-                        onToggle()
-                    }
-                },
-                onLongClick = {
-                    showMenu = true
-                }
+                onClick = { handleTickTap() },
+                onLongClick = { handleLongClick() }
             )
             .padding(16.dp)
             .testTag("prayer_card_${prayer.name.id}")
@@ -1877,15 +2029,15 @@ fun PrayerGridCard(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 AnimatedContent(
-                    targetState = Pair(getPrayerDisplayName(prayer.name, isFriday), getPrayerArabicName(prayer.name, isFriday)),
+                    targetState = Pair(displayName, getPrayerArabicName(prayer.name, isFriday)),
                     transitionSpec = {
                         fadeIn(tween(500, easing = FastOutSlowInEasing)) togetherWith fadeOut(tween(500, easing = FastOutSlowInEasing))
                     },
                     label = "grid_title_transition"
-                ) { (displayName, arabicName) ->
+                ) { (dispName, arabicName) ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = displayName,
+                            text = dispName,
                             fontFamily = SpaceGrotesk,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
@@ -1958,15 +2110,15 @@ fun PrayerGridCard(
                                 },
                                 shape = CircleShape
                             )
-                            .clickable(enabled = !isFuture) {
-                                onToggle()
+                            .clickable(enabled = true) {
+                                handleTickTap()
                             },
                         contentAlignment = Alignment.Center
                     ) {
                         AnimatedContent(
                             targetState = status,
                             transitionSpec = {
-                                fadeIn(tween(250)) togetherWith fadeOut(tween(250))
+                                (fadeIn(tween(250)) + scaleIn(initialScale = 0.8f, animationSpec = tween(250))) togetherWith (fadeOut(tween(200)) + scaleOut(targetScale = 0.8f, animationSpec = tween(200)))
                             },
                             label = "grid_status_icon"
                         ) { targetStatus ->
@@ -2000,26 +2152,45 @@ fun PrayerGridCard(
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("✓ Prayed") },
-                            enabled = !isFuture,
+                            text = { Text("Prayed") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
                             onClick = {
                                 showMenu = false
-                                onSetStatus(com.example.data.model.PrayerStatus.PRAYED)
+                                triggerStatusChange(com.example.data.model.PrayerStatus.PRAYED)
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("! Missed") },
-                            enabled = !isFuture,
+                            text = { Text("Missed") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Outlined.ErrorOutline,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
                             onClick = {
                                 showMenu = false
-                                onSetStatus(com.example.data.model.PrayerStatus.MISSED)
+                                triggerStatusChange(com.example.data.model.PrayerStatus.MISSED)
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("○ Reset (Needs input)") },
+                            text = { Text("Reset (Needs input)") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Outlined.RadioButtonUnchecked,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
                             onClick = {
                                 showMenu = false
-                                onSetStatus(com.example.data.model.PrayerStatus.NEEDS_INPUT)
+                                triggerStatusChange(com.example.data.model.PrayerStatus.NEEDS_INPUT)
                             }
                         )
                     }
