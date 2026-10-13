@@ -1631,14 +1631,26 @@ fun DailyPrayersSection(
         prayerTimes.filter { it.name != PrayerName.SUNRISE }
     }
 
-    // Lifecycle-aware progress calculation updated at most once every 30 seconds
+    // Lifecycle-aware progress calculation updated on ON_RESUME and every 30 seconds
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     val currentPrayerContext by produceState(
         initialValue = calculateCurrentPrayerContext(prayerTimes),
-        key1 = prayerTimes
+        key1 = prayerTimes,
+        key2 = lifecycleOwner
     ) {
-        while (true) {
-            value = calculateCurrentPrayerContext(prayerTimes)
-            delay(30_000L)
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                value = calculateCurrentPrayerContext(prayerTimes)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        try {
+            while (true) {
+                value = calculateCurrentPrayerContext(prayerTimes)
+                delay(30_000L)
+            }
+        } finally {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -2052,6 +2064,7 @@ fun PrayerGridCard(
                     if (isCurrent && highlightProgress > 0.001f) {
                         Canvas(
                             modifier = Modifier
+                                .padding(top = 4.dp, end = 4.dp)
                                 .width(52.dp)
                                 .height(4.dp)
                                 .clip(CircleShape)
