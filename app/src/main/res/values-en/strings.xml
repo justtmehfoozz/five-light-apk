@@ -351,4 +351,12 @@
     <string name="language_hindi_urdu">हिंदी</string>
     <string name="language_urdu">اردو</string>
     <string name="language_roman_urdu">Roman Urdu</string>
+
+    <!-- Zawal Feature -->
+    <string name="zawal_title">Zawal</string>
+    <string name="zawal_approaching_title">Zawal approaching</string>
+    <string name="zawal_approaching_subtext">Begins at %1$s</string>
+    <string name="zawal_approaching_countdown">In %1$d min</string>
+    <string name="zawal_active_subtext">Avoid voluntary prayer during this time</string>
+    <string name="zawal_active_countdown">Ends in %1$d min</string>
 </resources>
