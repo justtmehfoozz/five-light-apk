@@ -159,37 +159,52 @@ fun LoginBottomSheet(
                 isLoading = isLoading,
                 isDark = isDark,
                 onLoginWithEmail = {
-                    if (!isLoading) {
-                        errorMessage = null
-                        infoMessage = null
-                        onNavigateToLoginEmail()
+                    try {
+                        if (!isLoading) {
+                            errorMessage = null
+                            infoMessage = null
+                            onNavigateToLoginEmail()
+                        }
+                    } catch (e: Throwable) {
+                        com.example.util.CrashLogger.log(e)
+                        throw e
                     }
                 },
                 onLoginWithGoogle = {
-                    if (!isLoading) {
-                        errorMessage = null
-                        infoMessage = null
-                        isLoading = true
-                        coroutineScope.launch {
-                            val result = authRepository.signInWithGoogle(context)
-                            isLoading = false
-                            result.onSuccess {
-                                onAuthSuccess()
-                            }.onFailure { e ->
-                                if (e is GoogleAuthException.Cancelled || e.message == "Sign-in cancelled") {
-                                    errorMessage = null
-                                } else {
-                                    errorMessage = e.message ?: "Google Sign-In failed"
+                    try {
+                        if (!isLoading) {
+                            errorMessage = null
+                            infoMessage = null
+                            isLoading = true
+                            coroutineScope.launch {
+                                val result = authRepository.signInWithGoogle(context)
+                                isLoading = false
+                                result.onSuccess {
+                                    onAuthSuccess()
+                                }.onFailure { e ->
+                                    if (e is GoogleAuthException.Cancelled || e.message == "Sign-in cancelled") {
+                                        errorMessage = null
+                                    } else {
+                                        errorMessage = e.message ?: "Google Sign-In failed"
+                                    }
                                 }
                             }
                         }
+                    } catch (e: Throwable) {
+                        com.example.util.CrashLogger.log(e)
+                        throw e
                     }
                 },
                 onRegisterNewAccount = {
-                    if (!isLoading) {
-                        errorMessage = null
-                        infoMessage = null
-                        onNavigateToRegister()
+                    try {
+                        if (!isLoading) {
+                            errorMessage = null
+                            infoMessage = null
+                            onNavigateToRegister()
+                        }
+                    } catch (e: Throwable) {
+                        com.example.util.CrashLogger.log(e)
+                        throw e
                     }
                 },
                 onClose = {
@@ -320,7 +335,14 @@ private fun MainLoginOptions(
                         interactionSource = emailInteractionSource,
                         indication = null,
                         enabled = !isLoading,
-                        onClick = onLoginWithEmail
+                        onClick = {
+                            try {
+                                onLoginWithEmail()
+                            } catch (e: Throwable) {
+                                com.example.util.CrashLogger.log(e)
+                                throw e
+                            }
+                        }
                     )
                     .testTag("login_with_email_card"),
                 shape = RoundedCornerShape(16.dp),
@@ -368,7 +390,14 @@ private fun MainLoginOptions(
                         interactionSource = googleInteractionSource,
                         indication = null,
                         enabled = !isLoading,
-                        onClick = onLoginWithGoogle
+                        onClick = {
+                            try {
+                                onLoginWithGoogle()
+                            } catch (e: Throwable) {
+                                com.example.util.CrashLogger.log(e)
+                                throw e
+                            }
+                        }
                     )
                     .testTag("login_with_google_card"),
                 shape = RoundedCornerShape(16.dp),
@@ -443,7 +472,14 @@ private fun MainLoginOptions(
 
         // 5. Full-width monochrome pill button: Register New Account
         Button(
-            onClick = onRegisterNewAccount,
+            onClick = {
+                try {
+                    onRegisterNewAccount()
+                } catch (e: Throwable) {
+                    com.example.util.CrashLogger.log(e)
+                    throw e
+                }
+            },
             enabled = !isLoading,
             interactionSource = registerInteractionSource,
             shape = RoundedCornerShape(percent = 50),

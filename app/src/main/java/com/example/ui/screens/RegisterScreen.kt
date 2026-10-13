@@ -443,32 +443,37 @@ fun RegisterScreen(
                         // Primary CTA: Create Your Account →
                         Button(
                             onClick = {
-                                focusManager.clearFocus()
-                                hasAttemptedSubmit = true
-                                if (isEmailFormatValid && isPasswordRequirementsMet && !isLoading) {
-                                    isLoading = true
-                                    errorMessage = null
-                                    coroutineScope.launch {
-                                        val result = authRepository.registerWithEmail(
-                                            email = email.trim(),
-                                            password = password,
-                                            displayName = name.ifBlank { null }
-                                        )
-                                        result.onSuccess {
-                                            val verificationResult = authRepository.sendEmailVerification()
-                                            isLoading = false
-                                            verificationResult.onSuccess {
-                                                onRegistrationSuccess(email.trim())
+                                try {
+                                    focusManager.clearFocus()
+                                    hasAttemptedSubmit = true
+                                    if (isEmailFormatValid && isPasswordRequirementsMet && !isLoading) {
+                                        isLoading = true
+                                        errorMessage = null
+                                        coroutineScope.launch {
+                                            val result = authRepository.registerWithEmail(
+                                                email = email.trim(),
+                                                password = password,
+                                                displayName = name.ifBlank { null }
+                                            )
+                                            result.onSuccess {
+                                                val verificationResult = authRepository.sendEmailVerification()
+                                                isLoading = false
+                                                verificationResult.onSuccess {
+                                                    onRegistrationSuccess(email.trim())
+                                                }.onFailure { e ->
+                                                    errorMessage = "Account created, but we failed to send the verification link: " + (e.message ?: "Unknown error") + ". Please try signing in to resend."
+                                                }
                                             }.onFailure { e ->
-                                                errorMessage = "Account created, but we failed to send the verification link: " + (e.message ?: "Unknown error") + ". Please try signing in to resend."
+                                                isLoading = false
+                                                errorMessage = e.message ?: "Registration failed. Please try again."
                                             }
-                                        }.onFailure { e ->
-                                            isLoading = false
-                                            errorMessage = e.message ?: "Registration failed. Please try again."
                                         }
+                                    } else if (!isPasswordRequirementsMet) {
+                                        errorMessage = "Please satisfy all password requirements before proceeding."
                                     }
-                                } else if (!isPasswordRequirementsMet) {
-                                    errorMessage = "Please satisfy all password requirements before proceeding."
+                                } catch (e: Throwable) {
+                                    com.example.util.CrashLogger.log(e)
+                                    throw e
                                 }
                             },
                             enabled = !isLoading,

@@ -1,7 +1,8 @@
 # FiveLight Project R8 / ProGuard Rules
 
 # Preserve Kotlin Metadata and Attributes
--keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,SourceFile,LineNumberTable
+-keepattributes SourceFile,LineNumberTable
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
 
 # Room Database & Generated Implementations
 -dontwarn androidx.room.paging.**

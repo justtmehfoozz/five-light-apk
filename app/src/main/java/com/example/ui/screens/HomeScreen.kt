@@ -102,11 +102,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -520,6 +523,25 @@ fun HomeScreen(
     val coroutineScope = rememberCoroutineScope()
     val todayStr = todayDateString.ifEmpty { todayLog?.date ?: remember(hijriDate) { java.time.LocalDate.now().toString() } }
 
+    val context = LocalContext.current
+    val isReducedMotion = remember(context) {
+        try {
+            val durationScale = android.provider.Settings.Global.getFloat(
+                context.contentResolver,
+                android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+                1.0f
+            )
+            val transitionScale = android.provider.Settings.Global.getFloat(
+                context.contentResolver,
+                android.provider.Settings.Global.TRANSITION_ANIMATION_SCALE,
+                1.0f
+            )
+            durationScale == 0f || transitionScale == 0f
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     var showDuaModal by remember { mutableStateOf(false) }
     var showHadithModal by remember { mutableStateOf(false) }
     var showPrayerJourneySheet by remember { mutableStateOf(false) }
@@ -698,68 +720,15 @@ fun HomeScreen(
         val dailyPrayersIdx = cardIndex++
         item(key = "home_daily_prayers_grid") {
             StaggeredCardEntrance(index = dailyPrayersIdx) {
-                val dailyPrayers = prayerTimes.filter { it.name != PrayerName.SUNRISE }
-                
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Daily Prayers",
-                            fontFamily = SpaceGrotesk,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        Text(
-                            text = "Tap circle or long-press",
-                            fontFamily = SpaceGrotesk,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    val chunkedPrayers = dailyPrayers.chunked(2)
-                    chunkedPrayers.forEach { pair ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(IntrinsicSize.Max),
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
-                        ) {
-                            pair.forEach { prayer ->
-                                val status = com.example.data.db.PrayerLogEntity.resolvePrayerStatus(todayLog, prayer.name, prayer.timeMillis, todayStr, todayStr)
-
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight()
-                                ) {
-                                    PrayerGridCard(
-                                        prayer = prayer,
-                                        status = status,
-                                        onToggle = { onTogglePrayer(prayer.name) },
-                                        onSetStatus = { s -> onSetPrayerStatus(prayer.name, s) },
-                                        isFriday = isFriday,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
-                            }
-
-                            if (pair.size == 1) {
-                                Spacer(modifier = Modifier.weight(1f))
-                            }
-                        }
-                    }
-                }
+                DailyPrayersSection(
+                    prayerTimes = prayerTimes,
+                    todayLog = todayLog,
+                    todayStr = todayStr,
+                    isFriday = isFriday,
+                    onTogglePrayer = onTogglePrayer,
+                    onSetPrayerStatus = onSetPrayerStatus,
+                    isReducedMotion = isReducedMotion
+                )
             }
         }
 
@@ -1519,6 +1488,169 @@ fun FeaturedPrayerHeroCard(
     }
 }
 
+data class CurrentPrayerContext(
+    val currentPrayerName: PrayerName?,
+    val progress: Float = 0f,
+    val windowStartMillis: Long = 0L,
+    val windowEndMillis: Long = 0L
+)
+
+fun calculateCurrentPrayerContext(
+    prayerTimes: List<PrayerItem>,
+    nowMillis: Long = System.currentTimeMillis()
+): CurrentPrayerContext {
+    val prayerMap = prayerTimes.associateBy { it.name }
+    val fajr = prayerMap[PrayerName.FAJR]?.timeMillis ?: return CurrentPrayerContext(null)
+    val sunrise = prayerMap[PrayerName.SUNRISE]?.timeMillis ?: return CurrentPrayerContext(null)
+    val dhuhr = prayerMap[PrayerName.DHUHR]?.timeMillis ?: return CurrentPrayerContext(null)
+    val asr = prayerMap[PrayerName.ASR]?.timeMillis ?: return CurrentPrayerContext(null)
+    val maghrib = prayerMap[PrayerName.MAGHRIB]?.timeMillis ?: return CurrentPrayerContext(null)
+    val isha = prayerMap[PrayerName.ISHA]?.timeMillis ?: return CurrentPrayerContext(null)
+
+    val (currentName, windowStart, windowEnd) = when {
+        nowMillis < fajr -> {
+            // Isha overnight: after midnight until today's Fajr
+            val start = if (isha >= fajr) isha - 24 * 3600 * 1000L else isha
+            Triple(PrayerName.ISHA, start, fajr)
+        }
+        nowMillis < sunrise -> {
+            // Fajr: Fajr start until Sunrise
+            Triple(PrayerName.FAJR, fajr, sunrise)
+        }
+        nowMillis < dhuhr -> {
+            // Between Sunrise and Dhuhr: no card should be highlighted
+            Triple(null, 0L, 0L)
+        }
+        nowMillis < asr -> {
+            // Dhuhr: Dhuhr start until Asr start
+            Triple(PrayerName.DHUHR, dhuhr, asr)
+        }
+        nowMillis < maghrib -> {
+            // Asr: Asr start until Maghrib start
+            Triple(PrayerName.ASR, asr, maghrib)
+        }
+        nowMillis < isha -> {
+            // Maghrib: Maghrib start until Isha start
+            Triple(PrayerName.MAGHRIB, maghrib, isha)
+        }
+        else -> {
+            // Isha: Isha start until next Fajr (tomorrow morning)
+            val end = if (fajr <= isha) fajr + 24 * 3600 * 1000L else fajr
+            Triple(PrayerName.ISHA, isha, end)
+        }
+    }
+
+    if (currentName == null || windowEnd <= windowStart) {
+        return CurrentPrayerContext(null, 0f, 0L, 0L)
+    }
+
+    val progress = ((nowMillis - windowStart).toDouble() / (windowEnd - windowStart).toDouble())
+        .toFloat()
+        .coerceIn(0f, 1f)
+
+    return CurrentPrayerContext(
+        currentPrayerName = currentName,
+        progress = progress,
+        windowStartMillis = windowStart,
+        windowEndMillis = windowEnd
+    )
+}
+
+@Composable
+fun DailyPrayersSection(
+    prayerTimes: List<PrayerItem>,
+    todayLog: PrayerLogEntity?,
+    todayStr: String,
+    isFriday: Boolean,
+    onTogglePrayer: (PrayerName) -> Unit,
+    onSetPrayerStatus: (PrayerName, com.example.data.model.PrayerStatus) -> Unit,
+    isReducedMotion: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val dailyPrayers = remember(prayerTimes) {
+        prayerTimes.filter { it.name != PrayerName.SUNRISE }
+    }
+
+    // Lifecycle-aware progress calculation updated at most once every 30 seconds
+    val currentPrayerContext by produceState(
+        initialValue = calculateCurrentPrayerContext(prayerTimes),
+        key1 = prayerTimes
+    ) {
+        while (true) {
+            value = calculateCurrentPrayerContext(prayerTimes)
+            delay(30_000L)
+        }
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Daily Prayers",
+                fontFamily = SpaceGrotesk,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Text(
+                text = "Tap circle or long-press",
+                fontFamily = SpaceGrotesk,
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        val chunkedPrayers = remember(dailyPrayers) { dailyPrayers.chunked(2) }
+        chunkedPrayers.forEach { pair ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Max),
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                pair.forEach { prayer ->
+                    val status = com.example.data.db.PrayerLogEntity.resolvePrayerStatus(
+                        todayLog, prayer.name, prayer.timeMillis, todayStr, todayStr
+                    )
+                    val isCurrent = currentPrayerContext.currentPrayerName == prayer.name
+                    val currentProgress = if (isCurrent) currentPrayerContext.progress else 0f
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                    ) {
+                        PrayerGridCard(
+                            prayer = prayer,
+                            status = status,
+                            onToggle = { onTogglePrayer(prayer.name) },
+                            onSetStatus = { s -> onSetPrayerStatus(prayer.name, s) },
+                            isFriday = isFriday,
+                            isCurrent = isCurrent,
+                            currentProgress = currentProgress,
+                            isReducedMotion = isReducedMotion,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+                }
+
+                if (pair.size == 1) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PrayerGridCard(
@@ -1527,6 +1659,9 @@ fun PrayerGridCard(
     onToggle: () -> Unit,
     onSetStatus: (com.example.data.model.PrayerStatus) -> Unit = {},
     isFriday: Boolean = false,
+    isCurrent: Boolean = false,
+    currentProgress: Float = 0f,
+    isReducedMotion: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val isDark = androidx.compose.material3.MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
@@ -1551,12 +1686,155 @@ fun PrayerGridCard(
         Brush.linearGradient(listOf(animStartColorState.value, animEndColorState.value))
     }
 
+    // Highlight smooth fade transition when current prayer changes
+    val highlightProgress by animateFloatAsState(
+        targetValue = if (isCurrent) 1f else 0f,
+        animationSpec = if (isReducedMotion) snap() else tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        label = "grid_highlight_fade_${prayer.name.id}"
+    )
+
+    // Progressive fill animation (smooth interpolation of 30-second progress)
+    val animatedProgress by animateFloatAsState(
+        targetValue = if (isCurrent) currentProgress else 0f,
+        animationSpec = if (isReducedMotion) snap() else tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+        label = "grid_fill_progress_${prayer.name.id}"
+    )
+
+    // Glow pulse: pulses between 0.6f and 1.0f over 2.6s (reverse repeat); only current card pulses
+    val infiniteTransition = rememberInfiniteTransition(label = "grid_pulse_trans_${prayer.name.id}")
+    val rawPulseAlpha = if (!isReducedMotion) {
+        infiniteTransition.animateFloat(
+            initialValue = 0.6f,
+            targetValue = 1.0f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 2600, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "grid_pulse_alpha_${prayer.name.id}"
+        ).value
+    } else {
+        0.85f // Stable, subtle highlight when reduced motion is requested
+    }
+    val pulseAlpha = if (isCurrent) rawPulseAlpha else 0.85f
+    val effectiveGlowAlpha = (if (isCurrent) pulseAlpha else 0f) * highlightProgress
+
+    // Subtle 2dp border using brighter tint derived from existing gradient colors
+    val borderBrush = remember(animStartColorState.value, animEndColorState.value, highlightProgress) {
+        val s = animStartColorState.value
+        val e = animEndColorState.value
+        val tintStart = Color(
+            red = (s.red * 0.45f + 0.55f).coerceIn(0f, 1f),
+            green = (s.green * 0.45f + 0.55f).coerceIn(0f, 1f),
+            blue = (s.blue * 0.45f + 0.55f).coerceIn(0f, 1f),
+            alpha = (0.92f * highlightProgress).coerceIn(0f, 1f)
+        )
+        val tintEnd = Color(
+            red = (e.red * 0.45f + 0.55f).coerceIn(0f, 1f),
+            green = (e.green * 0.45f + 0.55f).coerceIn(0f, 1f),
+            blue = (e.blue * 0.45f + 0.55f).coerceIn(0f, 1f),
+            alpha = (0.78f * highlightProgress).coerceIn(0f, 1f)
+        )
+        Brush.linearGradient(listOf(tintStart, tintEnd))
+    }
+
+    // Soft outer glow color derived from existing gradient colors
+    val glowColor = remember(animStartColorState.value, animEndColorState.value) {
+        val s = animStartColorState.value
+        val e = animEndColorState.value
+        Color(
+            red = ((s.red + e.red) * 0.35f + 0.30f).coerceIn(0f, 1f),
+            green = ((s.green + e.green) * 0.35f + 0.30f).coerceIn(0f, 1f),
+            blue = ((s.blue + e.blue) * 0.35f + 0.30f).coerceIn(0f, 1f)
+        )
+    }
+
+    // Restrained variation of existing gradient for progressive fill (keeps text/icons 100% readable)
+    val progressFillBrush = remember(animStartColorState.value, animEndColorState.value, highlightProgress) {
+        val s = animStartColorState.value
+        val e = animEndColorState.value
+        val fillStart = Color(
+            red = (s.red * 0.65f + 0.35f).coerceIn(0f, 1f),
+            green = (s.green * 0.65f + 0.35f).coerceIn(0f, 1f),
+            blue = (s.blue * 0.65f + 0.35f).coerceIn(0f, 1f),
+            alpha = (0.22f * highlightProgress).coerceIn(0f, 1f)
+        )
+        val fillEnd = Color(
+            red = (e.red * 0.65f + 0.35f).coerceIn(0f, 1f),
+            green = (e.green * 0.65f + 0.35f).coerceIn(0f, 1f),
+            blue = (e.blue * 0.65f + 0.35f).coerceIn(0f, 1f),
+            alpha = (0.14f * highlightProgress).coerceIn(0f, 1f)
+        )
+        Brush.horizontalGradient(listOf(fillStart, fillEnd))
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
+            // Three restrained outer glow layers outside the card boundary
+            .drawBehind {
+                if (effectiveGlowAlpha > 0.001f) {
+                    val baseRadiusPx = 24.dp.toPx()
+
+                    // Layer 1: ~14dp wide, alpha ~0.08
+                    val spread1 = 14.dp.toPx()
+                    drawRoundRect(
+                        color = glowColor.copy(alpha = 0.08f * effectiveGlowAlpha),
+                        topLeft = Offset(-spread1, -spread1),
+                        size = Size(size.width + spread1 * 2, size.height + spread1 * 2),
+                        cornerRadius = CornerRadius(baseRadiusPx + spread1)
+                    )
+
+                    // Layer 2: ~10dp wide, alpha ~0.12
+                    val spread2 = 10.dp.toPx()
+                    drawRoundRect(
+                        color = glowColor.copy(alpha = 0.12f * effectiveGlowAlpha),
+                        topLeft = Offset(-spread2, -spread2),
+                        size = Size(size.width + spread2 * 2, size.height + spread2 * 2),
+                        cornerRadius = CornerRadius(baseRadiusPx + spread2)
+                    )
+
+                    // Layer 3: ~6dp wide, alpha ~0.18
+                    val spread3 = 6.dp.toPx()
+                    drawRoundRect(
+                        color = glowColor.copy(alpha = 0.18f * effectiveGlowAlpha),
+                        topLeft = Offset(-spread3, -spread3),
+                        size = Size(size.width + spread3 * 2, size.height + spread3 * 2),
+                        cornerRadius = CornerRadius(baseRadiusPx + spread3)
+                    )
+                }
+            }
             .clip(RoundedCornerShape(24.dp))
             .background(gradientBrush)
+            .border(
+                border = if (highlightProgress > 0.001f) {
+                    BorderStroke(2.dp, borderBrush)
+                } else {
+                    BorderStroke(0.dp, Color.Transparent)
+                },
+                shape = RoundedCornerShape(24.dp)
+            )
             .drawWithContent {
+                // Progressive visual fill representing elapsed time (drawn before content so text/icons/controls are on top)
+                if (animatedProgress > 0.001f && highlightProgress > 0.001f) {
+                    val fillWidth = size.width * animatedProgress
+                    drawRect(
+                        brush = progressFillBrush,
+                        topLeft = Offset.Zero,
+                        size = Size(fillWidth, size.height)
+                    )
+                    // Soft leading edge highlight
+                    val edgeWidth = 6.dp.toPx()
+                    val edgeStart = (fillWidth - edgeWidth).coerceAtLeast(0f)
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.18f * highlightProgress)),
+                            startX = edgeStart,
+                            endX = fillWidth
+                        ),
+                        topLeft = Offset(edgeStart, 0f),
+                        size = Size(fillWidth - edgeStart, size.height)
+                    )
+                }
                 drawContent()
                 // Radial highlight overlay top-left
                 drawRect(

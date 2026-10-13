@@ -432,21 +432,26 @@ fun LoginScreen(
                         // Primary CTA: Login →
                         Button(
                             onClick = {
-                                focusManager.clearFocus()
-                                hasAttemptedSubmit = true
-                                if (isEmailFormatValid && isPasswordFilled && !isLoading) {
-                                    isLoading = true
-                                    errorMessage = null
-                                    infoMessage = null
-                                    coroutineScope.launch {
-                                        val result = authRepository.signInWithEmail(email.trim(), password)
-                                        isLoading = false
-                                        result.onSuccess {
-                                            onAuthSuccess()
-                                        }.onFailure { e ->
-                                            errorMessage = e.message ?: "Login failed. Please check your credentials."
+                                try {
+                                    focusManager.clearFocus()
+                                    hasAttemptedSubmit = true
+                                    if (isEmailFormatValid && isPasswordFilled && !isLoading) {
+                                        isLoading = true
+                                        errorMessage = null
+                                        infoMessage = null
+                                        coroutineScope.launch {
+                                            val result = authRepository.signInWithEmail(email.trim(), password)
+                                            isLoading = false
+                                            result.onSuccess {
+                                                onAuthSuccess()
+                                            }.onFailure { e ->
+                                                errorMessage = e.message ?: "Login failed. Please check your credentials."
+                                            }
                                         }
                                     }
+                                } catch (e: Throwable) {
+                                    com.example.util.CrashLogger.log(e)
+                                    throw e
                                 }
                             },
                             enabled = !isLoading,

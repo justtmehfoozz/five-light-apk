@@ -47,6 +47,10 @@ object LocationHelper {
         return bestLocation
     }
 
+    fun getFreshLocation(context: Context): Location? {
+        return getLastKnownLocation(context)
+    }
+
     fun resolveCityLocation(context: Context, location: Location): CityLocation {
         val lat = location.latitude
         val lon = location.longitude

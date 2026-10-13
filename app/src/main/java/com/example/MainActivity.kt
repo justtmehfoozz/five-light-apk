@@ -18,9 +18,13 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
@@ -144,23 +148,37 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
 
 
         setContent {
-            val appearanceMode by viewModel.appearanceMode.collectAsStateWithLifecycle()
-            val vibrationEnabled by viewModel.vibrationEnabled.collectAsStateWithLifecycle()
-            val dhikrVolumeControlsEnabled by viewModel.dhikrVolumeControlsEnabled.collectAsStateWithLifecycle()
-            val appLanguage by viewModel.appLanguage.collectAsStateWithLifecycle()
+            val activityContext = androidx.compose.ui.platform.LocalContext.current
+            var crashLogText by remember { mutableStateOf(com.example.util.CrashLogger.getCrashReport(activityContext)) }
 
-            val localizedContext = remember(appLanguage) {
-                com.example.data.util.AppLocaleManager.createLocalizedContext(this@MainActivity, appLanguage)
-            }
-            val currentConfig = androidx.compose.ui.platform.LocalConfiguration.current
-            val localizedConfiguration = remember(appLanguage, currentConfig) {
-                android.content.res.Configuration(currentConfig).apply {
-                    setLocale(appLanguage.toLocale())
-                    setLayoutDirection(appLanguage.toLocale())
+            if (crashLogText != null) {
+                FiveLightTheme {
+                    CrashReportScreen(
+                        crashLogText = crashLogText!!,
+                        onDismiss = {
+                            com.example.util.CrashLogger.deleteCrashReport(activityContext)
+                            crashLogText = null
+                        }
+                    )
                 }
-            }
+            } else {
+                val appearanceMode by viewModel.appearanceMode.collectAsStateWithLifecycle()
+                val vibrationEnabled by viewModel.vibrationEnabled.collectAsStateWithLifecycle()
+                val dhikrVolumeControlsEnabled by viewModel.dhikrVolumeControlsEnabled.collectAsStateWithLifecycle()
+                val appLanguage by viewModel.appLanguage.collectAsStateWithLifecycle()
 
-            FiveLightTheme(appearanceMode = appearanceMode) {
+                val localizedContext = remember(appLanguage) {
+                    com.example.data.util.AppLocaleManager.createLocalizedContext(this@MainActivity, appLanguage)
+                }
+                val currentConfig = androidx.compose.ui.platform.LocalConfiguration.current
+                val localizedConfiguration = remember(appLanguage, currentConfig) {
+                    android.content.res.Configuration(currentConfig).apply {
+                        setLocale(appLanguage.toLocale())
+                        setLayoutDirection(appLanguage.toLocale())
+                    }
+                }
+
+                FiveLightTheme(appearanceMode = appearanceMode) {
                 androidx.compose.runtime.CompositionLocalProvider(
                     androidx.compose.ui.platform.LocalContext provides localizedContext,
                     androidx.compose.ui.platform.LocalConfiguration provides localizedConfiguration,
@@ -1112,6 +1130,7 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
         }
     }
 }
+}
 
     override fun onResume() {
         super.onResume()
@@ -1239,3 +1258,76 @@ private fun GuestPermissionOrchestrator(
         }
     }
 }
+
+@Composable
+private fun CrashReportScreen(
+    crashLogText: String,
+    onDismiss: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    androidx.compose.material3.Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        androidx.compose.foundation.layout.Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            androidx.compose.material3.Text(
+                text = "App Crash Report",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)
+            ) {
+                androidx.compose.material3.Button(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        val clip = android.content.ClipData.newPlainText("Crash Trace", crashLogText)
+                        clipboard.setPrimaryClip(clip)
+                        android.widget.Toast.makeText(context, "Copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier.weight(1f)
+                ) {
+                    androidx.compose.material3.Text("Copy")
+                }
+                androidx.compose.material3.Button(
+                    onClick = onDismiss,
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    androidx.compose.material3.Text("Dismiss")
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .background(Color(0xFF1E1E1E), shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+            ) {
+                val scrollState = androidx.compose.foundation.rememberScrollState()
+                SelectionContainer {
+                    androidx.compose.material3.Text(
+                        text = crashLogText,
+                        style = androidx.compose.ui.text.TextStyle(
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            color = Color(0xFFF8F8F2)
+                        ),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(scrollState)
+                    )
+                }
+            }
+        }
+    }
+}
+

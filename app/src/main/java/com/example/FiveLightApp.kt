@@ -10,6 +10,7 @@ class FiveLightApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        com.example.util.CrashLogger.install(this)
         try {
             val language = com.example.data.util.AppLocaleManager.getPersistedLanguage(this)
             com.example.data.util.AppLocaleManager.applyAppLanguage(this, language)

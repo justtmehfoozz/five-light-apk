@@ -367,7 +367,14 @@ fun PreLoginPromptScreen(
                     .padding(bottom = 12.dp)
             ) {
                 Button(
-                    onClick = onLoginOrRegister,
+                    onClick = {
+                        try {
+                            onLoginOrRegister()
+                        } catch (e: Throwable) {
+                            com.example.util.CrashLogger.log(e)
+                            throw e
+                        }
+                    },
                     interactionSource = buttonInteractionSource,
                     shape = RoundedCornerShape(percent = 50),
                     colors = ButtonDefaults.buttonColors(
@@ -408,7 +415,14 @@ fun PreLoginPromptScreen(
                         .clickable(
                             interactionSource = guestInteractionSource,
                             indication = null,
-                            onClick = onContinueAsGuest
+                            onClick = {
+                                try {
+                                    onContinueAsGuest()
+                                } catch (e: Throwable) {
+                                    com.example.util.CrashLogger.log(e)
+                                    throw e
+                                }
+                            }
                         )
                         .graphicsLayer {
                             alpha = guestBtnAlpha.value * guestAlphaPressed
