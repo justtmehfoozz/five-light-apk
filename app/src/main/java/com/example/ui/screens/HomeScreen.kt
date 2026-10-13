@@ -1924,6 +1924,8 @@ fun PrayerGridCard(
         Brush.horizontalGradient(listOf(fillStart, fillEnd))
     }
 
+    val cachedCurvePath = remember { Path() }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -1976,32 +1978,82 @@ fun PrayerGridCard(
             )
             .drawWithContent {
                 if (animatedProgress > 0.001f && highlightProgress > 0.001f) {
-                    val fillWidth = size.width * animatedProgress
-                    drawRect(
-                        brush = progressFillBrush,
-                        topLeft = Offset.Zero,
-                        size = Size(fillWidth, size.height)
+                    val w = size.width
+                    val h = size.height
+                    val curveDepth = (w * 0.08f).coerceAtMost(16.dp.toPx())
+                    val featherWidth = 14.dp.toPx()
+
+                    val minX = -curveDepth * 1.5f
+                    val maxX = w + curveDepth * 1.5f
+
+                    val progressX = minX + (maxX - minX) * animatedProgress
+                    val topX = progressX - curveDepth * 0.35f
+                    val bottomX = progressX + curveDepth * 0.35f
+                    val ctrl1X = progressX + curveDepth * 0.75f
+                    val ctrl2X = progressX - curveDepth * 0.75f
+
+                    cachedCurvePath.reset()
+                    cachedCurvePath.moveTo(0f, 0f)
+                    cachedCurvePath.lineTo(topX, 0f)
+                    cachedCurvePath.cubicTo(
+                        x1 = ctrl1X, y1 = h * 0.33f,
+                        x2 = ctrl2X, y2 = h * 0.66f,
+                        x3 = bottomX, y3 = h
                     )
-                    val edgeWidth = 6.dp.toPx()
-                    val edgeStart = (fillWidth - edgeWidth).coerceAtLeast(0f)
-                    drawRect(
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(Color.Transparent, Color.White.copy(alpha = 0.18f * highlightProgress)),
-                            startX = edgeStart,
-                            endX = fillWidth
+                    cachedCurvePath.lineTo(0f, h)
+                    cachedCurvePath.close()
+
+                    val blendEndX = (topX.coerceAtLeast(bottomX) + featherWidth).coerceIn(1f, w + featherWidth * 2)
+                    val s = animStartColorState.value
+                    val e = animEndColorState.value
+                    val fillStart = Color(
+                        red = (s.red * 0.65f + 0.35f).coerceIn(0f, 1f),
+                        green = (s.green * 0.65f + 0.35f).coerceIn(0f, 1f),
+                        blue = (s.blue * 0.65f + 0.35f).coerceIn(0f, 1f),
+                        alpha = (0.22f * highlightProgress).coerceIn(0f, 1f)
+                    )
+                    val fillEnd = Color(
+                        red = (e.red * 0.65f + 0.35f).coerceIn(0f, 1f),
+                        green = (e.green * 0.65f + 0.35f).coerceIn(0f, 1f),
+                        blue = (e.blue * 0.65f + 0.35f).coerceIn(0f, 1f),
+                        alpha = (0.14f * highlightProgress).coerceIn(0f, 1f)
+                    )
+
+                    val featheredBrush = Brush.horizontalGradient(
+                        colors = listOf(
+                            fillStart,
+                            fillEnd,
+                            Color.Transparent
                         ),
-                        topLeft = Offset(edgeStart, 0f),
-                        size = Size(fillWidth - edgeStart, size.height)
+                        startX = 0f,
+                        endX = blendEndX
+                    )
+
+                    drawPath(
+                        path = cachedCurvePath,
+                        brush = featheredBrush
                     )
                 }
                 drawContent()
-                drawRect(
-                    brush = Brush.radialGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.15f), Color.Transparent),
-                        center = Offset(0f, 0f),
-                        radius = size.width * 0.85f
+
+                // Subtle iOS-inspired upper-edge glass reflection
+                if (highlightProgress > 0.001f) {
+                    val glassAlpha = 0.12f * highlightProgress
+                    val glassHighlightBrush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = glassAlpha),
+                            Color.White.copy(alpha = glassAlpha * 0.35f),
+                            Color.Transparent
+                        ),
+                        startY = 0f,
+                        endY = size.height * 0.28f
                     )
-                )
+                    drawRect(
+                        brush = glassHighlightBrush,
+                        topLeft = Offset.Zero,
+                        size = Size(size.width, size.height * 0.28f)
+                    )
+                }
             }
             .combinedClickable(
                 onClick = { handleTickTap() },
