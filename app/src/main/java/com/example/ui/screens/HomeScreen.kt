@@ -1713,6 +1713,47 @@ fun DailyPrayersSection(
     }
 }
 
+data class PrayerProgressBarColors(
+    val filledColor: Color,
+    val trackColor: Color,
+    val glowColor: Color
+)
+
+fun getPrayerProgressBarColors(prayerName: com.example.data.model.PrayerName): PrayerProgressBarColors {
+    return when (prayerName) {
+        com.example.data.model.PrayerName.FAJR -> PrayerProgressBarColors(
+            filledColor = Color(0xFF60A5FA), // Luminous blue
+            trackColor = Color(0xFF1E3A8A).copy(alpha = 0.35f),
+            glowColor = Color(0xFF93C5FD)
+        )
+        com.example.data.model.PrayerName.SUNRISE -> PrayerProgressBarColors(
+            filledColor = Color(0xFFFDBA74), // Warm sunrise amber
+            trackColor = Color(0xFF7C2D12).copy(alpha = 0.35f),
+            glowColor = Color(0xFFFED7AA)
+        )
+        com.example.data.model.PrayerName.DHUHR -> PrayerProgressBarColors(
+            filledColor = Color(0xFFFBBF24), // Golden yellow
+            trackColor = Color(0xFF78350F).copy(alpha = 0.35f),
+            glowColor = Color(0xFFFDE68A)
+        )
+        com.example.data.model.PrayerName.ASR -> PrayerProgressBarColors(
+            filledColor = Color(0xFFF97316), // Amber orange
+            trackColor = Color(0xFF7C2D12).copy(alpha = 0.35f),
+            glowColor = Color(0xFFFDBA74)
+        )
+        com.example.data.model.PrayerName.MAGHRIB -> PrayerProgressBarColors(
+            filledColor = Color(0xFFFB7185), // Muted rose-pink
+            trackColor = Color(0xFF881337).copy(alpha = 0.35f),
+            glowColor = Color(0xFFFDA4AF)
+        )
+        com.example.data.model.PrayerName.ISHA -> PrayerProgressBarColors(
+            filledColor = Color(0xFFA78BFA), // Indigo / violet
+            trackColor = Color(0xFF312E81).copy(alpha = 0.35f),
+            glowColor = Color(0xFFC4B5FD)
+        )
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PrayerGridCard(
@@ -1924,8 +1965,6 @@ fun PrayerGridCard(
         Brush.horizontalGradient(listOf(fillStart, fillEnd))
     }
 
-    val cachedCurvePath = remember { Path() }
-
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -1977,83 +2016,14 @@ fun PrayerGridCard(
                 shape = RoundedCornerShape(24.dp)
             )
             .drawWithContent {
-                if (animatedProgress > 0.001f && highlightProgress > 0.001f) {
-                    val w = size.width
-                    val h = size.height
-                    val curveDepth = (w * 0.08f).coerceAtMost(16.dp.toPx())
-                    val featherWidth = 14.dp.toPx()
-
-                    val minX = -curveDepth * 1.5f
-                    val maxX = w + curveDepth * 1.5f
-
-                    val progressX = minX + (maxX - minX) * animatedProgress
-                    val topX = progressX - curveDepth * 0.35f
-                    val bottomX = progressX + curveDepth * 0.35f
-                    val ctrl1X = progressX + curveDepth * 0.75f
-                    val ctrl2X = progressX - curveDepth * 0.75f
-
-                    cachedCurvePath.reset()
-                    cachedCurvePath.moveTo(0f, 0f)
-                    cachedCurvePath.lineTo(topX, 0f)
-                    cachedCurvePath.cubicTo(
-                        x1 = ctrl1X, y1 = h * 0.33f,
-                        x2 = ctrl2X, y2 = h * 0.66f,
-                        x3 = bottomX, y3 = h
-                    )
-                    cachedCurvePath.lineTo(0f, h)
-                    cachedCurvePath.close()
-
-                    val blendEndX = (topX.coerceAtLeast(bottomX) + featherWidth).coerceIn(1f, w + featherWidth * 2)
-                    val s = animStartColorState.value
-                    val e = animEndColorState.value
-                    val fillStart = Color(
-                        red = (s.red * 0.65f + 0.35f).coerceIn(0f, 1f),
-                        green = (s.green * 0.65f + 0.35f).coerceIn(0f, 1f),
-                        blue = (s.blue * 0.65f + 0.35f).coerceIn(0f, 1f),
-                        alpha = (0.22f * highlightProgress).coerceIn(0f, 1f)
-                    )
-                    val fillEnd = Color(
-                        red = (e.red * 0.65f + 0.35f).coerceIn(0f, 1f),
-                        green = (e.green * 0.65f + 0.35f).coerceIn(0f, 1f),
-                        blue = (e.blue * 0.65f + 0.35f).coerceIn(0f, 1f),
-                        alpha = (0.14f * highlightProgress).coerceIn(0f, 1f)
-                    )
-
-                    val featheredBrush = Brush.horizontalGradient(
-                        colors = listOf(
-                            fillStart,
-                            fillEnd,
-                            Color.Transparent
-                        ),
-                        startX = 0f,
-                        endX = blendEndX
-                    )
-
-                    drawPath(
-                        path = cachedCurvePath,
-                        brush = featheredBrush
-                    )
-                }
                 drawContent()
-
-                // Subtle iOS-inspired upper-edge glass reflection
-                if (highlightProgress > 0.001f) {
-                    val glassAlpha = 0.12f * highlightProgress
-                    val glassHighlightBrush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color.White.copy(alpha = glassAlpha),
-                            Color.White.copy(alpha = glassAlpha * 0.35f),
-                            Color.Transparent
-                        ),
-                        startY = 0f,
-                        endY = size.height * 0.28f
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.15f), Color.Transparent),
+                        center = Offset(0f, 0f),
+                        radius = size.width * 0.85f
                     )
-                    drawRect(
-                        brush = glassHighlightBrush,
-                        topLeft = Offset.Zero,
-                        size = Size(size.width, size.height * 0.28f)
-                    )
-                }
+                )
             }
             .combinedClickable(
                 onClick = { handleTickTap() },
@@ -2070,6 +2040,10 @@ fun PrayerGridCard(
                 .background(Color.White.copy(alpha = 0.35f))
                 .align(Alignment.TopEnd)
         )
+
+        val barColors = remember(prayer.name) {
+            getPrayerProgressBarColors(prayer.name)
+        }
 
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -2128,14 +2102,63 @@ fun PrayerGridCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Column {
+                // Horizontal 4dp iOS-inspired Progress Bar
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 6.dp)
+                        .padding(bottom = 12.dp)
+                        .height(4.dp)
+                        .clip(CircleShape)
+                ) {
+                    val w = size.width
+                    val h = size.height
+                    val cornerRadius = CornerRadius(h / 2f, h / 2f)
 
-            // Bottom Row: Checkmark Badge + Prayer Time
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+                    // 1. Draw Empty Track
+                    drawRoundRect(
+                        color = if (isCurrent) barColors.trackColor else Color.White.copy(alpha = 0.12f),
+                        topLeft = Offset.Zero,
+                        size = Size(w, h),
+                        cornerRadius = cornerRadius
+                    )
+
+                    // 2. Draw Filled Segment
+                    val effectiveProgress = if (isCurrent) animatedProgress.coerceIn(0f, 1f) else 0f
+                    val filledWidth = w * effectiveProgress
+                    if (filledWidth > 0f) {
+                        drawRoundRect(
+                            color = barColors.filledColor,
+                            topLeft = Offset.Zero,
+                            size = Size(filledWidth, h),
+                            cornerRadius = cornerRadius
+                        )
+
+                        // 3. Endpoint Glow localized around advancing edge
+                        val glowRadius = 8.dp.toPx()
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    barColors.glowColor.copy(alpha = (0.85f * highlightProgress).coerceIn(0f, 1f)),
+                                    barColors.glowColor.copy(alpha = (0.25f * highlightProgress).coerceIn(0f, 1f)),
+                                    Color.Transparent
+                                ),
+                                center = Offset(filledWidth, h / 2f),
+                                radius = glowRadius
+                            ),
+                            center = Offset(filledWidth, h / 2f),
+                            radius = glowRadius
+                        )
+                    }
+                }
+
+                // Bottom Row: Checkmark Badge + Prayer Time
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                 Box {
                     val targetBgColor = when {
                         isPrayed -> Color.White
@@ -2258,6 +2281,7 @@ fun PrayerGridCard(
             }
         }
     }
+}
 }
 
 @Composable
