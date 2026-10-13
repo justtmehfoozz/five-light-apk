@@ -180,6 +180,7 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
 
                 FiveLightTheme(appearanceMode = appearanceMode) {
                 androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.activity.compose.LocalActivityResultRegistryOwner provides this@MainActivity,
                     androidx.compose.ui.platform.LocalContext provides localizedContext,
                     androidx.compose.ui.platform.LocalConfiguration provides localizedConfiguration,
                     androidx.compose.ui.platform.LocalLayoutDirection provides appLanguage.layoutDirection,
