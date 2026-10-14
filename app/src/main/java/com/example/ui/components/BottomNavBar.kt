@@ -578,7 +578,7 @@ fun SereneBottomNavBar(
             }
     }
 
-    val effectiveCompact = if (morphState == DockMorphState.DOCK) {
+    val effectiveCompact = if (morphState == DockMorphState.DOCK || morphState == DockMorphState.MUSIC) {
         scrollCompactProgress.coerceIn(0f, 1f)
     } else {
         0f
@@ -587,12 +587,12 @@ fun SereneBottomNavBar(
     // Base Dimensions for the shared surface
     val targetBaseWidth = when (morphState) {
         DockMorphState.SEARCH -> 340.dp
-        DockMorphState.MUSIC -> 330.dp
+        DockMorphState.MUSIC -> androidx.compose.ui.unit.lerp(330.dp, 313.5.dp, effectiveCompact)
         DockMorphState.DOCK -> androidx.compose.ui.unit.lerp(276.dp, 262.dp, effectiveCompact)
     }
     val targetBaseHeight = when (morphState) {
         DockMorphState.SEARCH -> 60.dp
-        DockMorphState.MUSIC -> 76.dp
+        DockMorphState.MUSIC -> androidx.compose.ui.unit.lerp(76.dp, 72.2.dp, effectiveCompact)
         DockMorphState.DOCK -> androidx.compose.ui.unit.lerp(60.dp, 57.dp, effectiveCompact)
     }
     val targetCornerRadius = targetBaseHeight / 2
@@ -628,17 +628,17 @@ fun SereneBottomNavBar(
 
     val animatedBaseWidth by animateDpAsState(
         targetValue = targetBaseWidth,
-        animationSpec = if (morphState == DockMorphState.DOCK) snap() else LIQUID_GLASS_SPRING_DP,
+        animationSpec = if (morphState == DockMorphState.DOCK || morphState == DockMorphState.MUSIC) snap() else LIQUID_GLASS_SPRING_DP,
         label = "liquidGlassWidth"
     )
     val animatedBaseHeight by animateDpAsState(
         targetValue = targetBaseHeight,
-        animationSpec = if (morphState == DockMorphState.DOCK) snap() else LIQUID_GLASS_SPRING_DP,
+        animationSpec = if (morphState == DockMorphState.DOCK || morphState == DockMorphState.MUSIC) snap() else LIQUID_GLASS_SPRING_DP,
         label = "liquidGlassHeight"
     )
     val animatedCornerRadius by animateDpAsState(
         targetValue = targetCornerRadius,
-        animationSpec = if (morphState == DockMorphState.DOCK) snap() else LIQUID_GLASS_SPRING_DP,
+        animationSpec = if (morphState == DockMorphState.DOCK || morphState == DockMorphState.MUSIC) snap() else LIQUID_GLASS_SPRING_DP,
         label = "liquidGlassRadius"
     )
 
@@ -1210,7 +1210,7 @@ fun SereneBottomNavBar(
                                             val a = if (isPlaying && !isReducedMotion) ambientPulseAlphaState.value else musicIndicatorAlphaState.value
                                             drawCircle(color = primaryAccent.copy(alpha = a))
                                         }
-                                        .clickable { onExpandPlayer() },
+                                        .clickable { currentOnExpandNavBar(); onExpandPlayer() },
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
@@ -1243,7 +1243,7 @@ fun SereneBottomNavBar(
                                                 .weight(1f)
                                                 .padding(end = 4.dp)
                                                 .clip(RoundedCornerShape(8.dp))
-                                                .clickable { onExpandPlayer() },
+                                                .clickable { currentOnExpandNavBar(); onExpandPlayer() },
                                             contentAlignment = Alignment.CenterStart
                                         ) {
                                             AnimatedContent(

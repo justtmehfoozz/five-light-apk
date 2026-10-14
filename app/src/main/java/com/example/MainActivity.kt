@@ -426,7 +426,7 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                             val audioProgress by viewModel.audioProgress.collectAsStateWithLifecycle()
 
                             val navBarCompactProgress by animateFloatAsState(
-                                targetValue = if (showSearchOverlay || playingSurahNumber != null) 0f else navBarCompactTarget,
+                                targetValue = if (showSearchOverlay) 0f else navBarCompactTarget,
                                 animationSpec = tween(
                                     durationMillis = 180,
                                     easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
