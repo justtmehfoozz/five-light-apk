@@ -321,6 +321,8 @@ fun SereneBottomNavBar(
     onExpandPlayer: () -> Unit = {},
     isScrolledAwayFromActiveVerse: Boolean = false,
     onJumpToActiveVerse: () -> Unit = {},
+    onExpandNavBar: () -> Unit = {},
+    scrollCompactProgress: Float = 0f,
     modifier: Modifier = Modifier
 ) {
     val isPlaybackMode = isPlaybackModeProvider()
@@ -335,6 +337,7 @@ fun SereneBottomNavBar(
     val currentOnOpenSearch by rememberUpdatedState(onOpenSearch)
     val currentOnFifthSlotMoreTap by rememberUpdatedState(onFifthSlotMoreTap)
     val currentOnNavigate by rememberUpdatedState(onNavigate)
+    val currentOnExpandNavBar by rememberUpdatedState(onExpandNavBar)
 
     val isDark = MaterialTheme.colorScheme.background.run { (red + green + blue) < 1.5f }
 
@@ -575,32 +578,67 @@ fun SereneBottomNavBar(
             }
     }
 
+    val effectiveCompact = if (morphState == DockMorphState.DOCK) {
+        scrollCompactProgress.coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
     // Base Dimensions for the shared surface
     val targetBaseWidth = when (morphState) {
         DockMorphState.SEARCH -> 340.dp
         DockMorphState.MUSIC -> 330.dp
-        DockMorphState.DOCK -> 276.dp
+        DockMorphState.DOCK -> androidx.compose.ui.unit.lerp(276.dp, 262.dp, effectiveCompact)
     }
     val targetBaseHeight = when (morphState) {
         DockMorphState.SEARCH -> 60.dp
         DockMorphState.MUSIC -> 76.dp
-        DockMorphState.DOCK -> 60.dp
+        DockMorphState.DOCK -> androidx.compose.ui.unit.lerp(60.dp, 57.dp, effectiveCompact)
     }
     val targetCornerRadius = targetBaseHeight / 2
 
+    val dockRowWidth = when (morphState) {
+        DockMorphState.DOCK -> androidx.compose.ui.unit.lerp(256.dp, 243.2.dp, effectiveCompact)
+        else -> 256.dp
+    }
+    val slotPitchDp = when (morphState) {
+        DockMorphState.DOCK -> androidx.compose.ui.unit.lerp(52.dp, 49.4.dp, effectiveCompact)
+        else -> 52.dp
+    }
+    val ballSizeDp = when (morphState) {
+        DockMorphState.DOCK -> androidx.compose.ui.unit.lerp(44.dp, 41.8.dp, effectiveCompact)
+        else -> 44.dp
+    }
+    val iconContainerSizeDp = when (morphState) {
+        DockMorphState.DOCK -> androidx.compose.ui.unit.lerp(48.dp, 45.6.dp, effectiveCompact)
+        else -> 48.dp
+    }
+    val iconSizeDp = when (morphState) {
+        DockMorphState.DOCK -> androidx.compose.ui.unit.lerp(22.dp, 20.9.dp, effectiveCompact)
+        else -> 22.dp
+    }
+    val ballStartOffsetDp = when (morphState) {
+        DockMorphState.DOCK -> androidx.compose.ui.unit.lerp(2.dp, 1.9.dp, effectiveCompact)
+        else -> 2.dp
+    }
+    val trailOffsetDp = when (morphState) {
+        DockMorphState.DOCK -> androidx.compose.ui.unit.lerp(24.dp, 22.8.dp, effectiveCompact)
+        else -> 24.dp
+    }
+
     val animatedBaseWidth by animateDpAsState(
         targetValue = targetBaseWidth,
-        animationSpec = LIQUID_GLASS_SPRING_DP,
+        animationSpec = if (morphState == DockMorphState.DOCK) snap() else LIQUID_GLASS_SPRING_DP,
         label = "liquidGlassWidth"
     )
     val animatedBaseHeight by animateDpAsState(
         targetValue = targetBaseHeight,
-        animationSpec = LIQUID_GLASS_SPRING_DP,
+        animationSpec = if (morphState == DockMorphState.DOCK) snap() else LIQUID_GLASS_SPRING_DP,
         label = "liquidGlassHeight"
     )
     val animatedCornerRadius by animateDpAsState(
         targetValue = targetCornerRadius,
-        animationSpec = LIQUID_GLASS_SPRING_DP,
+        animationSpec = if (morphState == DockMorphState.DOCK) snap() else LIQUID_GLASS_SPRING_DP,
         label = "liquidGlassRadius"
     )
 
@@ -839,7 +877,7 @@ fun SereneBottomNavBar(
                             // DOCK NAVIGATION ITEMS (5 SLOTS)
                             Box(
                                 modifier = Modifier
-                                    .width(256.dp)
+                                    .width(dockRowWidth)
                                     .fillMaxHeight()
                                     .align(Alignment.Center)
                                     .pointerInput(isSearchActive, controller) {
@@ -848,11 +886,12 @@ fun SereneBottomNavBar(
                                             awaitPointerEventScope {
                                                 while (true) {
                                                     val down = awaitFirstDown(requireUnconsumed = false)
+                                                     currentOnExpandNavBar()
                                                     val startX = down.position.x
                                                     val startY = down.position.y
                                                     val containerHeightPx = size.height.toFloat()
-                                                    val slotPitchPx = 52.dp.toPx()
-                                                    val startOffsetPx = 26.dp.toPx()
+                                                    val slotPitchPx = slotPitchDp.toPx()
+                                                    val startOffsetPx = (iconContainerSizeDp / 2f).toPx()
 
                                                     controller.onGestureStart(
                                                         startX = startX,
@@ -931,13 +970,13 @@ fun SereneBottomNavBar(
                                             .fillMaxSize()
                                             .graphicsLayer { alpha = navIconsAlpha }
                                     ) {
-                                        val currentCenterPx = (displayIndicatorFraction * 52.dp.toPx()) + 24.dp.toPx()
-                                        val trailCenterPx = (trailFraction * 52.dp.toPx()) + 24.dp.toPx()
+                                        val currentCenterPx = (displayIndicatorFraction * slotPitchDp.toPx()) + trailOffsetDp.toPx()
+                                        val trailCenterPx = (trailFraction * slotPitchDp.toPx()) + trailOffsetDp.toPx()
                                         val centerYPx = size.height / 2f
 
-                                        val minXPx = minOf(currentCenterPx, trailCenterPx) - 16.dp.toPx()
-                                        val maxXPx = maxOf(currentCenterPx, trailCenterPx) + 16.dp.toPx()
-                                        val trailHeightPx = 36.dp.toPx()
+                                        val minXPx = minOf(currentCenterPx, trailCenterPx) - (slotPitchDp.toPx() * 0.3f)
+                                        val maxXPx = maxOf(currentCenterPx, trailCenterPx) + (slotPitchDp.toPx() * 0.3f)
+                                        val trailHeightPx = ballSizeDp.toPx() * 0.82f
                                         val topPx = centerYPx - (trailHeightPx / 2f)
 
                                         val trailAlpha = if (isDark) {
@@ -979,12 +1018,12 @@ fun SereneBottomNavBar(
                                     modifier = Modifier
                                         .align(Alignment.CenterStart)
                                         .graphicsLayer {
-                                            translationX = (displayIndicatorFraction * 52.dp.toPx()) + 2.dp.toPx()
+                                            translationX = (displayIndicatorFraction * slotPitchDp.toPx()) + ballStartOffsetDp.toPx()
                                             scaleX = controller.ballScale.value
                                             scaleY = controller.ballScale.value
                                             alpha = navIconsAlpha
                                         }
-                                        .size(44.dp)
+                                        .size(ballSizeDp)
                                         .drawBehind {
                                             val scaleVal = controller.ballScale.value
                                             val pressProgress = ((scaleVal - 1f) / 0.10f).coerceIn(0f, 1f)
@@ -1046,7 +1085,7 @@ fun SereneBottomNavBar(
                                 )
 
                                 Row(
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.fillMaxSize()
                                 ) {
@@ -1061,12 +1100,13 @@ fun SereneBottomNavBar(
 
                                         Box(
                                             modifier = Modifier
-                                                .size(48.dp)
+                                                .size(iconContainerSizeDp)
                                                 .testTag("nav_${item.route}")
                                                 .graphicsLayer {
                                                     if (index == 4) {
-                                                        val naturalX = (currentWidthDp.toPx() - 256.dp.toPx()) / 2f + 232.dp.toPx()
-                                                        val actualX = lerp(242.dp, 26.dp, morphFraction).toPx()
+                                                        val targetNaturalX = androidx.compose.ui.unit.lerp(232.dp, 220.4.dp, effectiveCompact)
+                                                        val naturalX = (currentWidthDp.toPx() - dockRowWidth.toPx()) / 2f + targetNaturalX.toPx()
+                                                        val actualX = androidx.compose.ui.util.lerp(naturalX, 26.dp.toPx(), morphFraction)
                                                         translationX = actualX - naturalX
 
                                                         val targetScale = 20f / 22f
@@ -1104,14 +1144,14 @@ fun SereneBottomNavBar(
                                                 HamburgerToSearchIcon(
                                                     progress = finalIconMorphProgress,
                                                     tint = effectiveIconColor,
-                                                    modifier = Modifier.size(22.dp)
+                                                    modifier = Modifier.size(iconSizeDp)
                                                 )
                                             } else {
                                                 Icon(
                                                     imageVector = if (active) item.iconSelected else item.iconUnselected,
                                                     contentDescription = stringResource(item.labelRes),
                                                     tint = animatedIconColor,
-                                                    modifier = Modifier.size(22.dp)
+                                                    modifier = Modifier.size(iconSizeDp)
                                                 )
                                             }
                                         }

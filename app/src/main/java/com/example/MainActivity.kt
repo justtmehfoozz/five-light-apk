@@ -12,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -22,6 +23,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.sp
@@ -381,9 +385,33 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                         val appContentAlpha = if (isSplashFinished) 1f else splashExitProgress
                         val appContentScale = if (isSplashFinished) 1f else (0.98f + 0.02f * splashExitProgress)
 
+                        var navBarCompactTarget by remember { mutableFloatStateOf(0f) }
+
+                        val navBarScrollConnection = remember {
+                            object : NestedScrollConnection {
+                                override fun onPreScroll(
+                                    available: Offset,
+                                    source: NestedScrollSource
+                                ): Offset {
+                                    val deltaY = available.y
+                                    if (deltaY < -3f) {
+                                        navBarCompactTarget = 1f
+                                    } else if (deltaY > 3f) {
+                                        navBarCompactTarget = 0f
+                                    }
+                                    return Offset.Zero
+                                }
+                            }
+                        }
+
+                        LaunchedEffect(pagerState.currentPage) {
+                            navBarCompactTarget = 0f
+                        }
+
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .nestedScroll(navBarScrollConnection)
                                 .graphicsLayer {
                                     alpha = appContentAlpha
                                     scaleX = appContentScale
@@ -396,6 +424,15 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                             val isPlayingAudio by viewModel.isPlayingAudio.collectAsStateWithLifecycle()
                             val isLoadingAudio by viewModel.isLoadingAudio.collectAsStateWithLifecycle()
                             val audioProgress by viewModel.audioProgress.collectAsStateWithLifecycle()
+
+                            val navBarCompactProgress by animateFloatAsState(
+                                targetValue = if (showSearchOverlay || playingSurahNumber != null) 0f else navBarCompactTarget,
+                                animationSpec = tween(
+                                    durationMillis = 180,
+                                    easing = CubicBezierEasing(0.2f, 0.0f, 0.0f, 1.0f)
+                                ),
+                                label = "navBarCompactProgress"
+                            )
 
                             val pagerFlingBehavior = PagerDefaults.flingBehavior(
                         state = pagerState,
@@ -756,6 +793,7 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                     SereneBottomNavBar(
                         currentRoute = currentRoute,
                         onNavigate = { navItem ->
+                            navBarCompactTarget = 0f
                             val targetPage = when (navItem.route) {
                                 "home" -> 0
                                 "qibla" -> 1
@@ -766,6 +804,8 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                             }
                             navigateToPage(targetPage)
                         },
+                        onExpandNavBar = { navBarCompactTarget = 0f },
+                        scrollCompactProgress = navBarCompactProgress,
                         hazeState = hazeState,
                         pagerFractionProvider = { pagerState.currentPage + pagerState.currentPageOffsetFraction },
                         selectorController = selectorController,
