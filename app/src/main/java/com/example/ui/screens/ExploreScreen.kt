@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.WbSunny
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -164,6 +165,11 @@ fun ExploreScreen(
                 NamesOfAllahScreen(
                     onBack = { onSubRouteChange("main") },
                     initialNameNumber = targetNameNumber
+                )
+            }
+            "feelings" -> {
+                HoneycombEmotionScreen(
+                    onBack = { onSubRouteChange("main") }
                 )
             }
             "calendar" -> {
@@ -311,11 +317,20 @@ fun ExploreMainContent(
             "calendar" to CategoryData(
                 id = "calendar",
                 title = "Hijri Calendar",
-                subtitle = "Islamic lunar calendar & key spiritual events",
+                subtitle = "Islamic lunar calendar",
                 icon = Icons.Filled.CalendarMonth,
                 badgeText = null,
                 testTag = "explore_card_calendar",
                 destination = "calendar"
+            ),
+            "feelings" to CategoryData(
+                id = "feelings",
+                title = "I am feeling",
+                subtitle = "Duas for your emotions",
+                icon = Icons.Outlined.FavoriteBorder,
+                badgeText = null,
+                testTag = "explore_card_feelings",
+                destination = "feelings"
             )
         )
     }
@@ -417,54 +432,100 @@ fun ExploreMainContent(
                         modifier = Modifier.padding(bottom = 10.dp)
                     )
 
-                    val topTwo = orderedCategoryIds.take(2).mapNotNull { categoryDefinitions[it] }
-                    val third = orderedCategoryIds.drop(2).firstOrNull()?.let { categoryDefinitions[it] }
+                                        val cardDua = categoryDefinitions["dua"]
+                    val cardNames = categoryDefinitions["names"]
+                    val cardCalendar = categoryDefinitions["calendar"]
+                    val cardFeelings = categoryDefinitions["feelings"]
 
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        // Top two items in a responsive 2-column grid
-                        if (topTwo.size == 2) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                topTwo.forEach { category ->
-                                    CategoryGridCard(
-                                        key = category.id,
-                                        title = category.title,
-                                        subtitle = category.subtitle,
-                                        icon = category.icon,
-                                        badgeText = category.badgeText,
-                                        onClick = { handleCategoryClick(category.destination) },
-                                        isDark = isDark,
-                                        cardBg = cardBg,
-                                        cardBorder = cardBorder,
-                                        textPrimary = textPrimary,
-                                        textSecondary = textSecondary,
-                                        accentColor = accentColor,
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .testTag(category.testTag)
-                                    )
-                                }
+                        // Row 1: Dua Library & Names of Allah
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            cardDua?.let { category ->
+                                CategoryGridCard(
+                                    key = category.id,
+                                    title = category.title,
+                                    subtitle = category.subtitle,
+                                    icon = category.icon,
+                                    badgeText = category.badgeText,
+                                    onClick = { handleCategoryClick(category.destination) },
+                                    isDark = isDark,
+                                    cardBg = cardBg,
+                                    cardBorder = cardBorder,
+                                    textPrimary = textPrimary,
+                                    textSecondary = textSecondary,
+                                    accentColor = accentColor,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag(category.testTag)
+                                )
+                            }
+                            cardNames?.let { category ->
+                                CategoryGridCard(
+                                    key = category.id,
+                                    title = category.title,
+                                    subtitle = category.subtitle,
+                                    icon = category.icon,
+                                    badgeText = category.badgeText,
+                                    onClick = { handleCategoryClick(category.destination) },
+                                    isDark = isDark,
+                                    cardBg = cardBg,
+                                    cardBorder = cardBorder,
+                                    textPrimary = textPrimary,
+                                    textSecondary = textSecondary,
+                                    accentColor = accentColor,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag(category.testTag)
+                                )
                             }
                         }
 
-                        // Third item rendered as the wide banner card
-                        third?.let { category ->
-                            CategoryWideCard(
-                                key = category.id,
-                                title = category.title,
-                                subtitle = category.subtitle,
-                                icon = category.icon,
-                                onClick = { handleCategoryClick(category.destination) },
-                                isDark = isDark,
-                                cardBg = cardBg,
-                                cardBorder = cardBorder,
-                                textPrimary = textPrimary,
-                                textSecondary = textSecondary,
-                                accentColor = accentColor,
-                                modifier = Modifier.testTag(category.testTag)
-                            )
+                        // Row 2: Hijri Calendar & I am feeling
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            cardCalendar?.let { category ->
+                                CategoryGridCard(
+                                    key = category.id,
+                                    title = category.title,
+                                    subtitle = category.subtitle,
+                                    icon = category.icon,
+                                    badgeText = category.badgeText,
+                                    onClick = { handleCategoryClick(category.destination) },
+                                    isDark = isDark,
+                                    cardBg = cardBg,
+                                    cardBorder = cardBorder,
+                                    textPrimary = textPrimary,
+                                    textSecondary = textSecondary,
+                                    accentColor = accentColor,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag(category.testTag)
+                                )
+                            }
+                            cardFeelings?.let { category ->
+                                CategoryGridCard(
+                                    key = category.id,
+                                    title = category.title,
+                                    subtitle = category.subtitle,
+                                    icon = category.icon,
+                                    badgeText = category.badgeText,
+                                    onClick = { handleCategoryClick(category.destination) },
+                                    isDark = isDark,
+                                    cardBg = cardBg,
+                                    cardBorder = cardBorder,
+                                    textPrimary = textPrimary,
+                                    textSecondary = textSecondary,
+                                    accentColor = accentColor,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag(category.testTag)
+                                )
+                            }
                         }
                     }
                 }
