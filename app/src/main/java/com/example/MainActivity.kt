@@ -263,7 +263,8 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                 val isAppUpdateAvailable by viewModel.isAppUpdateAvailable.collectAsStateWithLifecycle()
                 val setupCompletedEvent by viewModel.setupCompletedEvent.collectAsStateWithLifecycle()
                 val isSetupRequired = remember(currentUser, setupCompletedEvent) {
-                    currentUser != null && !viewModel.isSetupCompleted(currentUser?.uid.orEmpty())
+                    val uid = currentUser?.uid.orEmpty().ifBlank { "anonymous_user" }
+                    !viewModel.isSetupCompleted(uid)
                 }
 
                 // Check intent on launch / resume for update notification click
@@ -971,7 +972,7 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
 
                     if (isSplashFinished && (!hasSeenAccountPrompt || authRouteState != "NONE" || isSetupRequired || !hasSeenFiveLightPrelude)) {
                         val currentStartupOverlayState = remember(hasSeenFiveLightPrelude, hasSeenAccountPrompt, authRouteState, currentUser) {
-                            if (!hasSeenFiveLightPrelude && !hasSeenAccountPrompt && authRouteState == "NONE" && currentUser == null) {
+                            if (!hasSeenFiveLightPrelude && authRouteState == "NONE") {
                                 "PRELUDE"
                             } else if (!hasSeenAccountPrompt && authRouteState == "NONE" && currentUser == null) {
                                 "PRE_LOGIN_PROMPT"

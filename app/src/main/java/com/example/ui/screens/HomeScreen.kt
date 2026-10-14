@@ -1779,7 +1779,10 @@ fun DailyPrayersSection(
     }
 }
 
-fun getActivePrayerGlowColor(prayerName: com.example.data.model.PrayerName): Color {
+fun getActivePrayerGlowColor(prayerName: com.example.data.model.PrayerName, isFriday: Boolean = false): Color {
+    if (prayerName == com.example.data.model.PrayerName.DHUHR && isFriday) {
+        return Color(0xFF34D399) // Mint / Emerald Green
+    }
     return when (prayerName) {
         com.example.data.model.PrayerName.FAJR -> Color(0xFF60A5FA)    // Soft Blue
         com.example.data.model.PrayerName.SUNRISE -> Color(0xFFFBBF24) // Golden Yellow
@@ -1796,7 +1799,14 @@ data class PrayerProgressBarColors(
     val glowColor: Color
 )
 
-fun getPrayerProgressBarColors(prayerName: com.example.data.model.PrayerName): PrayerProgressBarColors {
+fun getPrayerProgressBarColors(prayerName: com.example.data.model.PrayerName, isFriday: Boolean = false): PrayerProgressBarColors {
+    if (prayerName == com.example.data.model.PrayerName.DHUHR && isFriday) {
+        return PrayerProgressBarColors(
+            filledColor = Color(0xFF34D399), // Mint / Emerald Green
+            trackColor = Color(0xFF064E3B).copy(alpha = 0.40f), // Dark emerald track
+            glowColor = Color(0xFF6EE7B7) // Soft mint glow
+        )
+    }
     return when (prayerName) {
         com.example.data.model.PrayerName.FAJR -> PrayerProgressBarColors(
             filledColor = Color(0xFF60A5FA), // Luminous blue
@@ -1994,9 +2004,9 @@ fun PrayerGridCard(
     val effectiveGlowAlpha = (if (isCurrent) pulseAlpha else 0f) * highlightProgress
 
     // Soft active color family derived from prayer name:
-    // Fajr: Blue, Dhuhr: Golden Yellow, Asr: Amber Orange, Maghrib: Rose, Isha: Indigo Violet
-    val activeGlowColor = remember(prayer.name) {
-        getActivePrayerGlowColor(prayer.name)
+    // Fajr: Blue, Dhuhr: Golden Yellow, Asr: Amber Orange, Maghrib: Rose, Isha: Indigo Violet, Jummah: Emerald Green
+    val activeGlowColor = remember(prayer.name, isFriday) {
+        getActivePrayerGlowColor(prayer.name, isFriday)
     }
 
     // Subtle 1.5dp active border using prayer color family
@@ -2064,8 +2074,8 @@ fun PrayerGridCard(
             )
             .testTag("prayer_card_${prayer.name.id}")
     ) {
-        val barColors = remember(prayer.name) {
-            getPrayerProgressBarColors(prayer.name)
+        val barColors = remember(prayer.name, isFriday) {
+            getPrayerProgressBarColors(prayer.name, isFriday)
         }
 
         // Upper-Right Progress Bar positioned with exact equal 20dp top & right insets from card bounds
@@ -2161,7 +2171,12 @@ fun PrayerGridCard(
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
-                HandDrawnSkyIcon(prayerName = prayer.name, isFriday = isFriday, modifier = Modifier.size(24.dp))
+                Box(
+                    modifier = Modifier.size(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    HandDrawnSkyIcon(prayerName = prayer.name, isFriday = isFriday, modifier = Modifier.size(24.dp))
+                }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -2356,30 +2371,32 @@ fun HandDrawnSkyIcon(
         val w = size.width
         val h = size.height
         val stroke = Stroke(
-            width = 2.dp.toPx(),
+            width = 2.1.dp.toPx(),
             cap = androidx.compose.ui.graphics.StrokeCap.Round,
             join = androidx.compose.ui.graphics.StrokeJoin.Round
         )
 
         when (prayerName) {
             PrayerName.FAJR, PrayerName.SUNRISE -> {
-                // Fajr / Sunrise — Horizon line + Rising sun arc + 3 upward rays
-                val horizonY = h * 0.72f
-                drawLine(color, Offset(w * 0.12f, horizonY), Offset(w * 0.88f, horizonY), strokeWidth = stroke.width, cap = stroke.cap)
+                // Fajr / Sunrise: Semicircle rising ABOVE horizontal horizon line + 3 upward radial rays
+                val horizonY = h * 0.70f
+                drawLine(color, Offset(w * 0.10f, horizonY), Offset(w * 0.90f, horizonY), strokeWidth = stroke.width, cap = stroke.cap)
+
                 val sunRadius = w * 0.22f
                 drawArc(
                     color = color,
                     startAngle = 180f,
                     sweepAngle = 180f,
                     useCenter = false,
-                    topLeft = Offset(w * 0.5f - sunRadius, horizonY - sunRadius),
+                    topLeft = Offset(w * 0.50f - sunRadius, horizonY - sunRadius),
                     size = Size(sunRadius * 2f, sunRadius * 2f),
                     style = stroke
                 )
+
                 // 3 Upward rays
-                drawLine(color, Offset(w * 0.50f, horizonY - sunRadius - h * 0.08f), Offset(w * 0.50f, h * 0.18f), strokeWidth = stroke.width, cap = stroke.cap)
-                drawLine(color, Offset(w * 0.30f, horizonY - sunRadius * 0.7f), Offset(w * 0.22f, h * 0.32f), strokeWidth = stroke.width, cap = stroke.cap)
-                drawLine(color, Offset(w * 0.70f, horizonY - sunRadius * 0.7f), Offset(w * 0.78f, h * 0.32f), strokeWidth = stroke.width, cap = stroke.cap)
+                drawLine(color, Offset(w * 0.50f, horizonY - sunRadius - h * 0.08f), Offset(w * 0.50f, h * 0.20f), strokeWidth = stroke.width, cap = stroke.cap)
+                drawLine(color, Offset(w * 0.32f, horizonY - sunRadius * 0.75f), Offset(w * 0.22f, h * 0.34f), strokeWidth = stroke.width, cap = stroke.cap)
+                drawLine(color, Offset(w * 0.68f, horizonY - sunRadius * 0.75f), Offset(w * 0.78f, h * 0.34f), strokeWidth = stroke.width, cap = stroke.cap)
             }
 
             PrayerName.DHUHR -> {
@@ -2407,14 +2424,14 @@ fun HandDrawnSkyIcon(
                     drawLine(color, Offset(w * 0.18f, h * 0.34f), Offset(w * 0.18f, h * 0.22f), strokeWidth = stroke.width, cap = stroke.cap)
                     drawLine(color, Offset(w * 0.82f, h * 0.84f), Offset(w * 0.82f, h * 0.34f), strokeWidth = stroke.width, cap = stroke.cap)
                     drawLine(color, Offset(w * 0.77f, h * 0.34f), Offset(w * 0.87f, h * 0.34f), strokeWidth = stroke.width, cap = stroke.cap)
-                    drawLine(color, Offset(w * 0.82f, h * 0.34f), Offset(w * 0.82f, h * 0.22f), strokeWidth = stroke.width, cap = stroke.cap)
+                    drawLine(color, Offset(w * 0.82f, h * 0.84f), Offset(w * 0.82f, h * 0.22f), strokeWidth = stroke.width, cap = stroke.cap)
                 } else {
-                    // Dhuhr — Sun at High Noon: Center sun circle + 8 clean, restrained radial rays
-                    val sunRadius = w * 0.22f
-                    val center = Offset(w * 0.5f, h * 0.5f)
+                    // Dhuhr: High noon sun — Central circle with 8 clean, evenly spaced, short radial rays
+                    val sunRadius = w * 0.20f
+                    val center = Offset(w * 0.50f, h * 0.50f)
                     drawCircle(color, radius = sunRadius, center = center, style = stroke)
 
-                    val innerRayRadius = w * 0.30f
+                    val innerRayRadius = w * 0.29f
                     val outerRayRadius = w * 0.40f
                     for (i in 0 until 8) {
                         val angleRad = Math.toRadians(i * 45.0)
@@ -2428,69 +2445,74 @@ fun HandDrawnSkyIcon(
             }
 
             PrayerName.ASR -> {
-                // Asr — Afternoon Sun: Sun sitting near/above horizontal horizon line
+                // Asr: Afternoon sun near horizon — A sun circle sitting cleanly JUST ABOVE a straight horizontal line
                 val horizonY = h * 0.72f
-                drawLine(color, Offset(w * 0.12f, horizonY), Offset(w * 0.88f, horizonY), strokeWidth = stroke.width, cap = stroke.cap)
+                drawLine(color, Offset(w * 0.10f, horizonY), Offset(w * 0.90f, horizonY), strokeWidth = stroke.width, cap = stroke.cap)
+
                 val sunRadius = w * 0.18f
-                val sunCenter = Offset(w * 0.50f, horizonY - sunRadius - h * 0.06f)
+                val sunCenter = Offset(w * 0.50f, horizonY - sunRadius - h * 0.05f)
                 drawCircle(color, radius = sunRadius, center = sunCenter, style = stroke)
 
-                // 3 short angled afternoon rays
-                val rayLen = w * 0.08f
+                // 3 short, soft afternoon rays around the upper arc
+                val innerRayR = sunRadius + w * 0.07f
+                val outerRayR = innerRayR + w * 0.09f
                 val angles = listOf(-135.0, -90.0, -45.0)
                 for (angleDeg in angles) {
                     val angleRad = Math.toRadians(angleDeg)
                     val cosA = kotlin.math.cos(angleRad).toFloat()
                     val sinA = kotlin.math.sin(angleRad).toFloat()
-                    val start = Offset(sunCenter.x + cosA * (sunRadius + w * 0.06f), sunCenter.y + sinA * (sunRadius + h * 0.06f))
-                    val end = Offset(start.x + cosA * rayLen, start.y + sinA * rayLen)
+                    val start = Offset(sunCenter.x + cosA * innerRayR, sunCenter.y + sinA * innerRayR)
+                    val end = Offset(sunCenter.x + cosA * outerRayR, sunCenter.y + sinA * outerRayR)
                     drawLine(color, start, end, strokeWidth = stroke.width, cap = stroke.cap)
                 }
             }
 
             PrayerName.MAGHRIB -> {
-                // Maghrib — Sunset: Setting sun dipping below horizontal horizon line
-                val horizonY = h * 0.58f
-                drawLine(color, Offset(w * 0.12f, horizonY), Offset(w * 0.88f, horizonY), strokeWidth = stroke.width, cap = stroke.cap)
+                // Maghrib: Sunset — Semicircle setting/dipping BELOW a straight horizontal horizon line
+                val horizonY = h * 0.52f
+                drawLine(color, Offset(w * 0.10f, horizonY), Offset(w * 0.90f, horizonY), strokeWidth = stroke.width, cap = stroke.cap)
+
                 val sunRadius = w * 0.22f
                 drawArc(
                     color = color,
                     startAngle = 0f,
                     sweepAngle = 180f,
                     useCenter = false,
-                    topLeft = Offset(w * 0.5f - sunRadius, horizonY - sunRadius),
+                    topLeft = Offset(w * 0.50f - sunRadius, horizonY - sunRadius),
                     size = Size(sunRadius * 2f, sunRadius * 2f),
                     style = stroke
                 )
-                // Downward direction indicator above horizon
-                drawLine(color, Offset(w * 0.50f, h * 0.18f), Offset(w * 0.50f, horizonY - sunRadius * 0.3f), strokeWidth = stroke.width, cap = stroke.cap)
-                drawLine(color, Offset(w * 0.40f, horizonY - sunRadius * 0.6f), Offset(w * 0.50f, horizonY - sunRadius * 0.3f), strokeWidth = stroke.width, cap = stroke.cap)
-                drawLine(color, Offset(w * 0.60f, horizonY - sunRadius * 0.6f), Offset(w * 0.50f, horizonY - sunRadius * 0.3f), strokeWidth = stroke.width, cap = stroke.cap)
+
+                // 3 short setting rays pointing down/outward around the bottom arc
+                val rayLen = w * 0.09f
+                val angles = listOf(45.0, 90.0, 135.0)
+                for (angleDeg in angles) {
+                    val angleRad = Math.toRadians(angleDeg)
+                    val cosA = kotlin.math.cos(angleRad).toFloat()
+                    val sinA = kotlin.math.sin(angleRad).toFloat()
+                    val start = Offset(w * 0.50f + cosA * (sunRadius + w * 0.06f), horizonY + sinA * (sunRadius + h * 0.06f))
+                    val end = Offset(start.x + cosA * rayLen, start.y + sinA * rayLen)
+                    drawLine(color, start, end, strokeWidth = stroke.width, cap = stroke.cap)
+                }
             }
 
             PrayerName.ISHA -> {
-                // Isha — Crescent Moon outline + 1 small 4-point star
-                val moonPath = Path().apply {
-                    moveTo(w * 0.62f, h * 0.18f)
+                // Isha: Solid, substantial filled white crescent moon silhouette, centered in 24dp canvas
+                val crescentPath = Path().apply {
+                    moveTo(w * 0.70f, h * 0.14f)
                     cubicTo(
-                        w * 0.22f, h * 0.22f,
-                        w * 0.22f, h * 0.78f,
-                        w * 0.62f, h * 0.82f
+                        w * 0.26f, h * 0.22f,
+                        w * 0.26f, h * 0.78f,
+                        w * 0.70f, h * 0.86f
                     )
                     cubicTo(
-                        w * 0.38f, h * 0.70f,
-                        w * 0.38f, h * 0.30f,
-                        w * 0.62f, h * 0.18f
+                        w * 0.48f, h * 0.70f,
+                        w * 0.48f, h * 0.30f,
+                        w * 0.70f, h * 0.14f
                     )
                     close()
                 }
-                drawPath(moonPath, color, style = stroke)
-
-                val starCenterX = w * 0.32f
-                val starCenterY = h * 0.34f
-                val starRadius = w * 0.08f
-                drawLine(color, Offset(starCenterX, starCenterY - starRadius), Offset(starCenterX, starCenterY + starRadius), strokeWidth = stroke.width * 0.8f, cap = stroke.cap)
-                drawLine(color, Offset(starCenterX - starRadius, starCenterY), Offset(starCenterX + starRadius, starCenterY), strokeWidth = stroke.width * 0.8f, cap = stroke.cap)
+                drawPath(crescentPath, color, style = androidx.compose.ui.graphics.drawscope.Fill)
             }
         }
     }
