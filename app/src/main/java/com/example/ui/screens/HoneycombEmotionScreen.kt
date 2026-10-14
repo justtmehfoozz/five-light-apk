@@ -34,15 +34,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -58,7 +53,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.graphics.ColorUtils
 import com.example.R
 import com.example.data.model.EmotionCategoryGroup
 import com.example.data.model.EmotionItem
@@ -81,40 +75,7 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 // =========================================================================
-// HSL DERIVED BUBBLE STYLING & LUMINANCE TEXT COLOR
-// =========================================================================
-
-private fun getBubbleGradient(baseColor: Color): Brush {
-    val hsl = FloatArray(3)
-    ColorUtils.colorToHSL(baseColor.toArgb(), hsl)
-
-    val h = hsl[0]
-    val s = hsl[1]
-    val l = hsl[2]
-
-    val lightColorInt = ColorUtils.HSLToColor(
-        floatArrayOf(h, s, (l + 0.12f).coerceIn(0f, 1f))
-    )
-    val darkColorInt = ColorUtils.HSLToColor(
-        floatArrayOf(h, s, (l - 0.14f).coerceIn(0f, 1f))
-    )
-
-    return Brush.radialGradient(
-        colors = listOf(
-            Color(lightColorInt),
-            baseColor,
-            Color(darkColorInt)
-        )
-    )
-}
-
-private fun getContrastTextColor(baseColor: Color): Color {
-    val lum = ColorUtils.calculateLuminance(baseColor.toArgb())
-    return if (lum > 0.48) Color(0xFF1F2937) else Color.White
-}
-
-// =========================================================================
-// MATHEMATICALLY CONSISTENT HEXAGONAL CLUSTER GRID (~7 COLS WIDEST)
+// MATHEMATICALLY CONSISTENT 3-4-3-4 STAGGERED HEXAGONAL LATTICE
 // =========================================================================
 
 private data class GridSlot(
@@ -125,19 +86,19 @@ private data class GridSlot(
     val logicalY: Float
 )
 
-private fun generateHexClusterRowGrid(count: Int, pitchPx: Float): List<GridSlot> {
+private fun generateDense3434RowGrid(count: Int, pitchPx: Float): List<GridSlot> {
     if (count <= 0) return emptyList()
 
-    val rowPattern = listOf(3, 5, 7, 7, 7, 7, 7, 5, 4, 3, 3, 3)
     val slots = mutableListOf<GridSlot>()
-    val rowSpacingPx = pitchPx * 0.8660254f
+    val rowSpacingPx = pitchPx * 0.8660254f // sqrt(3)/2 vertical row pitch
 
+    // Determine row capacities (alternating 3, 4, 3, 4...) for `count` items
     var remaining = count
     var rowIndex = 0
     val rowCapacities = mutableListOf<Int>()
 
     while (remaining > 0) {
-        val capacity = rowPattern.getOrElse(rowIndex) { 5 }
+        val capacity = if (rowIndex % 2 == 0) 3 else 4
         val itemsInRow = minOf(remaining, capacity)
         rowCapacities.add(itemsInRow)
         remaining -= itemsInRow
@@ -145,8 +106,9 @@ private fun generateHexClusterRowGrid(count: Int, pitchPx: Float): List<GridSlot
     }
 
     val totalRows = rowCapacities.size
-    var itemIndex = 0
 
+    // Build each row centered vertically at y = 0 and horizontally at x = 0
+    var itemIndex = 0
     for (r in 0 until totalRows) {
         val itemsInThisRow = rowCapacities[r]
         val y = (r.toFloat() - (totalRows - 1) / 2.0f) * rowSpacingPx
@@ -159,6 +121,36 @@ private fun generateHexClusterRowGrid(count: Int, pitchPx: Float): List<GridSlot
     }
 
     return slots
+}
+
+// =========================================================================
+// HELPER: ADJUST LIGHTNESS FOR SUBTLE APPLE WATCH DEPTH GRADIENT
+// =========================================================================
+
+private fun adjustLightness(color: Color, deltaFactor: Float): Color {
+    val r = color.red
+    val g = color.green
+    val b = color.blue
+    val a = color.alpha
+
+    return if (deltaFactor > 0f) {
+        // Lighten: blend towards white
+        Color(
+            red = (r + (1f - r) * deltaFactor).coerceIn(0f, 1f),
+            green = (g + (1f - g) * deltaFactor).coerceIn(0f, 1f),
+            blue = (b + (1f - b) * deltaFactor).coerceIn(0f, 1f),
+            alpha = a
+        )
+    } else {
+        // Darken: blend towards black
+        val mult = (1f + deltaFactor).coerceIn(0f, 1f)
+        Color(
+            red = (r * mult).coerceIn(0f, 1f),
+            green = (g * mult).coerceIn(0f, 1f),
+            blue = (b * mult).coerceIn(0f, 1f),
+            alpha = a
+        )
+    }
 }
 
 // =========================================================================
@@ -212,18 +204,15 @@ private fun calculatePanLimits(
 // =========================================================================
 
 private data class TransformedIconState(
-    val emotionIndex: Int,
     val emotion: EmotionItem,
     val screenX: Float,
     val screenY: Float,
     val scale: Float,
     val renderedDiameterPx: Float,
-    val opacity: Float,
     val isVisible: Boolean
 )
 
 private fun computeTransformedIconState(
-    emotionIndex: Int,
     emotion: EmotionItem,
     slot: GridSlot,
     baseDiameterPx: Float,
@@ -239,13 +228,18 @@ private fun computeTransformedIconState(
     val centerX = viewportWidthPx / 2f
     val centerY = viewportHeightPx / 2f
 
+    // 1. Logical position in grid after panning and base scale magnification
     val pannedX = slot.logicalX * baseScale + panX
     val pannedY = slot.logicalY * baseScale + panY
 
+    // 2. Distance vector relative to viewport focal center
     val dx = pannedX
     val dy = pannedY
     val dist = sqrt(dx * dx + dy * dy)
 
+    // 3. Fisheye Scale falloff calculation:
+    // Central zone (dist <= rInnerPx) -> scale = S_MAX (1.06f)
+    // Outer zone (dist >= rOuterPx) -> scale = S_MIN (0.48f)
     val S_MAX = 1.06f
     val S_MIN = 0.48f
 
@@ -253,9 +247,7 @@ private fun computeTransformedIconState(
     val falloffFraction = 0.5f * (1.0f + cos(Math.PI * normDist).toFloat())
     val scale = S_MIN + (S_MAX - S_MIN) * falloffFraction
 
-    // Subtle edge opacity fade (min 0.8) so edge bubbles retain full vibrant color
-    val opacity = (1.0f - 0.20f * normDist).coerceIn(0.80f, 1.0f)
-
+    // 4. Positional Edge Compression: max 12% to prevent bubble overlap
     val compressionAlpha = 0.12f
     val compFactor = if (dist > rInnerPx) {
         val u = normDist
@@ -269,27 +261,29 @@ private fun computeTransformedIconState(
     val compressedDx = dx * compFactor
     val compressedDy = dy * compFactor
 
+    // 5. Transformed Screen Center Position
     val screenX = centerX + compressedDx
     val screenY = centerY + compressedDy
 
+    // 6. Rendered Diameter
     val renderedDiameterPx = baseDiameterPx * baseScale * scale
 
+    // 7. Viewport clipping check
     val margin = renderedDiameterPx / 2f + 16f
     val isVisible = screenX >= -margin && screenX <= viewportWidthPx + margin &&
             screenY >= -margin && screenY <= viewportHeightPx + margin
 
     return TransformedIconState(
-        emotionIndex = emotionIndex,
         emotion = emotion,
         screenX = screenX,
         screenY = screenY,
         scale = scale,
         renderedDiameterPx = renderedDiameterPx,
-        opacity = opacity,
         isVisible = isVisible
     )
 }
 
+// Exact coordinate-transformed hit-testing
 private fun findTappedEmotion(
     tapX: Float,
     tapY: Float,
@@ -311,7 +305,6 @@ private fun findTappedEmotion(
     emotions.forEachIndexed { index, emotion ->
         val slot = gridSlots.getOrNull(index) ?: return@forEachIndexed
         val state = computeTransformedIconState(
-            emotionIndex = index,
             emotion = emotion,
             slot = slot,
             baseDiameterPx = baseDiameterPx,
@@ -365,14 +358,10 @@ fun HoneycombEmotionScreen(
     var targetPanX by remember { mutableFloatStateOf(0f) }
     var targetPanY by remember { mutableFloatStateOf(0f) }
 
-    // Center crossing haptic throttle state
-    var lastCenterEmotionIndex by remember { mutableIntStateOf(-1) }
-
     // Reset pan position on filter / search change
     LaunchedEffect(searchQuery, selectedCategoryGroup) {
         targetPanX = 0f
         targetPanY = 0f
-        lastCenterEmotionIndex = -1
     }
 
     val triggerZoomStep: (Float) -> Unit = { factor ->
@@ -557,50 +546,17 @@ fun HoneycombEmotionScreen(
         },
         modifier = modifier.fillMaxSize()
     ) { innerPadding ->
-        // Subtle radial vignette background (center slightly lighter than edges)
-        val vignetteBrush = remember(isDark) {
-            Brush.radialGradient(
-                colors = listOf(
-                    if (isDark) Color(0xFF141822) else Color(0xFFFAF7F2),
-                    if (isDark) Color(0xFF090B0E) else Color(0xFFEFECE6)
-                )
-            )
-        }
-
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(vignetteBrush)
+                .background(MaterialTheme.colorScheme.background)
         ) {
             // Interactive 2D Honeycomb Canvas Container
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
                     .clipToBounds()
-                    // Top and bottom 24px - 60px soft linear alpha fade mask
-                    .graphicsLayer {
-                        compositingStrategy = CompositingStrategy.Offscreen
-                    }
-                    .drawWithContent {
-                        drawContent()
-                        val topFadePx = 24.dp.toPx()
-                        val topFullPx = 60.dp.toPx()
-                        val bottomFullPx = size.height - 60.dp.toPx()
-                        val bottomFadePx = size.height - 24.dp.toPx()
-
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                0f to Color.Transparent,
-                                topFadePx to Color.Transparent,
-                                topFullPx to Color.Black,
-                                bottomFullPx to Color.Black,
-                                bottomFadePx to Color.Transparent,
-                                size.height to Color.Transparent
-                            ),
-                            blendMode = BlendMode.DstIn
-                        )
-                    }
                     .testTag("honeycomb_canvas")
             ) {
                 val viewportWidthPx = constraints.maxWidth.toFloat()
@@ -608,14 +564,14 @@ fun HoneycombEmotionScreen(
                 val viewportHeightPx = (constraints.maxHeight.toFloat() - bottomNavInsetPx).coerceAtLeast(100f)
 
                 val baseDiameterPx = with(density) { 80.dp.toPx() }
-                val gapPx = with(density) { 4.dp.toPx() } // Tight Apple Watch packing (diameter + 4px)
-                val pitchPx = baseDiameterPx + gapPx
+                val gapPx = with(density) { 10.dp.toPx() }
+                val pitchPx = baseDiameterPx + gapPx // Exactly 1.125x diameter
                 val rInnerPx = with(density) { 110.dp.toPx() } * targetScale
                 val rOuterPx = kotlin.math.max(viewportWidthPx, viewportHeightPx) * 0.65f * targetScale
 
-                // Precompute Hexagonal Cluster Row Grid Slots (~7 columns at widest row)
+                // Precompute Dense 3-4-3-4 Staggered Row Grid Slots
                 val gridSlots = remember(filteredEmotions.size, pitchPx) {
-                    generateHexClusterRowGrid(filteredEmotions.size, pitchPx)
+                    generateDense3434RowGrid(filteredEmotions.size, pitchPx)
                 }
 
                 // Compute Content-Based Clamped Pan Limits
@@ -729,102 +685,94 @@ fun HoneycombEmotionScreen(
                             }
                         }
                     } else {
-                        // Render Spatial Apple Watch Honeycomb Bubbles with HSL Gradient Depth & Gloss
-                        val visibleStates = remember(filteredEmotions, targetPanX, targetPanY, targetScale, viewportWidthPx, viewportHeightPx) {
-                            filteredEmotions.mapIndexedNotNull { index, emotion ->
-                                val slot = gridSlots.getOrNull(index) ?: return@mapIndexedNotNull null
-                                computeTransformedIconState(
-                                    emotionIndex = index,
-                                    emotion = emotion,
-                                    slot = slot,
-                                    baseDiameterPx = baseDiameterPx,
-                                    pitchPx = pitchPx,
-                                    panX = targetPanX,
-                                    panY = targetPanY,
-                                    baseScale = targetScale,
-                                    viewportWidthPx = viewportWidthPx,
-                                    viewportHeightPx = viewportHeightPx,
-                                    rInnerPx = rInnerPx,
-                                    rOuterPx = rOuterPx
+                        // Render Spatial Apple Watch 3-4-3-4 Staggered Row Honeycomb
+                        filteredEmotions.forEachIndexed { index, emotion ->
+                            val slot = gridSlots.getOrNull(index) ?: return@forEachIndexed
+                            val state = computeTransformedIconState(
+                                emotion = emotion,
+                                slot = slot,
+                                baseDiameterPx = baseDiameterPx,
+                                pitchPx = pitchPx,
+                                panX = targetPanX,
+                                panY = targetPanY,
+                                baseScale = targetScale,
+                                viewportWidthPx = viewportWidthPx,
+                                viewportHeightPx = viewportHeightPx,
+                                rInnerPx = rInnerPx,
+                                rOuterPx = rOuterPx
+                            )
+
+                            if (state.isVisible) {
+                                val leftOffset = (state.screenX - state.renderedDiameterPx / 2f).roundToInt()
+                                val topOffset = (state.screenY - state.renderedDiameterPx / 2f).roundToInt()
+                                val sizeDp = (state.renderedDiameterPx / density.density).dp
+
+                                val bubbleColor = if (isDark) emotion.colorDark else emotion.colorLight
+                                val lightColor = adjustLightness(bubbleColor, +0.12f)
+                                val darkColor = adjustLightness(bubbleColor, -0.14f)
+                                val diamPx = state.renderedDiameterPx
+
+                                val bubbleGradient = Brush.radialGradient(
+                                    colors = listOf(
+                                        lightColor,
+                                        bubbleColor,
+                                        darkColor
+                                    ),
+                                    center = Offset(diamPx * 0.30f, diamPx * 0.25f),
+                                    radius = diamPx * 0.85f
                                 )
-                            }.filter { it.isVisible }
-                        }
 
-                        // Check for viewport center crossing during pan for single throttled haptic tick
-                        val closestToCenter = visibleStates.minByOrNull { state ->
-                            val dx = state.screenX - viewportWidthPx / 2f
-                            val dy = state.screenY - viewportHeightPx / 2f
-                            dx * dx + dy * dy
-                        }
-
-                        if (closestToCenter != null && closestToCenter.emotionIndex != lastCenterEmotionIndex) {
-                            if (lastCenterEmotionIndex != -1) {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            }
-                            lastCenterEmotionIndex = closestToCenter.emotionIndex
-                        }
-
-                        visibleStates.forEach { state ->
-                            val emotion = state.emotion
-                            val leftOffset = (state.screenX - state.renderedDiameterPx / 2f).roundToInt()
-                            val topOffset = (state.screenY - state.renderedDiameterPx / 2f).roundToInt()
-                            val sizeDp = (state.renderedDiameterPx / density.density).dp
-
-                            val baseColor = if (isDark) emotion.colorDark else emotion.colorLight
-                            val bubbleGradient = remember(baseColor) { getBubbleGradient(baseColor) }
-                            val textColor = remember(baseColor) { getContrastTextColor(baseColor) }
-
-                            Box(
-                                modifier = Modifier
-                                    .offset { IntOffset(leftOffset, topOffset) }
-                                    .size(sizeDp)
-                                    .graphicsLayer { alpha = state.opacity }
-                                    .shadow(
-                                        elevation = (3.5f * state.scale).dp,
-                                        shape = CircleShape,
-                                        spotColor = baseColor.copy(alpha = 0.35f),
-                                        ambientColor = baseColor.copy(alpha = 0.20f)
-                                    )
-                                    .clip(CircleShape)
-                                    .background(bubbleGradient)
-                                    .border(1.dp, Color.White.copy(alpha = 0.10f), CircleShape)
-                                    .padding(2.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                // Subtle top gloss reflection
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxWidth(0.68f)
-                                        .fillMaxHeight(0.32f)
-                                        .align(Alignment.TopCenter)
+                                        .offset { IntOffset(leftOffset, topOffset) }
+                                        .size(sizeDp)
+                                        .shadow(
+                                            elevation = if (isDark) (3.5f * state.scale).dp else (2.0f * state.scale).dp,
+                                            shape = CircleShape
+                                        )
                                         .clip(CircleShape)
-                                        .background(
-                                            Brush.verticalGradient(
-                                                colors = listOf(
-                                                    Color.White.copy(alpha = 0.12f),
-                                                    Color.Transparent
+                                        .background(bubbleGradient)
+                                        .border(
+                                            border = BorderStroke(1.dp, Color.White.copy(alpha = if (isDark) 0.10f else 0.18f)),
+                                            shape = CircleShape
+                                        )
+                                        .padding(3.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    // Top-half faint gloss overlay
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clip(CircleShape)
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    colors = listOf(
+                                                        Color.White.copy(alpha = if (isDark) 0.10f else 0.14f),
+                                                        Color.Transparent
+                                                    ),
+                                                    endY = diamPx * 0.40f
                                                 )
                                             )
-                                        )
-                                )
-
-                                // Label: No mid-word wrap, font size = 0.2 * diameter (clamped 9-15px), hidden if scale < 0.55
-                                if (state.scale >= 0.55f) {
-                                    val targetFontSizeSp = (state.renderedDiameterPx * 0.20f / density.density).sp
-                                    val fontScaleSp = targetFontSizeSp.value.coerceIn(9.0f, 15.0f).sp
-
-                                    Text(
-                                        text = emotion.name,
-                                        fontFamily = SpaceGrotesk,
-                                        fontSize = fontScaleSp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = textColor,
-                                        textAlign = TextAlign.Center,
-                                        maxLines = 1,
-                                        softWrap = false,
-                                        overflow = TextOverflow.Clip,
-                                        modifier = Modifier.padding(horizontal = 4.dp)
                                     )
+
+                                    // Show label when icon scale is large enough for clear readability
+                                    if (state.scale >= 0.50f) {
+                                        val baseFontSizeSp = if (emotion.name.length > 10) 9.5f else 11.5f
+                                        val fontScaleSp = (baseFontSizeSp * state.scale).coerceIn(8.0f, 14.0f).sp
+
+                                        Text(
+                                            text = emotion.name,
+                                            fontFamily = SpaceGrotesk,
+                                            fontSize = fontScaleSp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (emotion.isDarkText) Color(0xFF1F2937) else Color.White,
+                                            textAlign = TextAlign.Center,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis,
+                                            lineHeight = fontScaleSp * 1.12f,
+                                            modifier = Modifier.padding(horizontal = 2.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
