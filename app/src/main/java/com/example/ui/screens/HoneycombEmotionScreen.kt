@@ -843,7 +843,13 @@ fun EmotionDetailBottomSheet(
                             onClick = {
                                 try {
                                     val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:988"))
-                                    context.startActivity(intent)
+                                    val activity = context.findActivity()
+                                    if (activity != null) {
+                                        activity.startActivity(intent)
+                                    } else {
+                                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        context.startActivity(intent)
+                                    }
                                 } catch (_: Exception) {}
                             },
                             colors = ButtonDefaults.buttonColors(
@@ -939,7 +945,7 @@ fun EmotionDetailBottomSheet(
 
             // Action Buttons: Bookmark, Copy, Share
             Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 OutlinedButton(
@@ -957,20 +963,30 @@ fun EmotionDetailBottomSheet(
                         contentColor = if (isBookmarked) Color.semanticPrimaryAccent else Color.semanticPrimaryText
                     ),
                     border = BorderStroke(1.dp, if (isBookmarked) Color.semanticPrimaryAccent else Color.semanticBorder),
-                    modifier = Modifier.weight(1f)
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
                 ) {
-                    Icon(
-                        imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (isBookmarked) "Saved" else "Bookmark",
-                        fontFamily = SpaceGrotesk,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isBookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isBookmarked) "Saved" else "Bookmark",
+                            fontFamily = SpaceGrotesk,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
 
                 OutlinedButton(
@@ -982,20 +998,30 @@ fun EmotionDetailBottomSheet(
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.semanticPrimaryText),
                     border = BorderStroke(1.dp, Color.semanticBorder),
-                    modifier = Modifier.weight(1f)
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.ContentCopy,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Copy",
-                        fontFamily = SpaceGrotesk,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.ContentCopy,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Copy",
+                            fontFamily = SpaceGrotesk,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
 
                 Button(
@@ -1008,20 +1034,30 @@ fun EmotionDetailBottomSheet(
                         containerColor = Color.semanticPrimaryAccent,
                         contentColor = Color.White
                     ),
-                    modifier = Modifier.weight(1f)
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 10.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Share,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Share",
-                        fontFamily = SpaceGrotesk,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Share,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Share",
+                            fontFamily = SpaceGrotesk,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
                 }
             }
         }

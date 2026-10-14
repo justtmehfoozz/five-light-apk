@@ -1,10 +1,11 @@
 package com.example.ui.screens
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
 import androidx.compose.ui.res.stringResource
 import com.example.R
-
-import android.content.Context
-import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -132,7 +133,24 @@ fun toggleDuaBookmark(context: Context, duaId: String): Boolean {
     return isNowBookmarked
 }
 
+private var lastShareTimestamp = 0L
+
+fun Context.findActivity(): Activity? {
+    var ctx = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
 fun shareDuaText(context: Context, dua: DuaItem) {
+    val currentTime = System.currentTimeMillis()
+    if (currentTime - lastShareTimestamp < 800L) {
+        return
+    }
+    lastShareTimestamp = currentTime
+
     val shareContent = buildString {
         appendLine("✨ ${dua.title}")
         appendLine()
@@ -158,7 +176,15 @@ fun shareDuaText(context: Context, dua: DuaItem) {
         putExtra(Intent.EXTRA_SUBJECT, dua.title)
         putExtra(Intent.EXTRA_TEXT, shareContent)
     }
-    context.startActivity(Intent.createChooser(intent, "Share Supplication"))
+
+    val chooser = Intent.createChooser(intent, "Share Supplication")
+    val activity = context.findActivity()
+    if (activity != null) {
+        activity.startActivity(chooser)
+    } else {
+        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(chooser)
+    }
 }
 
 fun copyDuaText(context: Context, clipboardManager: ClipboardManager, dua: DuaItem) {
