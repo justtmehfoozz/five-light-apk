@@ -282,9 +282,9 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                 }
                 val hazeState = remember { HazeState() }
 
-                androidx.compose.runtime.LaunchedEffect(currentUser) {
+                androidx.compose.runtime.LaunchedEffect(currentUser, hasSeenFiveLightPrelude, hasSeenAccountPrompt) {
                     val user = currentUser
-                    if (user != null) {
+                    if (user != null && hasSeenFiveLightPrelude && hasSeenAccountPrompt) {
                         val isGoogle = user.providerData.any { it.providerId == "google.com" }
                         if (!user.isEmailVerified && !isGoogle) {
                             pendingVerificationEmail = user.email ?: ""
@@ -971,10 +971,10 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                     } // end if (hasSeenAccountPrompt)
 
                     if (isSplashFinished && (!hasSeenAccountPrompt || authRouteState != "NONE" || isSetupRequired || !hasSeenFiveLightPrelude)) {
-                        val currentStartupOverlayState = remember(hasSeenFiveLightPrelude, hasSeenAccountPrompt, authRouteState, currentUser) {
-                            if (!hasSeenFiveLightPrelude && authRouteState == "NONE") {
+                        val currentStartupOverlayState = remember(hasSeenFiveLightPrelude, hasSeenAccountPrompt, authRouteState) {
+                            if (!hasSeenFiveLightPrelude) {
                                 "PRELUDE"
-                            } else if (!hasSeenAccountPrompt && authRouteState == "NONE" && currentUser == null) {
+                            } else if (!hasSeenAccountPrompt && authRouteState == "NONE") {
                                 "PRE_LOGIN_PROMPT"
                             } else {
                                 "NONE"
@@ -1082,7 +1082,7 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                             }
                         }
 
-                        if (hasSeenFiveLightPrelude && (hasSeenAccountPrompt || currentUser != null) && authRouteState == "NONE" && isSetupRequired && !showLoginBottomSheet) {
+                        if (hasSeenFiveLightPrelude && hasSeenAccountPrompt && authRouteState == "NONE" && isSetupRequired && !showLoginBottomSheet) {
                             SetUpFiveLightScreen(
                                 viewModel = viewModel,
                                 currentUser = currentUser,
