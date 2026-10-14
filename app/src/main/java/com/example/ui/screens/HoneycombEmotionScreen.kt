@@ -30,6 +30,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,6 +40,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -349,24 +352,32 @@ fun HoneycombEmotionScreen(
     val density = LocalDensity.current
     val isDark = MaterialTheme.colorScheme.background.run { (red * 0.299f + green * 0.587f + blue * 0.114f) < 0.5f }
 
-    var searchQuery by remember { mutableStateOf("") }
-    var selectedCategoryGroup by remember { mutableStateOf(EmotionCategoryGroup.ALL) }
     var selectedEmotionForDetail by remember { mutableStateOf<EmotionItem?>(null) }
+    var pressedEmotionId by remember { mutableStateOf<String?>(null) }
+    var showZoomBadge by remember { mutableStateOf(false) }
+
+    val coroutineScope = rememberCoroutineScope()
+    val bookmarkedDuaIds by remember(selectedEmotionForDetail) {
+        mutableStateOf(getSavedDuaBookmarks(context))
+    }
 
     // Canvas Pan and Zoom state
     var targetScale by remember { mutableFloatStateOf(1.0f) }
     var targetPanX by remember { mutableFloatStateOf(0f) }
     var targetPanY by remember { mutableFloatStateOf(0f) }
 
-    // Reset pan position on filter / search change
-    LaunchedEffect(searchQuery, selectedCategoryGroup) {
-        targetPanX = 0f
-        targetPanY = 0f
-    }
-
     val triggerZoomStep: (Float) -> Unit = { factor ->
         targetScale = (targetScale * factor).coerceIn(0.70f, 1.80f)
+        showZoomBadge = true
         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+    }
+
+    // Auto-hide volume zoom badge after 1.1 seconds
+    LaunchedEffect(targetScale) {
+        if (showZoomBadge) {
+            delay(1100L)
+            showZoomBadge = false
+        }
     }
 
     // Register Volume Up / Down Key Listener for physical button zooming
@@ -401,147 +412,40 @@ fun HoneycombEmotionScreen(
         onBack = onBack
     )
 
-    // Filter emotions
-    val filteredEmotions = remember(searchQuery, selectedCategoryGroup) {
-        EmotionData.ALL_EMOTIONS.filter { emotion ->
-            val matchesCategory = when (selectedCategoryGroup) {
-                EmotionCategoryGroup.ALL -> true
-                else -> emotion.categoryGroup == selectedCategoryGroup
-            }
-            val matchesQuery = if (searchQuery.isBlank()) {
-                true
-            } else {
-                emotion.name.contains(searchQuery, ignoreCase = true) ||
-                        emotion.duaItem.title.contains(searchQuery, ignoreCase = true) ||
-                        emotion.duaItem.translation.contains(searchQuery, ignoreCase = true)
-            }
-            matchesCategory && matchesQuery
-        }
-    }
+    // All 50 emotions rendered in the full-screen immersive honeycomb
+    val filteredEmotions = remember { EmotionData.ALL_EMOTIONS }
 
     Scaffold(
         topBar = {
-            Column(
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.background)
                     .statusBarsPadding()
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                IconButton(
+                    onClick = onBack,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .clip(CircleShape)
+                        .testTag("honeycomb_back_button")
                 ) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .testTag("honeycomb_back_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.action_back),
-                            tint = Color.semanticPrimaryText
-                        )
-                    }
-                    Text(
-                        text = "I am feeling...",
-                        fontFamily = SerifHeaderFont,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.semanticPrimaryText,
-                        modifier = Modifier.padding(start = 8.dp)
+                    Icon(
+                        imageVector = Icons.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.action_back),
+                        tint = Color.semanticPrimaryText
                     )
                 }
-
-                // Search Bar
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = {
-                        Text(
-                            text = "Search emotions (e.g. Sad, Hope, Anxious)...",
-                            fontFamily = SpaceGrotesk,
-                            fontSize = 13.sp,
-                            color = Color.semanticSecondaryText
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.Search,
-                            contentDescription = null,
-                            tint = Color.semanticPrimaryAccent,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Close,
-                                    contentDescription = "Clear search",
-                                    tint = Color.semanticSecondaryText,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Color.semanticPrimaryAccent,
-                        unfocusedBorderColor = Color.semanticBorder,
-                        focusedContainerColor = Color.semanticSurface,
-                        unfocusedContainerColor = Color.semanticSurface
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                        .height(52.dp)
-                        .testTag("honeycomb_search_bar")
+                Text(
+                    text = "I am feeling...",
+                    fontFamily = SerifHeaderFont,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.semanticPrimaryText,
+                    letterSpacing = (-0.3).sp,
+                    modifier = Modifier.padding(start = 10.dp)
                 )
-
-                // Filter Category Chips
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    EmotionCategoryGroup.entries.forEach { group ->
-                        val isSelected = selectedCategoryGroup == group
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = {
-                                selectedCategoryGroup = group
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            },
-                            label = {
-                                Text(
-                                    text = group.label,
-                                    fontFamily = SpaceGrotesk,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                )
-                            },
-                            shape = CircleShape,
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Color.semanticPrimaryAccent,
-                                selectedLabelColor = Color.White,
-                                containerColor = Color.semanticSurface,
-                                labelColor = Color.semanticPrimaryText
-                            ),
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = isSelected,
-                                borderColor = Color.semanticBorder,
-                                selectedBorderColor = Color.semanticPrimaryAccent
-                            )
-                        )
-                    }
-                }
             }
         },
         modifier = modifier.fillMaxSize()
@@ -652,7 +556,12 @@ fun HoneycombEmotionScreen(
 
                                     if (tapped != null) {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        selectedEmotionForDetail = tapped
+                                        pressedEmotionId = tapped.id
+                                        coroutineScope.launch {
+                                            delay(90L)
+                                            pressedEmotionId = null
+                                            selectedEmotionForDetail = tapped
+                                        }
                                     }
                                 }
                             }
@@ -708,8 +617,8 @@ fun HoneycombEmotionScreen(
                                 val sizeDp = (state.renderedDiameterPx / density.density).dp
 
                                 val bubbleColor = if (isDark) emotion.colorDark else emotion.colorLight
-                                val lightColor = adjustLightness(bubbleColor, +0.12f)
-                                val darkColor = adjustLightness(bubbleColor, -0.14f)
+                                val lightColor = adjustLightness(bubbleColor, +0.08f)
+                                val darkColor = adjustLightness(bubbleColor, -0.08f)
                                 val diamPx = state.renderedDiameterPx
 
                                 val bubbleGradient = Brush.radialGradient(
@@ -718,43 +627,43 @@ fun HoneycombEmotionScreen(
                                         bubbleColor,
                                         darkColor
                                     ),
-                                    center = Offset(diamPx * 0.30f, diamPx * 0.25f),
+                                    center = Offset(diamPx * 0.35f, diamPx * 0.30f),
                                     radius = diamPx * 0.85f
                                 )
+
+                                val isPressed = pressedEmotionId == emotion.id
+                                val pressScale by animateFloatAsState(
+                                    targetValue = if (isPressed) 0.92f else 1.0f,
+                                    animationSpec = spring(
+                                        stiffness = Spring.StiffnessHigh,
+                                        dampingRatio = Spring.DampingRatioNoBouncy
+                                    ),
+                                    label = "pressScale"
+                                )
+
+                                val isBookmarked = bookmarkedDuaIds.contains(emotion.duaItem.id)
 
                                 Box(
                                     modifier = Modifier
                                         .offset { IntOffset(leftOffset, topOffset) }
                                         .size(sizeDp)
+                                        .graphicsLayer {
+                                            scaleX = pressScale
+                                            scaleY = pressScale
+                                        }
                                         .shadow(
-                                            elevation = if (isDark) (3.5f * state.scale).dp else (2.0f * state.scale).dp,
+                                            elevation = if (isDark) (3.0f * state.scale).dp else (1.8f * state.scale).dp,
                                             shape = CircleShape
                                         )
                                         .clip(CircleShape)
                                         .background(bubbleGradient)
                                         .border(
-                                            border = BorderStroke(1.dp, Color.White.copy(alpha = if (isDark) 0.10f else 0.18f)),
+                                            border = BorderStroke(0.75.dp, Color.White.copy(alpha = if (isDark) 0.12f else 0.22f)),
                                             shape = CircleShape
                                         )
                                         .padding(3.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    // Top-half faint gloss overlay
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .clip(CircleShape)
-                                            .background(
-                                                Brush.verticalGradient(
-                                                    colors = listOf(
-                                                        Color.White.copy(alpha = if (isDark) 0.10f else 0.14f),
-                                                        Color.Transparent
-                                                    ),
-                                                    endY = diamPx * 0.40f
-                                                )
-                                            )
-                                    )
-
                                     // Show label when icon scale is large enough for clear readability
                                     if (state.scale >= 0.50f) {
                                         val baseFontSizeSp = if (emotion.name.length > 10) 9.5f else 11.5f
@@ -770,12 +679,51 @@ fun HoneycombEmotionScreen(
                                             maxLines = 2,
                                             overflow = TextOverflow.Ellipsis,
                                             lineHeight = fontScaleSp * 1.12f,
-                                            modifier = Modifier.padding(horizontal = 2.dp)
+                                            modifier = Modifier.padding(horizontal = 3.dp)
+                                        )
+                                    }
+
+                                    // Bookmark Indicator Badge
+                                    if (isBookmarked && state.scale >= 0.55f) {
+                                        Icon(
+                                            imageVector = Icons.Filled.Bookmark,
+                                            contentDescription = "Bookmarked",
+                                            tint = if (emotion.isDarkText) Color(0xFF1F2937).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.90f),
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(top = (4f * state.scale).dp, end = (4f * state.scale).dp)
+                                                .size((11f * state.scale).dp)
                                         )
                                     }
                                 }
                             }
                         }
+                    }
+                }
+
+                // Volume Zoom Toast Feedback Badge
+                AnimatedVisibility(
+                    visible = showZoomBadge,
+                    enter = fadeIn(animationSpec = tween(150)),
+                    exit = fadeOut(animationSpec = tween(250)),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 12.dp, end = 16.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.semanticSurfaceElevated.copy(alpha = 0.88f),
+                        border = BorderStroke(1.dp, Color.semanticBorder),
+                        shadowElevation = 4.dp
+                    ) {
+                        Text(
+                            text = "${(targetScale * 100).roundToInt()}%",
+                            fontFamily = SpaceGrotesk,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.semanticPrimaryText,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
                     }
                 }
             }
