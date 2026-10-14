@@ -1082,7 +1082,7 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                             }
                         }
 
-                        if (authRouteState == "NONE" && isSetupRequired && !showLoginBottomSheet) {
+                        if (hasSeenFiveLightPrelude && (hasSeenAccountPrompt || currentUser != null) && authRouteState == "NONE" && isSetupRequired && !showLoginBottomSheet) {
                             SetUpFiveLightScreen(
                                 viewModel = viewModel,
                                 currentUser = currentUser,
