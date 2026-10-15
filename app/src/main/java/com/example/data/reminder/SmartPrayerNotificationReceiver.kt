@@ -63,12 +63,28 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
+                    val manager = SmartPrayerNotificationManager(context.applicationContext)
+                    if (!manager.isSmartNotificationsEnabled ||
+                        !manager.isPrayerTimeNotificationsEnabled ||
+                        !manager.isPrayerEnabled(prayerEnum.name)
+                    ) {
+                        return@launch
+                    }
+
                     val db = com.example.data.db.AppDatabase.getDatabase(context.applicationContext)
                     val log = db.prayerLogDao().getPrayerLogForDateDirect(prayerDate)
                     val isCompleted = log != null && log.isCompleted(prayerEnum)
                     if (!isCompleted) {
-                        val title = localizedContext.getString(R.string.notif_prayer_reminder_title, displayName)
+                        val title = localizedContext.getString(R.string.notif_prayer_title, displayName)
                         val bodyText = localizedContext.getString(R.string.notif_prayer_time_entered, displayName)
+                        
+                        val isAzaanMode = manager.prayerAlertMode == com.example.data.reminder.PrayerAlertMode.AZAAN_AND_NOTIFICATION
+                        val targetChannel = if (isAzaanMode) {
+                            SmartPrayerNotificationManager.CHANNEL_ADHAN
+                        } else {
+                            SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME
+                        }
+
                         showFardPrayerNotification(
                             context = context,
                             title = title,
@@ -77,13 +93,29 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                             prayerName = prayerEnum.name,
                             displayName = displayName,
                             prayerDate = prayerDate,
-                            channelId = SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME,
+                            channelId = targetChannel,
                             includeMarkAsPrayed = true,
                             triggerMillis = triggerMillis,
                             windowEndMillis = windowEndMillis,
                             stage = SmartPrayerNotificationManager.EVENT_TYPE_FARD,
                             offsetMins = offsetMins
                         )
+
+                        if (isAzaanMode) {
+                            PrayerReminderManager.triggerAzaanOverlay(prayerEnum)
+                            try {
+                                val attrs = android.media.AudioAttributes.Builder()
+                                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                                    .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                                    .build()
+                                val mp = android.media.MediaPlayer.create(context.applicationContext, R.raw.azaan, attrs, 0)
+                                mp?.apply {
+                                    setOnCompletionListener { try { release() } catch (_: Exception) {} }
+                                    setOnErrorListener { player, _, _ -> try { player.release() } catch (_: Exception) {}; true }
+                                    start()
+                                }
+                            } catch (_: Exception) {}
+                        }
                     }
                 } catch (_: Exception) {
                 } finally {
@@ -99,37 +131,7 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
         }
 
         if (eventType == SmartPrayerNotificationManager.EVENT_TYPE_PRE_PRAYER) {
-            val notifId = SmartPrayerNotificationManager.getNotificationId(prayerEnum, prayerDate)
-            val pendingResult = goAsync()
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    val db = com.example.data.db.AppDatabase.getDatabase(context.applicationContext)
-                    val log = db.prayerLogDao().getPrayerLogForDateDirect(prayerDate)
-                    val isCompleted = log != null && log.isCompleted(prayerEnum)
-                    if (!isCompleted) {
-                        val title = localizedContext.getString(R.string.notif_prayer_reminder_title, displayName)
-                        val bodyText = localizedContext.getString(R.string.notif_pre_prayer_prep, displayName, offsetMins)
-                        showFardPrayerNotification(
-                            context = context,
-                            title = title,
-                            message = bodyText,
-                            notificationId = notifId,
-                            prayerName = prayerEnum.name,
-                            displayName = displayName,
-                            prayerDate = prayerDate,
-                            channelId = SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME,
-                            includeMarkAsPrayed = false,
-                            triggerMillis = triggerMillis,
-                            windowEndMillis = windowEndMillis,
-                            stage = SmartPrayerNotificationManager.EVENT_TYPE_PRE_PRAYER,
-                            offsetMins = offsetMins
-                        )
-                    }
-                } catch (_: Exception) {
-                } finally {
-                    pendingResult.finish()
-                }
-            }
+            // Approaching notifications have been completely removed.
             return
         }
 
@@ -293,7 +295,7 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                     showFardPrayerNotification(
                         context = context,
                         title = localizedContext.getString(R.string.notif_prayer_reminder_title, displayName),
-                        message = localizedContext.getString(R.string.home_context_prep, displayName),
+                        message = localizedContext.getString(R.string.notif_followup_question, displayName),
                         notificationId = notifId,
                         prayerName = prayerNameEnum.name,
                         displayName = displayName,
@@ -395,17 +397,16 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                     true
                 }
 
-                val followUpMillis = if (prayerTriggerMillis > 0L) prayerTriggerMillis + 25 * 60 * 1000L else 0L
+                val followUpMillis = if (prayerTriggerMillis > 0L) prayerTriggerMillis + 45 * 60 * 1000L else 0L
                 val isFollowUpStage = (stage == SmartPrayerNotificationManager.EVENT_TYPE_FARD_FOLLOWUP) ||
                         (followUpMillis > 0L && nowMillis >= followUpMillis)
 
                 if (prayerStarted) {
-                    // If the prayer has already started, do NOT restore the pre-prayer notification.
                     if (isFollowUpStage) {
                         showFardPrayerNotification(
                             context = context,
-                            title = "$displayName Prayer",
-                            message = "Did you get a chance to pray?",
+                            title = "$displayName Prayer Reminder",
+                            message = "Did you get a chance to pray $displayName?",
                             notificationId = notifId,
                             prayerName = prayerNameEnum.name,
                             displayName = displayName,
@@ -440,22 +441,9 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                         }
                     }
                 } else {
-                    // Restore pre-prayer notification
-                    showFardPrayerNotification(
-                        context = context,
-                        title = "$displayName Prayer",
-                        message = "$displayName begins in $offsetMins minutes.",
-                        notificationId = notifId,
-                        prayerName = prayerNameEnum.name,
-                        displayName = displayName,
-                        prayerDate = prayerDateStr,
-                        channelId = SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME,
-                        includeMarkAsPrayed = false,
-                        triggerMillis = prayerTriggerMillis,
-                        windowEndMillis = prayerWindowEnd,
-                        stage = SmartPrayerNotificationManager.EVENT_TYPE_PRE_PRAYER,
-                        offsetMins = offsetMins
-                    )
+                    // Approaching reminders removed — dismiss notification
+                    val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    nm.cancel(notifId)
                 }
             } catch (_: Exception) {
             } finally {

@@ -184,7 +184,7 @@ class PrayerReminderManager(private val context: Context) {
                 val config = getPrayerConfig(pItem.name)
                 if (!config.enabled) continue
 
-                val reminderTimeMillis = pItem.timeMillis - (config.offsetMinutes * 60 * 1000L)
+                val reminderTimeMillis = pItem.timeMillis
                 if (reminderTimeMillis > System.currentTimeMillis()) {
                     val requestCode = (pItem.name.ordinal * 10) + dayOffset
                     val intent = Intent(context, PrayerReminderReceiver::class.java).apply {

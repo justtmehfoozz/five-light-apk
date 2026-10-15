@@ -27,10 +27,63 @@ enum class PrePrayerReminderOffset(val minutes: Int, val label: String) {
     MIN_30(30, "30 min")
 }
 
+enum class PrayerAlertMode(val id: String, val title: String, val description: String) {
+    AZAAN_AND_NOTIFICATION(
+        "azaan_and_notification",
+        "Azaan + Notification",
+        "Play Azaan and notify me when prayer time begins."
+    ),
+    NOTIFICATION_ONLY(
+        "notification_only",
+        "Notification Only",
+        "Notify me when prayer time begins without playing Azaan."
+    )
+}
+
 class SmartPrayerNotificationManager(private val context: Context) {
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     private val prefs = context.getSharedPreferences("smart_prayer_notifications_prefs", Context.MODE_PRIVATE)
     private val oldPrefs = context.getSharedPreferences("prayer_reminders_prefs", Context.MODE_PRIVATE)
+
+    var prayerAlertMode: PrayerAlertMode
+        get() {
+            val raw = prefs.getString(KEY_PRAYER_ALERT_MODE, null)
+            if (raw == null) {
+                return PrayerAlertMode.AZAAN_AND_NOTIFICATION
+            }
+            return PrayerAlertMode.entries.find { it.id == raw } ?: PrayerAlertMode.AZAAN_AND_NOTIFICATION
+        }
+        set(value) {
+            prefs.edit().putString(KEY_PRAYER_ALERT_MODE, value.id).apply()
+            scheduleSmartNotificationsForToday()
+        }
+
+    fun scheduleSmartNotificationsForToday() {
+        try {
+            val mainPrefs = context.getSharedPreferences("fivelight_prefs", Context.MODE_PRIVATE)
+            val savedCityName = mainPrefs.getString("selected_city_name", null)
+            val repository = com.example.data.repository.AppRepository(
+                com.example.data.db.AppDatabase.getDatabase(context), context
+            )
+            val city = repository.PREDEFINED_CITIES.find { it.cityName == savedCityName } ?: repository.PREDEFINED_CITIES[0]
+
+            val savedCalcMethod = mainPrefs.getString("calc_method", null)
+            val method = com.example.data.model.CalcMethod.entries.find { it.name == savedCalcMethod } ?: city.defaultCalcMethod
+
+            val savedMadhab = mainPrefs.getString("madhab", null)
+            val madhab = com.example.data.model.Madhab.entries.find { it.name == savedMadhab } ?: com.example.data.model.Madhab.STANDARD
+
+            val prayerTimes = PrayerCalc.calculatePrayerTimes(
+                latitude = city.latitude,
+                longitude = city.longitude,
+                date = java.util.Date(),
+                method = method,
+                madhab = madhab,
+                timeZoneOffsetHours = city.timezoneOffsetHours
+            )
+            scheduleSmartNotifications(prayerTimes)
+        } catch (_: Exception) {}
+    }
 
     var isSmartNotificationsEnabled: Boolean
         get() {
@@ -207,8 +260,13 @@ class SmartPrayerNotificationManager(private val context: Context) {
             val windowEndMillis = nextPrayer?.timeMillis ?: (prayerTriggerMillis + 4 * 3600 * 1000L)
             val formattedTime = prayer.timeFormatted
 
-            // Fard Prayer Time Entry Notification
+            // Cancel any obsolete pre-prayer / approaching reminder alarm
+            val preReqCode = getAlarmRequestCode(prayer.name, targetDate, ALARM_SLOT_PRE_REMINDER)
+            cancelAlarmByRequestCode(preReqCode)
+
+            // Fard Prayer Time Entry Notification & 45-Minute Follow-Up
             if (isPrayerTimeNotificationsEnabled) {
+                // Notification 1: Entry Notification at actual prayer start time
                 if (prayerTriggerMillis > nowMillis) {
                     val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
                         action = ACTION_SMART_PRAYER_NOTIF
@@ -224,8 +282,8 @@ class SmartPrayerNotificationManager(private val context: Context) {
                     scheduleAlarm(prayerTriggerMillis, intent, requestCode)
                 }
 
-                // Follow-up Notification (scheduled ~25 mins after entry if still unrecorded)
-                val followUpMillis = prayerTriggerMillis + 25 * 60 * 1000L
+                // Notification 2: Follow-up Notification exactly 45 minutes after prayer start time
+                val followUpMillis = prayerTriggerMillis + 45 * 60 * 1000L
                 if (followUpMillis > nowMillis && followUpMillis < windowEndMillis) {
                     val followUpIntent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
                         action = ACTION_SMART_PRAYER_NOTIF
@@ -243,29 +301,6 @@ class SmartPrayerNotificationManager(private val context: Context) {
             } else {
                 cancelAlarmByRequestCode(getAlarmRequestCode(prayer.name, targetDate, ALARM_SLOT_ENTRY))
                 cancelAlarmByRequestCode(getAlarmRequestCode(prayer.name, targetDate, ALARM_SLOT_FOLLOWUP))
-            }
-
-            // Pre-Prayer Reminder
-            if (preReminderOffset != PrePrayerReminderOffset.OFF) {
-                val preMillis = prayerTriggerMillis - (preReminderOffset.minutes * 60 * 1000L)
-                if (preMillis > nowMillis) {
-                    val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
-                        action = ACTION_SMART_PRAYER_NOTIF
-                        data = Uri.parse("fivelight://prayer/$targetDateStr/${prayer.name.name}/pre")
-                        putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_PRE_PRAYER)
-                        putExtra(EXTRA_PRAYER_NAME, prayer.name.name)
-                        putExtra(EXTRA_PRAYER_TIME, formattedTime)
-                        putExtra(EXTRA_PRAYER_DATE, targetDateStr)
-                        putExtra(EXTRA_OFFSET_MINS, preReminderOffset.minutes)
-                        putExtra(EXTRA_TRIGGER_MILLIS, preMillis)
-                        putExtra(EXTRA_WINDOW_END_MILLIS, prayerTriggerMillis)
-                    }
-                    val requestCode = getAlarmRequestCode(prayer.name, targetDate, ALARM_SLOT_PRE_REMINDER)
-                    scheduleAlarm(preMillis, intent, requestCode)
-                }
-            } else {
-                val preReqCode = getAlarmRequestCode(prayer.name, targetDate, ALARM_SLOT_PRE_REMINDER)
-                cancelAlarmByRequestCode(preReqCode)
             }
         }
 
@@ -569,6 +604,7 @@ class SmartPrayerNotificationManager(private val context: Context) {
 
         const val KEY_SMART_ENABLED = "smart_enabled"
         const val KEY_PRAYER_TIME_ENABLED = "prayer_time_enabled"
+        const val KEY_PRAYER_ALERT_MODE = "prayer_alert_mode"
         const val KEY_PRE_REMINDER_MINS = "pre_reminder_mins"
         const val KEY_CONTEXTUAL_ENABLED = "contextual_enabled"
         const val KEY_NAFL_ENABLED = "nafl_enabled"

@@ -300,8 +300,10 @@
     <string name="notif_permission_required">Notification Permission Required</string>
     <string name="notif_permission_desc">To receive prayer time alerts and spiritual reminders, please enable notifications.</string>
     <string name="notif_calm_desc">Calm, contextual notifications for prayer times, pre-prayer preparation, and voluntary windows.</string>
+    <string name="notif_prayer_title">%1$s Prayer</string>
     <string name="notif_prayer_reminder_title">%1$s Prayer Reminder</string>
     <string name="notif_prayer_time_entered">%1$s prayer time has entered.</string>
+    <string name="notif_followup_question">Did you get a chance to pray %1$s?</string>
     <string name="notif_action_snooze_5m">Snooze 5 min</string>
     <string name="notif_action_undo">Undo</string>
     <string name="updater_notif_title">FiveLight Update Available</string>
