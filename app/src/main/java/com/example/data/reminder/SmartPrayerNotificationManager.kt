@@ -13,6 +13,7 @@ import com.example.data.model.NaflType
 import com.example.data.model.PrayerItem
 import com.example.data.model.PrayerName
 import com.example.data.util.PrayerCalc
+import com.example.data.util.PrayerDisplayUtils
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -55,10 +56,43 @@ class SmartPrayerNotificationManager(private val context: Context) {
         }
         set(value) {
             prefs.edit().putString(KEY_PRAYER_ALERT_MODE, value.id).apply()
-            scheduleSmartNotificationsForToday()
+            scheduleSmartNotificationsForTodayAndTomorrow()
         }
 
+    fun cancelLegacyAlarms() {
+        // Broad sweep for legacy receivers and potentially wider request code ranges
+        val legacyReceivers = listOf(
+            PrayerReminderReceiver::class.java,
+            // Add other potential legacy receivers if identified in manifest
+        )
+        
+        try {
+            for (receiver in legacyReceivers) {
+                val legacyIntent = Intent(context, receiver)
+                // Expanded range to cover potential legacy usage beyond 200
+                for (reqCode in 0..1000) {
+                    val pendingIntent = PendingIntent.getBroadcast(
+                        context,
+                        reqCode,
+                        legacyIntent,
+                        PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    if (pendingIntent != null) {
+                        alarmManager.cancel(pendingIntent)
+                        pendingIntent.cancel()
+                        PrayerNotificationLogger.logStaleAlarmCancellation(reqCode, "Cancelling legacy ${receiver.simpleName} alarm")
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
     fun scheduleSmartNotificationsForToday() {
+        scheduleSmartNotificationsForTodayAndTomorrow()
+    }
+
+    fun scheduleSmartNotificationsForTodayAndTomorrow() {
+        cancelLegacyAlarms()
         try {
             val mainPrefs = context.getSharedPreferences("fivelight_prefs", Context.MODE_PRIVATE)
             val savedCityName = mainPrefs.getString("selected_city_name", null)
@@ -73,16 +107,34 @@ class SmartPrayerNotificationManager(private val context: Context) {
             val savedMadhab = mainPrefs.getString("madhab", null)
             val madhab = com.example.data.model.Madhab.entries.find { it.name == savedMadhab } ?: com.example.data.model.Madhab.STANDARD
 
-            val prayerTimes = PrayerCalc.calculatePrayerTimes(
-                latitude = city.latitude,
-                longitude = city.longitude,
-                date = java.util.Date(),
-                method = method,
-                madhab = madhab,
-                timeZoneOffsetHours = city.timezoneOffsetHours
-            )
-            scheduleSmartNotifications(prayerTimes)
-        } catch (_: Exception) {}
+            val is24H = repository.timeFormat.value.is24Hour
+
+            for (dayOffset in 0..1) {
+                val date = java.time.LocalDate.now().plusDays(dayOffset.toLong())
+                val javaDate = java.util.Date.from(date.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant())
+
+                val prayerTimes = PrayerCalc.calculatePrayerTimes(
+                    latitude = city.latitude,
+                    longitude = city.longitude,
+                    date = javaDate,
+                    method = method,
+                    madhab = madhab,
+                    timeZoneOffsetHours = city.timezoneOffsetHours,
+                    is24Hour = is24H,
+                    updateActiveTimeZone = (dayOffset == 0)
+                )
+
+                val naflWindows = com.example.data.util.NaflCalc.calculateNaflTimes(
+                    fardPrayers = prayerTimes,
+                    preferences = repository.naflPreferences.value,
+                    is24Hour = is24H
+                )
+
+                scheduleSmartNotifications(prayerTimes, naflWindows, date.toString())
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SmartPrayerNotif", "Error scheduling notifications: ${e.message}", e)
+        }
     }
 
     var isSmartNotificationsEnabled: Boolean
@@ -503,6 +555,11 @@ class SmartPrayerNotificationManager(private val context: Context) {
             return
         }
 
+        val eventType = intent.getStringExtra(EXTRA_EVENT_TYPE) ?: "unknown"
+        val prayerNameRaw = intent.getStringExtra(EXTRA_PRAYER_NAME) ?: ""
+        val prayerDateStr = intent.getStringExtra(EXTRA_PRAYER_DATE) ?: ""
+        val prayerEnum = PrayerDisplayUtils.parsePrayerName(prayerNameRaw)
+
         val pendingIntent = PendingIntent.getBroadcast(
             context,
             requestCode,
@@ -516,6 +573,14 @@ class SmartPrayerNotificationManager(private val context: Context) {
             } else {
                 alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
             }
+            PrayerNotificationLogger.logSchedule(
+                prayerName = prayerEnum,
+                dateStr = prayerDateStr,
+                triggerMillis = triggerAtMillis,
+                requestCode = requestCode,
+                eventType = eventType,
+                alertMode = prayerAlertMode.id
+            )
         } catch (e: SecurityException) {
             try {
                 alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)

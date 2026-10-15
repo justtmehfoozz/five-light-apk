@@ -139,91 +139,14 @@ class PrayerReminderManager(private val context: Context) {
 
     // Reschedule all enabled alarms based on current settings
     fun rescheduleAll() {
-        val mainPrefs = context.getSharedPreferences("fivelight_prefs", Context.MODE_PRIVATE)
-        val savedCityName = mainPrefs.getString("selected_city_name", null)
-        val city = com.example.data.repository.AppRepository(
-            com.example.data.db.AppDatabase.getDatabase(context), context
-        ).PREDEFINED_CITIES.find { it.cityName == savedCityName } ?: com.example.data.repository.AppRepository(
-            com.example.data.db.AppDatabase.getDatabase(context), context
-        ).PREDEFINED_CITIES[0]
-
-        val savedCalcMethod = mainPrefs.getString("calc_method", null)
-        val method = CalcMethod.entries.find { it.name == savedCalcMethod } ?: city.defaultCalcMethod
-
-        val savedMadhab = mainPrefs.getString("madhab", null)
-        val madhab = Madhab.entries.find { it.name == savedMadhab } ?: Madhab.STANDARD
-
-        rescheduleForParams(city, method, madhab)
+        cancelAllAlarms()
+        SmartPrayerNotificationManager(context).scheduleSmartNotificationsForTodayAndTomorrow()
     }
 
     @SuppressLint("ScheduleExactAlarm")
     fun rescheduleForParams(city: CityLocation, method: CalcMethod, madhab: Madhab) {
         cancelAllAlarms()
-
-        if (!masterEnabled) return
-
-        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
-        // Schedule for today and tomorrow
-        for (dayOffset in 0..1) {
-            val cal = Calendar.getInstance().apply {
-                add(Calendar.DAY_OF_YEAR, dayOffset)
-            }
-            val prayerTimes = PrayerCalc.calculatePrayerTimes(
-                latitude = city.latitude,
-                longitude = city.longitude,
-                date = cal.time,
-                method = method,
-                madhab = madhab,
-                timeZoneOffsetHours = city.timezoneOffsetHours
-            )
-
-            for (pItem in prayerTimes) {
-                if (pItem.name == PrayerName.SUNRISE) continue // Only main 5 prayers
-
-                val config = getPrayerConfig(pItem.name)
-                if (!config.enabled) continue
-
-                val reminderTimeMillis = pItem.timeMillis
-                if (reminderTimeMillis > System.currentTimeMillis()) {
-                    val requestCode = (pItem.name.ordinal * 10) + dayOffset
-                    val intent = Intent(context, PrayerReminderReceiver::class.java).apply {
-                        action = ACTION_PRAYER_REMINDER
-                        putExtra(EXTRA_PRAYER_NAME, pItem.name.name)
-                        putExtra(EXTRA_NOTIFICATION_ID, requestCode)
-                    }
-
-                    val pendingIntent = PendingIntent.getBroadcast(
-                        context,
-                        requestCode,
-                        intent,
-                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                    )
-
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                            alarmManager.setExactAndAllowWhileIdle(
-                                AlarmManager.RTC_WAKEUP,
-                                reminderTimeMillis,
-                                pendingIntent
-                            )
-                        } else {
-                            alarmManager.setExact(
-                                AlarmManager.RTC_WAKEUP,
-                                reminderTimeMillis,
-                                pendingIntent
-                            )
-                        }
-                    } catch (e: SecurityException) {
-                        alarmManager.set(
-                            AlarmManager.RTC_WAKEUP,
-                            reminderTimeMillis,
-                            pendingIntent
-                        )
-                    }
-                }
-            }
-        }
+        SmartPrayerNotificationManager(context).scheduleSmartNotificationsForTodayAndTomorrow()
     }
 
     fun cancelAllAlarms() {

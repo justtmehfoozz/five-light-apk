@@ -63,61 +63,77 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             val pendingResult = goAsync()
             CoroutineScope(Dispatchers.IO).launch {
                 try {
+                    PrayerNotificationLogger.logDelivery(
+                        eventType = eventType,
+                        prayerNameStr = prayerEnum.name,
+                        dateStr = prayerDate,
+                        scheduledMillis = triggerMillis,
+                        deliveryMillis = nowMillis
+                    )
+
+                    val valResult = PrayerNotificationValidator.validateFardEntry(
+                        context = context,
+                        prayerName = prayerEnum,
+                        prayerDateStr = prayerDate,
+                        triggerMillis = triggerMillis,
+                        windowEndMillis = windowEndMillis
+                    )
+
+                    when (valResult) {
+                        is PrayerNotificationValidator.ValidationResult.Invalid -> {
+                            PrayerNotificationLogger.logValidationFailure(
+                                eventType = eventType,
+                                prayerNameStr = prayerEnum.name,
+                                dateStr = prayerDate,
+                                reason = valResult.reason
+                            )
+                            return@launch
+                        }
+                        is PrayerNotificationValidator.ValidationResult.Valid -> {
+                            PrayerNotificationLogger.logValidationSuccess(
+                                eventType = eventType,
+                                prayerNameStr = prayerEnum.name,
+                                dateStr = prayerDate,
+                                details = "Entry notification validated successfully."
+                            )
+                        }
+                    }
+
+                    PrayerNotificationValidator.markFardEntryTriggered(context, prayerEnum, prayerDate)
+
                     val manager = SmartPrayerNotificationManager(context.applicationContext)
-                    if (!manager.isSmartNotificationsEnabled ||
-                        !manager.isPrayerTimeNotificationsEnabled ||
-                        !manager.isPrayerEnabled(prayerEnum.name)
-                    ) {
-                        return@launch
+                    val title = localizedContext.getString(R.string.notif_prayer_title, displayName)
+                    val bodyText = localizedContext.getString(R.string.notif_prayer_time_entered, displayName)
+
+                    val isAzaanMode = manager.prayerAlertMode == PrayerAlertMode.AZAAN_AND_NOTIFICATION
+                    val targetChannel = if (isAzaanMode) {
+                        SmartPrayerNotificationManager.CHANNEL_ADHAN
+                    } else {
+                        SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME
                     }
 
-                    val db = com.example.data.db.AppDatabase.getDatabase(context.applicationContext)
-                    val log = db.prayerLogDao().getPrayerLogForDateDirect(prayerDate)
-                    val isCompleted = log != null && log.isCompleted(prayerEnum)
-                    if (!isCompleted) {
-                        val title = localizedContext.getString(R.string.notif_prayer_title, displayName)
-                        val bodyText = localizedContext.getString(R.string.notif_prayer_time_entered, displayName)
-                        
-                        val isAzaanMode = manager.prayerAlertMode == com.example.data.reminder.PrayerAlertMode.AZAAN_AND_NOTIFICATION
-                        val targetChannel = if (isAzaanMode) {
-                            SmartPrayerNotificationManager.CHANNEL_ADHAN
-                        } else {
-                            SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME
-                        }
+                    showFardPrayerNotification(
+                        context = context,
+                        title = title,
+                        message = bodyText,
+                        notificationId = notifId,
+                        prayerName = prayerEnum.name,
+                        displayName = displayName,
+                        prayerDate = prayerDate,
+                        channelId = targetChannel,
+                        includeMarkAsPrayed = true,
+                        triggerMillis = triggerMillis,
+                        windowEndMillis = windowEndMillis,
+                        stage = SmartPrayerNotificationManager.EVENT_TYPE_FARD,
+                        offsetMins = offsetMins
+                    )
 
-                        showFardPrayerNotification(
-                            context = context,
-                            title = title,
-                            message = bodyText,
-                            notificationId = notifId,
-                            prayerName = prayerEnum.name,
-                            displayName = displayName,
-                            prayerDate = prayerDate,
-                            channelId = targetChannel,
-                            includeMarkAsPrayed = true,
-                            triggerMillis = triggerMillis,
-                            windowEndMillis = windowEndMillis,
-                            stage = SmartPrayerNotificationManager.EVENT_TYPE_FARD,
-                            offsetMins = offsetMins
-                        )
-
-                        if (isAzaanMode) {
-                            PrayerReminderManager.triggerAzaanOverlay(prayerEnum)
-                            try {
-                                val attrs = android.media.AudioAttributes.Builder()
-                                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
-                                    .setUsage(android.media.AudioAttributes.USAGE_ALARM)
-                                    .build()
-                                val mp = android.media.MediaPlayer.create(context.applicationContext, R.raw.azaan, attrs, 0)
-                                mp?.apply {
-                                    setOnCompletionListener { try { release() } catch (_: Exception) {} }
-                                    setOnErrorListener { player, _, _ -> try { player.release() } catch (_: Exception) {}; true }
-                                    start()
-                                }
-                            } catch (_: Exception) {}
-                        }
+                    if (isAzaanMode) {
+                        PrayerReminderManager.triggerAzaanOverlay(prayerEnum)
+                        AzaanAudioPlayer.playAzaan(context)
                     }
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    android.util.Log.e("SmartPrayerNotif", "Error handling Fard prayer event: ${e.message}", e)
                 } finally {
                     pendingResult.finish()
                 }
@@ -287,27 +303,51 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val db = com.example.data.db.AppDatabase.getDatabase(context.applicationContext)
-                val log = db.prayerLogDao().getPrayerLogForDateDirect(prayerDate)
-                val isRecorded = log != null && (log.isCompleted(prayerNameEnum) || log.isMissed(prayerNameEnum))
-                // Only send follow-up if still unrecorded (NEEDS_INPUT)
-                if (!isRecorded) {
-                    showFardPrayerNotification(
-                        context = context,
-                        title = localizedContext.getString(R.string.notif_prayer_reminder_title, displayName),
-                        message = localizedContext.getString(R.string.notif_followup_question, displayName),
-                        notificationId = notifId,
-                        prayerName = prayerNameEnum.name,
-                        displayName = displayName,
-                        prayerDate = prayerDate,
-                        channelId = SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME,
-                        includeMarkAsPrayed = true,
-                        triggerMillis = triggerMillis,
-                        windowEndMillis = windowEndMillis,
-                        stage = SmartPrayerNotificationManager.EVENT_TYPE_FARD_FOLLOWUP,
-                        offsetMins = offsetMins
-                    )
+                val valResult = PrayerNotificationValidator.validateFardFollowUp(
+                    context = context,
+                    prayerName = prayerNameEnum,
+                    prayerDateStr = prayerDate,
+                    triggerMillis = triggerMillis,
+                    windowEndMillis = windowEndMillis
+                )
+
+                when (valResult) {
+                    is PrayerNotificationValidator.ValidationResult.Invalid -> {
+                        PrayerNotificationLogger.logValidationFailure(
+                            eventType = SmartPrayerNotificationManager.EVENT_TYPE_FARD_FOLLOWUP,
+                            prayerNameStr = prayerNameEnum.name,
+                            dateStr = prayerDate,
+                            reason = valResult.reason
+                        )
+                        return@launch
+                    }
+                    is PrayerNotificationValidator.ValidationResult.Valid -> {
+                        PrayerNotificationLogger.logValidationSuccess(
+                            eventType = SmartPrayerNotificationManager.EVENT_TYPE_FARD_FOLLOWUP,
+                            prayerNameStr = prayerNameEnum.name,
+                            dateStr = prayerDate,
+                            details = "Follow-up notification validated successfully."
+                        )
+                    }
                 }
+
+                PrayerNotificationValidator.markFardFollowUpTriggered(context, prayerNameEnum, prayerDate)
+
+                showFardPrayerNotification(
+                    context = context,
+                    title = localizedContext.getString(R.string.notif_prayer_reminder_title, displayName),
+                    message = localizedContext.getString(R.string.notif_followup_question, displayName),
+                    notificationId = notifId,
+                    prayerName = prayerNameEnum.name,
+                    displayName = displayName,
+                    prayerDate = prayerDate,
+                    channelId = SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME,
+                    includeMarkAsPrayed = true,
+                    triggerMillis = triggerMillis,
+                    windowEndMillis = windowEndMillis,
+                    stage = SmartPrayerNotificationManager.EVENT_TYPE_FARD_FOLLOWUP,
+                    offsetMins = offsetMins
+                )
             } catch (_: Exception) {
             } finally {
                 pendingResult.finish()

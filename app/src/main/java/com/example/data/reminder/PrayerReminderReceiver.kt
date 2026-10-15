@@ -20,19 +20,28 @@ class PrayerReminderReceiver : BroadcastReceiver() {
 
         when (intent.action) {
             PrayerReminderManager.ACTION_PRAYER_REMINDER -> {
-                // Show standard notification with actions (Snooze / Dismiss)
-                manager.showPrayerNotification(prayerName, notificationId)
-
-                // Trigger in-app full screen overlay
-                if (manager.azaanSoundEnabled) {
-                    PrayerReminderManager.triggerAzaanOverlay(prayerName)
-                }
+                PrayerNotificationLogger.logValidationFailure(
+                    eventType = "legacy_prayer_reminder",
+                    prayerNameStr = prayerName.name,
+                    dateStr = "unknown",
+                    reason = "Obsolete legacy PrayerReminderReceiver intent received. Rejecting and cancelling alarm."
+                )
+                try {
+                    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+                    val pendingIntent = android.app.PendingIntent.getBroadcast(
+                        context,
+                        notificationId,
+                        intent,
+                        android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                    )
+                    alarmManager.cancel(pendingIntent)
+                    pendingIntent.cancel()
+                } catch (_: Exception) {}
             }
 
             PrayerReminderManager.ACTION_SNOOZE_REMINDER -> {
                 val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
                 notificationManager.cancel(notificationId)
-                manager.scheduleSnooze(prayerName)
                 PrayerReminderManager.dismissAzaanOverlay()
             }
 
