@@ -14,9 +14,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,10 +24,10 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.PhoneInTalk
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
@@ -43,6 +41,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -53,11 +52,9 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
-import com.example.data.model.EmotionCategoryGroup
 import com.example.data.model.EmotionItem
 import com.example.data.util.EmotionData
 import com.example.ui.components.RegisterPredictiveBackHandler
@@ -72,6 +69,7 @@ import com.example.ui.theme.semanticSurface
 import com.example.ui.theme.semanticSurfaceElevated
 import com.example.ui.util.LocalVolumeKeyDispatcher
 import com.example.ui.util.VolumeKeyEventListener
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.pow
 import kotlin.math.roundToInt
@@ -95,7 +93,6 @@ private fun generateDense3434RowGrid(count: Int, pitchPx: Float): List<GridSlot>
     val slots = mutableListOf<GridSlot>()
     val rowSpacingPx = pitchPx * 0.8660254f // sqrt(3)/2 vertical row pitch
 
-    // Determine row capacities (alternating 3, 4, 3, 4...) for `count` items
     var remaining = count
     var rowIndex = 0
     val rowCapacities = mutableListOf<Int>()
@@ -110,7 +107,6 @@ private fun generateDense3434RowGrid(count: Int, pitchPx: Float): List<GridSlot>
 
     val totalRows = rowCapacities.size
 
-    // Build each row centered vertically at y = 0 and horizontally at x = 0
     var itemIndex = 0
     for (r in 0 until totalRows) {
         val itemsInThisRow = rowCapacities[r]
@@ -127,8 +123,15 @@ private fun generateDense3434RowGrid(count: Int, pitchPx: Float): List<GridSlot>
 }
 
 // =========================================================================
-// HELPER: ADJUST LIGHTNESS FOR SUBTLE APPLE WATCH DEPTH GRADIENT
+// PRECOMPUTED COLOR & GRADIENT STYLING CACHE
 // =========================================================================
+
+private data class PrecomputedBubbleStyle(
+    val emotion: EmotionItem,
+    val baseColor: Color,
+    val gradient: Brush,
+    val isDarkText: Boolean
+)
 
 private fun adjustLightness(color: Color, deltaFactor: Float): Color {
     val r = color.red
@@ -137,7 +140,6 @@ private fun adjustLightness(color: Color, deltaFactor: Float): Color {
     val a = color.alpha
 
     return if (deltaFactor > 0f) {
-        // Lighten: blend towards white
         Color(
             red = (r + (1f - r) * deltaFactor).coerceIn(0f, 1f),
             green = (g + (1f - g) * deltaFactor).coerceIn(0f, 1f),
@@ -145,7 +147,6 @@ private fun adjustLightness(color: Color, deltaFactor: Float): Color {
             alpha = a
         )
     } else {
-        // Darken: blend towards black
         val mult = (1f + deltaFactor).coerceIn(0f, 1f)
         Color(
             red = (r * mult).coerceIn(0f, 1f),
@@ -203,90 +204,9 @@ private fun calculatePanLimits(
 }
 
 // =========================================================================
-// FISHEYE TRANSFORM & POSITIONAL EDGE COMPRESSION MODEL
+// EXACT COORDINATE-TRANSFORMED HIT-TESTING FOR TAPS
 // =========================================================================
 
-private data class TransformedIconState(
-    val emotion: EmotionItem,
-    val screenX: Float,
-    val screenY: Float,
-    val scale: Float,
-    val renderedDiameterPx: Float,
-    val isVisible: Boolean
-)
-
-private fun computeTransformedIconState(
-    emotion: EmotionItem,
-    slot: GridSlot,
-    baseDiameterPx: Float,
-    pitchPx: Float,
-    panX: Float,
-    panY: Float,
-    baseScale: Float,
-    viewportWidthPx: Float,
-    viewportHeightPx: Float,
-    rInnerPx: Float,
-    rOuterPx: Float
-): TransformedIconState {
-    val centerX = viewportWidthPx / 2f
-    val centerY = viewportHeightPx / 2f
-
-    // 1. Logical position in grid after panning and base scale magnification
-    val pannedX = slot.logicalX * baseScale + panX
-    val pannedY = slot.logicalY * baseScale + panY
-
-    // 2. Distance vector relative to viewport focal center
-    val dx = pannedX
-    val dy = pannedY
-    val dist = sqrt(dx * dx + dy * dy)
-
-    // 3. Fisheye Scale falloff calculation:
-    // Central zone (dist <= rInnerPx) -> scale = S_MAX (1.06f)
-    // Outer zone (dist >= rOuterPx) -> scale = S_MIN (0.48f)
-    val S_MAX = 1.06f
-    val S_MIN = 0.48f
-
-    val normDist = ((dist - rInnerPx) / (rOuterPx - rInnerPx)).coerceIn(0f, 1f)
-    val falloffFraction = 0.5f * (1.0f + cos(Math.PI * normDist).toFloat())
-    val scale = S_MIN + (S_MAX - S_MIN) * falloffFraction
-
-    // 4. Positional Edge Compression: max 12% to prevent bubble overlap
-    val compressionAlpha = 0.12f
-    val compFactor = if (dist > rInnerPx) {
-        val u = normDist
-        val compRatio = 1.0f - compressionAlpha * u.toDouble().pow(1.2).toFloat()
-        val compDist = rInnerPx + (dist - rInnerPx) * compRatio
-        if (dist > 0.0001f) compDist / dist else 1.0f
-    } else {
-        1.0f
-    }
-
-    val compressedDx = dx * compFactor
-    val compressedDy = dy * compFactor
-
-    // 5. Transformed Screen Center Position
-    val screenX = centerX + compressedDx
-    val screenY = centerY + compressedDy
-
-    // 6. Rendered Diameter
-    val renderedDiameterPx = baseDiameterPx * baseScale * scale
-
-    // 7. Viewport clipping check
-    val margin = renderedDiameterPx / 2f + 16f
-    val isVisible = screenX >= -margin && screenX <= viewportWidthPx + margin &&
-            screenY >= -margin && screenY <= viewportHeightPx + margin
-
-    return TransformedIconState(
-        emotion = emotion,
-        screenX = screenX,
-        screenY = screenY,
-        scale = scale,
-        renderedDiameterPx = renderedDiameterPx,
-        isVisible = isVisible
-    )
-}
-
-// Exact coordinate-transformed hit-testing
 private fun findTappedEmotion(
     tapX: Float,
     tapY: Float,
@@ -305,30 +225,56 @@ private fun findTappedEmotion(
     var closestEmotion: EmotionItem? = null
     var minDistance = Float.MAX_VALUE
 
+    val centerX = viewportWidthPx / 2f
+    val centerY = viewportHeightPx / 2f
+
+    val S_MAX = 1.06f
+    val S_MIN = 0.48f
+    val compressionAlpha = 0.12f
+
     emotions.forEachIndexed { index, emotion ->
         val slot = gridSlots.getOrNull(index) ?: return@forEachIndexed
-        val state = computeTransformedIconState(
-            emotion = emotion,
-            slot = slot,
-            baseDiameterPx = baseDiameterPx,
-            pitchPx = pitchPx,
-            panX = panX,
-            panY = panY,
-            baseScale = baseScale,
-            viewportWidthPx = viewportWidthPx,
-            viewportHeightPx = viewportHeightPx,
-            rInnerPx = rInnerPx,
-            rOuterPx = rOuterPx
-        )
 
-        if (state.isVisible) {
-            val dx = tapX - state.screenX
-            val dy = tapY - state.screenY
-            val dist = sqrt(dx * dx + dy * dy)
-            val radius = state.renderedDiameterPx / 2f
+        val pannedX = slot.logicalX * baseScale + panX
+        val pannedY = slot.logicalY * baseScale + panY
 
-            if (dist <= radius && dist < minDistance) {
-                minDistance = dist
+        val dx = pannedX
+        val dy = pannedY
+        val dist = sqrt(dx * dx + dy * dy)
+
+        val normDist = if (rOuterPx > rInnerPx) ((dist - rInnerPx) / (rOuterPx - rInnerPx)).coerceIn(0f, 1f) else 1f
+        val falloffFraction = 0.5f * (1.0f + cos(Math.PI * normDist).toFloat())
+        val itemScale = S_MIN + (S_MAX - S_MIN) * falloffFraction
+
+        val compFactor = if (dist > rInnerPx) {
+            val u = normDist
+            val compRatio = 1.0f - compressionAlpha * u.toDouble().pow(1.2).toFloat()
+            val compDist = rInnerPx + (dist - rInnerPx) * compRatio
+            if (dist > 0.0001f) compDist / dist else 1.0f
+        } else {
+            1.0f
+        }
+
+        val compressedDx = dx * compFactor
+        val compressedDy = dy * compFactor
+
+        val screenX = centerX + compressedDx
+        val screenY = centerY + compressedDy
+
+        val renderedDiameterPx = baseDiameterPx * baseScale * itemScale
+
+        val margin = renderedDiameterPx / 2f + 16f
+        val isVisible = screenX >= -margin && screenX <= viewportWidthPx + margin &&
+                screenY >= -margin && screenY <= viewportHeightPx + margin
+
+        if (isVisible) {
+            val dTouchX = tapX - screenX
+            val dTouchY = tapY - screenY
+            val touchDist = sqrt(dTouchX * dTouchX + dTouchY * dTouchY)
+            val radius = renderedDiameterPx / 2f
+
+            if (touchDist <= radius && touchDist < minDistance) {
+                minDistance = touchDist
                 closestEmotion = emotion
             }
         }
@@ -361,19 +307,33 @@ fun HoneycombEmotionScreen(
         mutableStateOf(getSavedDuaBookmarks(context))
     }
 
-    // Canvas Pan and Zoom state
-    var targetScale by remember { mutableFloatStateOf(1.0f) }
-    var targetPanX by remember { mutableFloatStateOf(0f) }
-    var targetPanY by remember { mutableFloatStateOf(0f) }
+    // Predictive back
+    val predictiveBackState = rememberPredictiveBackState()
+    RegisterPredictiveBackHandler(
+        enabled = true,
+        backState = predictiveBackState,
+        onBack = onBack
+    )
+
+    val filteredEmotions = remember { EmotionData.ALL_EMOTIONS }
+
+    // Primitive Float States to drive GPU graphicsLayer transforms with zero recomposition
+    val scaleState = remember { mutableFloatStateOf(1.0f) }
+    val panXState = remember { mutableFloatStateOf(0f) }
+    val panYState = remember { mutableFloatStateOf(0f) }
+
+    var flingJob by remember { mutableStateOf<Job?>(null) }
 
     val triggerZoomStep: (Float) -> Unit = { factor ->
-        targetScale = (targetScale * factor).coerceIn(0.70f, 1.80f)
+        val currentScale = scaleState.floatValue
+        val newScale = (currentScale * factor).coerceIn(0.70f, 1.80f)
+        scaleState.floatValue = newScale
         showZoomBadge = true
         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
     }
 
     // Auto-hide volume zoom badge after 1.1 seconds
-    LaunchedEffect(targetScale) {
+    LaunchedEffect(showZoomBadge) {
         if (showZoomBadge) {
             delay(1100L)
             showZoomBadge = false
@@ -403,17 +363,6 @@ fun HoneycombEmotionScreen(
             volumeDispatcher?.setVolumeKeyEventListener(null)
         }
     }
-
-    // Predictive back
-    val predictiveBackState = rememberPredictiveBackState()
-    RegisterPredictiveBackHandler(
-        enabled = true,
-        backState = predictiveBackState,
-        onBack = onBack
-    )
-
-    // All 50 emotions rendered in the full-screen immersive honeycomb
-    val filteredEmotions = remember { EmotionData.ALL_EMOTIONS }
 
     Scaffold(
         topBar = {
@@ -456,7 +405,6 @@ fun HoneycombEmotionScreen(
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // Interactive 2D Honeycomb Canvas Container
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
@@ -470,45 +418,57 @@ fun HoneycombEmotionScreen(
                 val baseDiameterPx = with(density) { 80.dp.toPx() }
                 val gapPx = with(density) { 10.dp.toPx() }
                 val pitchPx = baseDiameterPx + gapPx // Exactly 1.125x diameter
-                val rInnerPx = with(density) { 110.dp.toPx() } * targetScale
-                val rOuterPx = kotlin.math.max(viewportWidthPx, viewportHeightPx) * 0.65f * targetScale
+                val rInnerPx = with(density) { 110.dp.toPx() }
+                val rOuterPx = kotlin.math.max(viewportWidthPx, viewportHeightPx) * 0.65f
 
                 // Precompute Dense 3-4-3-4 Staggered Row Grid Slots
                 val gridSlots = remember(filteredEmotions.size, pitchPx) {
                     generateDense3434RowGrid(filteredEmotions.size, pitchPx)
                 }
 
-                // Compute Content-Based Clamped Pan Limits
-                val (maxPanX, maxPanY) = remember(gridSlots, pitchPx, baseDiameterPx, targetScale, viewportWidthPx, viewportHeightPx) {
-                    calculatePanLimits(
-                        slots = gridSlots,
-                        baseDiameterPx = baseDiameterPx,
-                        baseScale = targetScale,
-                        viewportWidthPx = viewportWidthPx,
-                        viewportHeightPx = viewportHeightPx,
-                        densityPx = density.density
-                    )
+                // Precompute Bubble Color Styles once per theme to eliminate allocations during drag
+                val precomputedStyles = remember(filteredEmotions, isDark) {
+                    filteredEmotions.map { emotion ->
+                        val bubbleColor = if (isDark) emotion.colorDark else emotion.colorLight
+                        val lightColor = adjustLightness(bubbleColor, +0.08f)
+                        val darkColor = adjustLightness(bubbleColor, -0.08f)
+                        val diamPx = baseDiameterPx
+
+                        val gradient = Brush.radialGradient(
+                            colors = listOf(lightColor, bubbleColor, darkColor),
+                            center = Offset(diamPx * 0.35f, diamPx * 0.30f),
+                            radius = diamPx * 0.85f
+                        )
+                        PrecomputedBubbleStyle(emotion, bubbleColor, gradient, emotion.isDarkText)
+                    }
                 }
 
-                // Ensure current pan target stays strictly within calculated limits
-                LaunchedEffect(maxPanX, maxPanY) {
-                    targetPanX = targetPanX.coerceIn(-maxPanX, maxPanX)
-                    targetPanY = targetPanY.coerceIn(-maxPanY, maxPanY)
-                }
+                val centerX = viewportWidthPx / 2f
+                val centerY = viewportHeightPx / 2f
+                val boxLeftPx = centerX - baseDiameterPx / 2f
+                val boxTopPx = centerY - baseDiameterPx / 2f
+                val boxLeftDp = with(density) { boxLeftPx.toDp() }
+                val boxTopDp = with(density) { boxTopPx.toDp() }
+                val baseDiameterDp = with(density) { baseDiameterPx.toDp() }
 
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(filteredEmotions, targetScale, maxPanX, maxPanY) {
+                        .pointerInput(Unit) {
                             var isDragging = false
                             var totalDrag = Offset.Zero
                             var lastTouchTime = 0L
+                            val velocityTracker = VelocityTracker()
 
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
+                                flingJob?.cancel()
+
                                 lastTouchTime = System.currentTimeMillis()
                                 totalDrag = Offset.Zero
                                 isDragging = false
+                                velocityTracker.resetTracking()
+                                velocityTracker.addPosition(down.uptimeMillis, down.position)
 
                                 do {
                                     val event = awaitPointerEvent()
@@ -516,7 +476,17 @@ fun HoneycombEmotionScreen(
                                     val panAmount = event.calculatePan()
 
                                     if (event.changes.size > 1 && zoomFactor != 1.0f) {
-                                        targetScale = (targetScale * zoomFactor).coerceIn(0.70f, 1.80f)
+                                        val currentScale = scaleState.floatValue
+                                        val newScale = (currentScale * zoomFactor).coerceIn(0.70f, 1.80f)
+                                        scaleState.floatValue = newScale
+
+                                        val (limitX, limitY) = calculatePanLimits(
+                                            gridSlots, baseDiameterPx, newScale,
+                                            viewportWidthPx, viewportHeightPx, density.density
+                                        )
+                                        panXState.floatValue = panXState.floatValue.coerceIn(-limitX, limitX)
+                                        panYState.floatValue = panYState.floatValue.coerceIn(-limitY, limitY)
+
                                         isDragging = true
                                         event.changes.forEach { it.consume() }
                                     } else if (panAmount != Offset.Zero) {
@@ -525,8 +495,22 @@ fun HoneycombEmotionScreen(
                                             isDragging = true
                                         }
                                         if (isDragging) {
-                                            targetPanX = (targetPanX + panAmount.x).coerceIn(-maxPanX, maxPanX)
-                                            targetPanY = (targetPanY + panAmount.y).coerceIn(-maxPanY, maxPanY)
+                                            val currentScale = scaleState.floatValue
+                                            val (limitX, limitY) = calculatePanLimits(
+                                                gridSlots, baseDiameterPx, currentScale,
+                                                viewportWidthPx, viewportHeightPx, density.density
+                                            )
+
+                                            val nextPanX = (panXState.floatValue + panAmount.x).coerceIn(-limitX, limitX)
+                                            val nextPanY = (panYState.floatValue + panAmount.y).coerceIn(-limitY, limitY)
+
+                                            panXState.floatValue = nextPanX
+                                            panYState.floatValue = nextPanY
+
+                                            val change = event.changes.firstOrNull { it.pressed }
+                                            if (change != null) {
+                                                velocityTracker.addPosition(change.uptimeMillis, change.position)
+                                            }
 
                                             event.changes.forEach { it.consume() }
                                         }
@@ -534,9 +518,54 @@ fun HoneycombEmotionScreen(
                                 } while (event.changes.any { it.pressed })
 
                                 val duration = System.currentTimeMillis() - lastTouchTime
-                                if (!isDragging && duration < 300L) {
+
+                                if (isDragging) {
+                                    val velocity = velocityTracker.calculateVelocity()
+                                    val vx = velocity.x
+                                    val vy = velocity.y
+                                    val speed = sqrt(vx * vx + vy * vy)
+
+                                    if (speed > 150f) {
+                                        flingJob = coroutineScope.launch {
+                                            var currentVx = vx.coerceIn(-4000f, 4000f)
+                                            var currentVy = vy.coerceIn(-4000f, 4000f)
+                                            var lastNanos = System.nanoTime()
+
+                                            while (abs(currentVx) > 20f || abs(currentVy) > 20f) {
+                                                withFrameNanos { frameTime ->
+                                                    val dt = (frameTime - lastNanos) / 1_000_000_000f
+                                                    lastNanos = frameTime
+                                                    if (dt in 0.001f..0.1f) {
+                                                        val currentScale = scaleState.floatValue
+                                                        val (limitX, limitY) = calculatePanLimits(
+                                                            gridSlots, baseDiameterPx, currentScale,
+                                                            viewportWidthPx, viewportHeightPx, density.density
+                                                        )
+
+                                                        val nextX = (panXState.floatValue + currentVx * dt).coerceIn(-limitX, limitX)
+                                                        val nextY = (panYState.floatValue + currentVy * dt).coerceIn(-limitY, limitY)
+
+                                                        if (nextX == -limitX || nextX == limitX) currentVx = 0f
+                                                        if (nextY == -limitY || nextY == limitY) currentVy = 0f
+
+                                                        panXState.floatValue = nextX
+                                                        panYState.floatValue = nextY
+
+                                                        val decay = 0.88f.pow(dt * 60f)
+                                                        currentVx *= decay
+                                                        currentVy *= decay
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else if (duration < 300L) {
                                     val tapX = down.position.x
                                     val tapY = down.position.y
+
+                                    val currentScale = scaleState.floatValue
+                                    val currentPanX = panXState.floatValue
+                                    val currentPanY = panYState.floatValue
 
                                     val tapped = findTappedEmotion(
                                         tapX = tapX,
@@ -545,20 +574,20 @@ fun HoneycombEmotionScreen(
                                         gridSlots = gridSlots,
                                         baseDiameterPx = baseDiameterPx,
                                         pitchPx = pitchPx,
-                                        panX = targetPanX,
-                                        panY = targetPanY,
-                                        baseScale = targetScale,
+                                        panX = currentPanX,
+                                        panY = currentPanY,
+                                        baseScale = currentScale,
                                         viewportWidthPx = viewportWidthPx,
                                         viewportHeightPx = viewportHeightPx,
-                                        rInnerPx = rInnerPx,
-                                        rOuterPx = rOuterPx
+                                        rInnerPx = rInnerPx * currentScale,
+                                        rOuterPx = rOuterPx * currentScale
                                     )
 
                                     if (tapped != null) {
                                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         pressedEmotionId = tapped.id
                                         coroutineScope.launch {
-                                            delay(90L)
+                                            delay(80L)
                                             pressedEmotionId = null
                                             selectedEmotionForDetail = tapped
                                         }
@@ -567,134 +596,122 @@ fun HoneycombEmotionScreen(
                             }
                         }
                 ) {
-                    if (filteredEmotions.isEmpty()) {
+                    if (precomputedStyles.isEmpty()) {
                         Box(
                             modifier = Modifier.fillMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.padding(24.dp)
-                            ) {
-                                Text(
-                                    text = "No emotions found",
-                                    fontFamily = SerifHeaderFont,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.semanticPrimaryText
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Try adjusting your search or category filter",
-                                    fontFamily = SpaceGrotesk,
-                                    fontSize = 13.sp,
-                                    color = Color.semanticSecondaryText,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
+                            Text(
+                                text = "No emotions found",
+                                fontFamily = SerifHeaderFont,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.semanticPrimaryText
+                            )
                         }
                     } else {
-                        // Render Spatial Apple Watch 3-4-3-4 Staggered Row Honeycomb
-                        filteredEmotions.forEachIndexed { index, emotion ->
+                        // Render 50 Spatial Honeycomb Bubbles driven by GPU graphicsLayer
+                        precomputedStyles.forEachIndexed { index, style ->
                             val slot = gridSlots.getOrNull(index) ?: return@forEachIndexed
-                            val state = computeTransformedIconState(
-                                emotion = emotion,
-                                slot = slot,
-                                baseDiameterPx = baseDiameterPx,
-                                pitchPx = pitchPx,
-                                panX = targetPanX,
-                                panY = targetPanY,
-                                baseScale = targetScale,
-                                viewportWidthPx = viewportWidthPx,
-                                viewportHeightPx = viewportHeightPx,
-                                rInnerPx = rInnerPx,
-                                rOuterPx = rOuterPx
-                            )
+                            val emotion = style.emotion
+                            val isPressed = pressedEmotionId == emotion.id
+                            val isBookmarked = bookmarkedDuaIds.contains(emotion.duaItem.id)
 
-                            if (state.isVisible) {
-                                val leftOffset = (state.screenX - state.renderedDiameterPx / 2f).roundToInt()
-                                val topOffset = (state.screenY - state.renderedDiameterPx / 2f).roundToInt()
-                                val sizeDp = (state.renderedDiameterPx / density.density).dp
+                            Box(
+                                modifier = Modifier
+                                    .offset(x = boxLeftDp, y = boxTopDp)
+                                    .size(baseDiameterDp)
+                                    .graphicsLayer {
+                                        val px = panXState.floatValue
+                                        val py = panYState.floatValue
+                                        val sc = scaleState.floatValue
 
-                                val bubbleColor = if (isDark) emotion.colorDark else emotion.colorLight
-                                val lightColor = adjustLightness(bubbleColor, +0.08f)
-                                val darkColor = adjustLightness(bubbleColor, -0.08f)
-                                val diamPx = state.renderedDiameterPx
+                                        val pannedX = slot.logicalX * sc + px
+                                        val pannedY = slot.logicalY * sc + py
 
-                                val bubbleGradient = Brush.radialGradient(
-                                    colors = listOf(
-                                        lightColor,
-                                        bubbleColor,
-                                        darkColor
-                                    ),
-                                    center = Offset(diamPx * 0.35f, diamPx * 0.30f),
-                                    radius = diamPx * 0.85f
-                                )
+                                        val dx = pannedX
+                                        val dy = pannedY
+                                        val dist = sqrt(dx * dx + dy * dy)
 
-                                val isPressed = pressedEmotionId == emotion.id
-                                val pressScale by animateFloatAsState(
-                                    targetValue = if (isPressed) 0.92f else 1.0f,
-                                    animationSpec = spring(
-                                        stiffness = Spring.StiffnessHigh,
-                                        dampingRatio = Spring.DampingRatioNoBouncy
-                                    ),
-                                    label = "pressScale"
-                                )
+                                        val rInner = rInnerPx * sc
+                                        val rOuter = rOuterPx * sc
 
-                                val isBookmarked = bookmarkedDuaIds.contains(emotion.duaItem.id)
+                                        val S_MAX = 1.06f
+                                        val S_MIN = 0.48f
 
-                                Box(
-                                    modifier = Modifier
-                                        .offset { IntOffset(leftOffset, topOffset) }
-                                        .size(sizeDp)
-                                        .graphicsLayer {
-                                            scaleX = pressScale
-                                            scaleY = pressScale
+                                        val normDist = if (rOuter > rInner) ((dist - rInner) / (rOuter - rInner)).coerceIn(0f, 1f) else 1f
+                                        val falloffFraction = 0.5f * (1.0f + cos(Math.PI * normDist).toFloat())
+                                        val itemScale = S_MIN + (S_MAX - S_MIN) * falloffFraction
+
+                                        val compressionAlpha = 0.12f
+                                        val compFactor = if (dist > rInner) {
+                                            val u = normDist
+                                            val compRatio = 1.0f - compressionAlpha * u.toDouble().pow(1.2).toFloat()
+                                            val compDist = rInner + (dist - rInner) * compRatio
+                                            if (dist > 0.0001f) compDist / dist else 1.0f
+                                        } else {
+                                            1.0f
                                         }
-                                        .shadow(
-                                            elevation = if (isDark) (3.0f * state.scale).dp else (1.8f * state.scale).dp,
-                                            shape = CircleShape
-                                        )
-                                        .clip(CircleShape)
-                                        .background(bubbleGradient)
-                                        .border(
-                                            border = BorderStroke(0.75.dp, Color.White.copy(alpha = if (isDark) 0.12f else 0.22f)),
-                                            shape = CircleShape
-                                        )
-                                        .padding(3.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    // Show label when icon scale is large enough for clear readability
-                                    if (state.scale >= 0.50f) {
-                                        val baseFontSizeSp = if (emotion.name.length > 10) 9.5f else 11.5f
-                                        val fontScaleSp = (baseFontSizeSp * state.scale).coerceIn(8.0f, 14.0f).sp
 
-                                        Text(
-                                            text = emotion.name,
-                                            fontFamily = SpaceGrotesk,
-                                            fontSize = fontScaleSp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (emotion.isDarkText) Color(0xFF1F2937) else Color.White,
-                                            textAlign = TextAlign.Center,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                            lineHeight = fontScaleSp * 1.12f,
-                                            modifier = Modifier.padding(horizontal = 3.dp)
-                                        )
-                                    }
+                                        val compressedDx = dx * compFactor
+                                        val compressedDy = dy * compFactor
 
-                                    // Bookmark Indicator Badge
-                                    if (isBookmarked && state.scale >= 0.55f) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Bookmark,
-                                            contentDescription = "Bookmarked",
-                                            tint = if (emotion.isDarkText) Color(0xFF1F2937).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.90f),
-                                            modifier = Modifier
-                                                .align(Alignment.TopEnd)
-                                                .padding(top = (4f * state.scale).dp, end = (4f * state.scale).dp)
-                                                .size((11f * state.scale).dp)
-                                        )
+                                        val screenX = centerX + compressedDx
+                                        val screenY = centerY + compressedDy
+
+                                        val renderedDiameter = baseDiameterPx * sc * itemScale
+                                        val margin = renderedDiameter / 2f + 16f
+                                        val isVisible = screenX >= -margin && screenX <= viewportWidthPx + margin &&
+                                                screenY >= -margin && screenY <= viewportHeightPx + margin
+
+                                        if (!isVisible) {
+                                            alpha = 0f
+                                        } else {
+                                            alpha = 1f
+                                            translationX = compressedDx
+                                            translationY = compressedDy
+
+                                            val totalScale = itemScale * sc * (if (isPressed) 0.92f else 1.0f)
+                                            scaleX = totalScale
+                                            scaleY = totalScale
+                                        }
                                     }
+                                    .shadow(
+                                        elevation = if (isDark) 3.dp else 2.dp,
+                                        shape = CircleShape
+                                    )
+                                    .clip(CircleShape)
+                                    .background(style.gradient)
+                                    .border(
+                                        border = BorderStroke(0.75.dp, Color.White.copy(alpha = if (isDark) 0.12f else 0.22f)),
+                                        shape = CircleShape
+                                    )
+                                    .padding(3.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = emotion.name,
+                                    fontFamily = SpaceGrotesk,
+                                    fontSize = if (emotion.name.length > 10) 9.5.sp else 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (style.isDarkText) Color(0xFF1F2937) else Color.White,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    lineHeight = 13.sp,
+                                    modifier = Modifier.padding(horizontal = 2.dp)
+                                )
+
+                                if (isBookmarked) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Bookmark,
+                                        contentDescription = "Bookmarked",
+                                        tint = if (style.isDarkText) Color(0xFF1F2937).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.90f),
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(top = 4.dp, end = 4.dp)
+                                            .size(11.dp)
+                                    )
                                 }
                             }
                         }
@@ -717,7 +734,7 @@ fun HoneycombEmotionScreen(
                         shadowElevation = 4.dp
                     ) {
                         Text(
-                            text = "${(targetScale * 100).roundToInt()}%",
+                            text = "${(scaleState.floatValue * 100).roundToInt()}%",
                             fontFamily = SpaceGrotesk,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
@@ -768,7 +785,6 @@ fun EmotionDetailBottomSheet(
                 .fillMaxWidth()
                 .padding(start = 20.dp, end = 20.dp, bottom = 32.dp)
         ) {
-            // Emotion Badge Header
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -804,7 +820,6 @@ fun EmotionDetailBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Title
             Text(
                 text = dua.title,
                 fontFamily = SerifHeaderFont,
@@ -813,7 +828,6 @@ fun EmotionDetailBottomSheet(
                 color = Color.semanticPrimaryText
             )
 
-            // Sensitive / Suicidal Compassionate Support Card
             if (emotion.isSensitive) {
                 Spacer(modifier = Modifier.height(14.dp))
                 Surface(
@@ -878,7 +892,6 @@ fun EmotionDetailBottomSheet(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Arabic Supplication Card
             Surface(
                 shape = RoundedCornerShape(20.dp),
                 color = Color.semanticSurfaceElevated,
@@ -943,7 +956,6 @@ fun EmotionDetailBottomSheet(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Action Buttons: Bookmark, Copy, Share
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
@@ -1017,7 +1029,7 @@ fun EmotionDetailBottomSheet(
                             text = "Copy",
                             fontFamily = SpaceGrotesk,
                             fontSize = 11.5.sp,
-                            fontWeight = FontWeight.SemiBold,
+                            fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             softWrap = false
                         )
