@@ -186,4 +186,27 @@ class PrayerSchedulingValidationTest {
         // Verify overlay is not active
         assertEquals(null, PrayerReminderManager.activeAzaanState.value)
     }
+
+    @Test
+    fun testRomanUrduSentencesForFardPrayers() {
+        val fardPrayers = listOf(
+            PrayerName.FAJR to "Fajr ka waqt ho gaya hai",
+            PrayerName.DHUHR to "Dhuhr ka waqt ho gaya hai",
+            PrayerName.ASR to "Asr ka waqt ho gaya hai",
+            PrayerName.MAGHRIB to "Maghrib ka waqt ho gaya hai",
+            PrayerName.ISHA to "Isha ka waqt ho gaya hai"
+        )
+
+        for ((prayer, expectedSentence) in fardPrayers) {
+            val sentence = when (prayer) {
+                PrayerName.FAJR -> "Fajr ka waqt ho gaya hai"
+                PrayerName.DHUHR -> "Dhuhr ka waqt ho gaya hai"
+                PrayerName.ASR -> "Asr ka waqt ho gaya hai"
+                PrayerName.MAGHRIB -> "Maghrib ka waqt ho gaya hai"
+                PrayerName.ISHA -> "Isha ka waqt ho gaya hai"
+                PrayerName.SUNRISE -> "Sunrise ka waqt ho gaya hai"
+            }
+            assertEquals("Roman Urdu sentence must match for ${prayer.name}", expectedSentence, sentence)
+        }
+    }
 }

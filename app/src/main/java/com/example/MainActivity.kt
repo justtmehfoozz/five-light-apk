@@ -98,6 +98,7 @@ import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.QiblaScreen
 import com.example.ui.screens.QuranScreen
 import com.example.ui.screens.SettingsBottomSheet
+import com.example.ui.components.AzaanOverlay
 import com.example.ui.screens.TasbeehScreen
 import com.example.ui.theme.FiveLightTheme
 import com.example.ui.util.LocalVolumeKeyDispatcher
@@ -141,6 +142,14 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
         return super.dispatchKeyEvent(event)
     }
 
+    private fun handleAdhanIntent(intent: Intent?) {
+        if (intent?.action == com.example.data.reminder.SmartPrayerNotificationManager.ACTION_SHOW_ADHAN_OVERLAY) {
+            val prayerNameRaw = intent.getStringExtra(com.example.data.reminder.SmartPrayerNotificationManager.EXTRA_PRAYER_NAME) ?: ""
+            val prayerEnum = com.example.data.util.PrayerDisplayUtils.parsePrayerName(prayerNameRaw)
+            com.example.data.reminder.PrayerReminderManager.triggerAzaanOverlay(prayerEnum)
+        }
+    }
+
     @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
@@ -150,6 +159,7 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
         // Pre-warm audio engine for instant Tasbeeh sound playback
         com.example.data.audio.TasbeehAudioPlayer.getInstance(this)
 
+        handleAdhanIntent(intent)
 
         setContent {
             val activityContext = androidx.compose.ui.platform.LocalContext.current
@@ -285,6 +295,36 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                     }
                 }
                 val hazeState = remember { HazeState() }
+
+                val activeAzaanState by com.example.data.reminder.PrayerReminderManager.activeAzaanState.collectAsStateWithLifecycle()
+
+                androidx.compose.runtime.LaunchedEffect(activeAzaanState) {
+                    if (activeAzaanState != null) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                            setShowWhenLocked(true)
+                            setTurnScreenOn(true)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            window.addFlags(
+                                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                            )
+                        }
+                    } else {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                            setShowWhenLocked(false)
+                            setTurnScreenOn(false)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            window.clearFlags(
+                                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                            )
+                        }
+                    }
+                }
 
                 androidx.compose.runtime.LaunchedEffect(currentUser, hasSeenFiveLightPrelude, hasSeenAccountPrompt) {
                     val user = currentUser
@@ -1138,6 +1178,15 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                         }
                     }
 
+                    AzaanOverlay(
+                        activeState = activeAzaanState,
+                        onDismiss = { com.example.data.reminder.PrayerReminderManager.dismissAzaanOverlay() },
+                        onSnooze = { prayer ->
+                            com.example.data.reminder.SmartPrayerNotificationManager(this@MainActivity).scheduleSnooze(prayer)
+                            com.example.data.reminder.PrayerReminderManager.dismissAzaanOverlay()
+                        }
+                    )
+
                     if (showLoginBottomSheet) {
                         LoginBottomSheet(
                             sheetState = loginSheetState,
@@ -1182,6 +1231,7 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleAdhanIntent(intent)
     }
 }
 

@@ -548,6 +548,23 @@ class SmartPrayerNotificationManager(private val context: Context) {
         scheduleAlarm(followUpMillis, followUpIntent, followUpReqCode)
     }
 
+    fun scheduleSnooze(prayerName: PrayerName, dateStr: String = LocalDate.now().toString()) {
+        val targetDate = parseDateOrToday(dateStr)
+        val triggerMillis = System.currentTimeMillis() + (5 * 60 * 1000L)
+        val windowEndMillis = triggerMillis + (15 * 60 * 1000L)
+        val snoozeIntent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
+            action = ACTION_SMART_PRAYER_NOTIF
+            data = Uri.parse("fivelight://snooze/$dateStr/${prayerName.name}/${System.currentTimeMillis()}")
+            putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_SNOOZE_ADHAN)
+            putExtra(EXTRA_PRAYER_NAME, prayerName.name)
+            putExtra(EXTRA_PRAYER_DATE, dateStr)
+            putExtra(EXTRA_TRIGGER_MILLIS, triggerMillis)
+            putExtra(EXTRA_WINDOW_END_MILLIS, windowEndMillis)
+        }
+        val reqCode = getSpecialAlarmRequestCode(targetDate, 800 + prayerName.ordinal)
+        scheduleAlarm(triggerMillis, snoozeIntent, reqCode)
+    }
+
     internal fun scheduleAlarm(triggerAtMillis: Long, intent: Intent, requestCode: Int) {
         val nowMillis = System.currentTimeMillis()
         if (triggerAtMillis <= nowMillis) {
@@ -687,10 +704,12 @@ class SmartPrayerNotificationManager(private val context: Context) {
         const val ACTION_SMART_PRAYER_NOTIF = "com.example.ACTION_SMART_PRAYER_NOTIF"
         const val ACTION_MARK_PRAYED = "com.example.ACTION_MARK_PRAYED"
         const val ACTION_UNDO_PRAYED = "com.example.ACTION_UNDO_PRAYED"
+        const val ACTION_SHOW_ADHAN_OVERLAY = "com.example.ACTION_SHOW_ADHAN_OVERLAY"
 
         const val EVENT_TYPE_TEST = "test_smart_prayer"
         const val EVENT_TYPE_FARD = "fard_prayer"
         const val EVENT_TYPE_FARD_FOLLOWUP = "fard_prayer_followup"
+        const val EVENT_TYPE_SNOOZE_ADHAN = "snooze_adhan"
         const val EVENT_TYPE_PRE_PRAYER = "pre_prayer"
         const val EVENT_TYPE_CONTEXTUAL_MORNING = "contextual_morning"
         const val EVENT_TYPE_CONTEXTUAL_EVENING = "contextual_evening"

@@ -141,6 +141,36 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             return
         }
 
+        if (eventType == SmartPrayerNotificationManager.EVENT_TYPE_SNOOZE_ADHAN) {
+            val notifId = SmartPrayerNotificationManager.getNotificationId(prayerEnum, prayerDate)
+            val manager = SmartPrayerNotificationManager(context.applicationContext)
+            val isAzaanMode = manager.prayerAlertMode == PrayerAlertMode.AZAAN_AND_NOTIFICATION
+            val title = localizedContext.getString(R.string.notif_prayer_title, displayName)
+            val bodyText = localizedContext.getString(R.string.notif_prayer_time_entered, displayName)
+
+            showFardPrayerNotification(
+                context = context,
+                title = title,
+                message = bodyText,
+                notificationId = notifId,
+                prayerName = prayerEnum.name,
+                displayName = displayName,
+                prayerDate = prayerDate,
+                channelId = if (isAzaanMode) SmartPrayerNotificationManager.CHANNEL_ADHAN else SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME,
+                includeMarkAsPrayed = true,
+                triggerMillis = triggerMillis,
+                windowEndMillis = windowEndMillis,
+                stage = SmartPrayerNotificationManager.EVENT_TYPE_SNOOZE_ADHAN,
+                offsetMins = offsetMins
+            )
+
+            if (isAzaanMode) {
+                PrayerReminderManager.triggerAzaanOverlay(prayerEnum)
+                AzaanAudioPlayer.playAzaan(context)
+            }
+            return
+        }
+
         if (eventType == SmartPrayerNotificationManager.EVENT_TYPE_FARD_FOLLOWUP) {
             handleFardFollowUp(context, intent)
             return
@@ -523,6 +553,20 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val fullScreenIntent = Intent(context, MainActivity::class.java).apply {
+            action = SmartPrayerNotificationManager.ACTION_SHOW_ADHAN_OVERLAY
+            data = Uri.parse("fivelight://adhan/$prayerDate/$prayerName")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerName)
+            putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, prayerDate)
+        }
+        val fullScreenPendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId * 10 + 4,
+            fullScreenIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification_small)
             .setSubText("FiveLight")
@@ -530,8 +574,10 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             .setContentText(message)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
             .setContentIntent(openAppPendingIntent)
+            .setFullScreenIntent(fullScreenPendingIntent, true)
 
         val lang = com.example.data.util.AppLocaleManager.getPersistedLanguage(context)
         val localizedContext = com.example.data.util.AppLocaleManager.createLocalizedContext(context, lang)
