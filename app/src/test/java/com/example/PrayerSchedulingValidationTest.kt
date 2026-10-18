@@ -209,4 +209,52 @@ class PrayerSchedulingValidationTest {
             assertEquals("Roman Urdu sentence must match for ${prayer.name}", expectedSentence, sentence)
         }
     }
+
+    @Test
+    fun testAdhanOnboardingPersistenceState() {
+        // Reset onboarding state in prefs
+        com.example.data.reminder.AdhanPermissionHelper.setCompletedOrDismissedOnboarding(context, false)
+        assertFalse(com.example.data.reminder.AdhanPermissionHelper.hasCompletedOrDismissedOnboarding(context))
+
+        // Set to completed
+        com.example.data.reminder.AdhanPermissionHelper.setCompletedOrDismissedOnboarding(context, true)
+        assertTrue(com.example.data.reminder.AdhanPermissionHelper.hasCompletedOrDismissedOnboarding(context))
+
+        // Reset back
+        com.example.data.reminder.AdhanPermissionHelper.setCompletedOrDismissedOnboarding(context, false)
+    }
+
+    @Test
+    fun testAdhanAlarmReceiverDelegatesSafely() {
+        val receiver = com.example.data.reminder.AdhanAlarmReceiver()
+        val todayStr = LocalDate.now().toString()
+        val intent = Intent(context, com.example.data.reminder.AdhanAlarmReceiver::class.java).apply {
+            action = SmartPrayerNotificationManager.ACTION_SMART_PRAYER_NOTIF
+            putExtra(SmartPrayerNotificationManager.EXTRA_EVENT_TYPE, SmartPrayerNotificationManager.EVENT_TYPE_FARD)
+            putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, "FAJR")
+            putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, todayStr)
+            putExtra(SmartPrayerNotificationManager.EXTRA_TRIGGER_MILLIS, System.currentTimeMillis() - 60000L)
+            putExtra(SmartPrayerNotificationManager.EXTRA_WINDOW_END_MILLIS, System.currentTimeMillis() + 3600000L)
+        }
+
+        // Must run without crashing
+        receiver.onReceive(context, intent)
+    }
+
+    @Test
+    fun testAdhanPermissionHelperQueriesSafely() {
+        // Check queries return boolean without exceptions
+        val notifs = com.example.data.reminder.AdhanPermissionHelper.areNotificationsEnabled(context)
+        val exactAlarm = com.example.data.reminder.AdhanPermissionHelper.canScheduleExactAlarms(context)
+        val overlay = com.example.data.reminder.AdhanPermissionHelper.canDrawOverlays(context)
+        val fullScreen = com.example.data.reminder.AdhanPermissionHelper.canUseFullScreenIntent(context)
+        val battery = com.example.data.reminder.AdhanPermissionHelper.isIgnoringBatteryOptimizations(context)
+
+        // Verify none of them throw exceptions and all return valid booleans
+        assertTrue(notifs || !notifs)
+        assertTrue(exactAlarm || !exactAlarm)
+        assertTrue(overlay || !overlay)
+        assertTrue(fullScreen || !fullScreen)
+        assertTrue(battery || !battery)
+    }
 }

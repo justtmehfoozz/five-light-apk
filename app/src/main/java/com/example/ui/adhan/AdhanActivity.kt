@@ -39,11 +39,25 @@ class AdhanActivity : ComponentActivity() {
                     activeState = activeState,
                     onDismiss = {
                         PrayerReminderManager.dismissAzaanOverlay()
+                        com.example.data.reminder.AzaanAudioPlayer.stopAzaan()
+                        try {
+                            val stopIntent = Intent(this@AdhanActivity, com.example.data.reminder.AdhanService::class.java).apply {
+                                action = com.example.data.reminder.AdhanService.ACTION_STOP_ADHAN
+                            }
+                            startService(stopIntent)
+                        } catch (_: Exception) {}
                         finish()
                     },
                     onSnooze = { prayer ->
                         SmartPrayerNotificationManager(this@AdhanActivity).scheduleSnooze(prayer)
                         PrayerReminderManager.dismissAzaanOverlay()
+                        com.example.data.reminder.AzaanAudioPlayer.stopAzaan()
+                        try {
+                            val stopIntent = Intent(this@AdhanActivity, com.example.data.reminder.AdhanService::class.java).apply {
+                                action = com.example.data.reminder.AdhanService.ACTION_STOP_ADHAN
+                            }
+                            startService(stopIntent)
+                        } catch (_: Exception) {}
                         finish()
                     }
                 )
@@ -73,6 +87,13 @@ class AdhanActivity : ComponentActivity() {
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
             )
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
+            keyguardManager?.requestDismissKeyguard(this, null)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }

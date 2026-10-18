@@ -112,25 +112,95 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                         SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME
                     }
 
-                    showFardPrayerNotification(
-                        context = context,
-                        title = title,
-                        message = bodyText,
-                        notificationId = notifId,
-                        prayerName = prayerEnum.name,
-                        displayName = displayName,
-                        prayerDate = prayerDate,
-                        channelId = targetChannel,
-                        includeMarkAsPrayed = true,
-                        triggerMillis = triggerMillis,
-                        windowEndMillis = windowEndMillis,
-                        stage = SmartPrayerNotificationManager.EVENT_TYPE_FARD,
-                        offsetMins = offsetMins
-                    )
-
                     if (isAzaanMode) {
                         PrayerReminderManager.triggerAzaanOverlay(prayerEnum)
-                        AzaanAudioPlayer.playAzaan(context)
+
+                        val serviceIntent = Intent(context, AdhanService::class.java).apply {
+                            setAction(AdhanService.ACTION_START_ADHAN)
+                            putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerEnum.name)
+                            putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, prayerDate)
+                            putExtra(SmartPrayerNotificationManager.EXTRA_NOTIF_ID, notifId)
+                        }
+                        var serviceStarted = false
+                        try {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                context.startForegroundService(serviceIntent)
+                            } else {
+                                context.startService(serviceIntent)
+                            }
+                            serviceStarted = true
+                            PrayerNotificationLogger.logValidationSuccess(
+                                eventType,
+                                prayerEnum.name,
+                                prayerDate,
+                                "Started AdhanService for foreground Azaan playback and notification."
+                            )
+                        } catch (e: Exception) {
+                            android.util.Log.e("SmartPrayerNotif", "Failed to start AdhanService: ${e.message}", e)
+                        }
+
+                        if (!serviceStarted) {
+                            showFardPrayerNotification(
+                                context = context,
+                                title = title,
+                                message = bodyText,
+                                notificationId = notifId,
+                                prayerName = prayerEnum.name,
+                                displayName = displayName,
+                                prayerDate = prayerDate,
+                                channelId = targetChannel,
+                                includeMarkAsPrayed = true,
+                                triggerMillis = triggerMillis,
+                                windowEndMillis = windowEndMillis,
+                                stage = SmartPrayerNotificationManager.EVENT_TYPE_FARD,
+                                offsetMins = offsetMins
+                            )
+                            AzaanAudioPlayer.playAzaan(context)
+                        }
+
+                        val canDraw = AdhanPermissionHelper.canDrawOverlays(context)
+                        val canFullScreen = AdhanPermissionHelper.canUseFullScreenIntent(context)
+                        PrayerNotificationLogger.logValidationSuccess(
+                            eventType,
+                            prayerEnum.name,
+                            prayerDate,
+                            "Permission status: canDrawOverlays=$canDraw, canUseFullScreenIntent=$canFullScreen"
+                        )
+
+                        if (canDraw) {
+                            try {
+                                val activityIntent = Intent(context, com.example.ui.adhan.AdhanActivity::class.java).apply {
+                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                                    putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerEnum.name)
+                                    putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, prayerDate)
+                                }
+                                context.startActivity(activityIntent)
+                                PrayerNotificationLogger.logValidationSuccess(
+                                    eventType,
+                                    prayerEnum.name,
+                                    prayerDate,
+                                    "Directly launched AdhanActivity via SYSTEM_ALERT_WINDOW."
+                                )
+                            } catch (e: Exception) {
+                                android.util.Log.e("SmartPrayerNotif", "Direct launch of AdhanActivity failed: ${e.message}", e)
+                            }
+                        }
+                    } else {
+                        showFardPrayerNotification(
+                            context = context,
+                            title = title,
+                            message = bodyText,
+                            notificationId = notifId,
+                            prayerName = prayerEnum.name,
+                            displayName = displayName,
+                            prayerDate = prayerDate,
+                            channelId = targetChannel,
+                            includeMarkAsPrayed = true,
+                            triggerMillis = triggerMillis,
+                            windowEndMillis = windowEndMillis,
+                            stage = SmartPrayerNotificationManager.EVENT_TYPE_FARD,
+                            offsetMins = offsetMins
+                        )
                     }
                 } catch (e: Exception) {
                     android.util.Log.e("SmartPrayerNotif", "Error handling Fard prayer event: ${e.message}", e)
@@ -148,25 +218,70 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             val title = localizedContext.getString(R.string.notif_prayer_title, displayName)
             val bodyText = localizedContext.getString(R.string.notif_prayer_time_entered, displayName)
 
-            showFardPrayerNotification(
-                context = context,
-                title = title,
-                message = bodyText,
-                notificationId = notifId,
-                prayerName = prayerEnum.name,
-                displayName = displayName,
-                prayerDate = prayerDate,
-                channelId = if (isAzaanMode) SmartPrayerNotificationManager.CHANNEL_ADHAN else SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME,
-                includeMarkAsPrayed = true,
-                triggerMillis = triggerMillis,
-                windowEndMillis = windowEndMillis,
-                stage = SmartPrayerNotificationManager.EVENT_TYPE_SNOOZE_ADHAN,
-                offsetMins = offsetMins
-            )
-
             if (isAzaanMode) {
                 PrayerReminderManager.triggerAzaanOverlay(prayerEnum)
-                AzaanAudioPlayer.playAzaan(context)
+
+                val serviceIntent = Intent(context, AdhanService::class.java).apply {
+                    setAction(AdhanService.ACTION_START_ADHAN)
+                    putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerEnum.name)
+                    putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, prayerDate)
+                    putExtra(SmartPrayerNotificationManager.EXTRA_NOTIF_ID, notifId)
+                }
+                var serviceStarted = false
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(serviceIntent)
+                    } else {
+                        context.startService(serviceIntent)
+                    }
+                    serviceStarted = true
+                } catch (_: Exception) {}
+
+                if (!serviceStarted) {
+                    showFardPrayerNotification(
+                        context = context,
+                        title = title,
+                        message = bodyText,
+                        notificationId = notifId,
+                        prayerName = prayerEnum.name,
+                        displayName = displayName,
+                        prayerDate = prayerDate,
+                        channelId = SmartPrayerNotificationManager.CHANNEL_ADHAN,
+                        includeMarkAsPrayed = true,
+                        triggerMillis = triggerMillis,
+                        windowEndMillis = windowEndMillis,
+                        stage = SmartPrayerNotificationManager.EVENT_TYPE_SNOOZE_ADHAN,
+                        offsetMins = offsetMins
+                    )
+                    AzaanAudioPlayer.playAzaan(context)
+                }
+
+                if (AdhanPermissionHelper.canDrawOverlays(context)) {
+                    try {
+                        val activityIntent = Intent(context, com.example.ui.adhan.AdhanActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerEnum.name)
+                            putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, prayerDate)
+                        }
+                        context.startActivity(activityIntent)
+                    } catch (_: Exception) {}
+                }
+            } else {
+                showFardPrayerNotification(
+                    context = context,
+                    title = title,
+                    message = bodyText,
+                    notificationId = notifId,
+                    prayerName = prayerEnum.name,
+                    displayName = displayName,
+                    prayerDate = prayerDate,
+                    channelId = SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME,
+                    includeMarkAsPrayed = true,
+                    triggerMillis = triggerMillis,
+                    windowEndMillis = windowEndMillis,
+                    stage = SmartPrayerNotificationManager.EVENT_TYPE_SNOOZE_ADHAN,
+                    offsetMins = offsetMins
+                )
             }
             return
         }
@@ -553,7 +668,7 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val fullScreenIntent = Intent(context, MainActivity::class.java).apply {
+        val fullScreenIntent = Intent(context, com.example.ui.adhan.AdhanActivity::class.java).apply {
             action = SmartPrayerNotificationManager.ACTION_SHOW_ADHAN_OVERLAY
             data = Uri.parse("fivelight://adhan/$prayerDate/$prayerName")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -575,6 +690,7 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setAutoCancel(true)
             .setContentIntent(openAppPendingIntent)
             .setFullScreenIntent(fullScreenPendingIntent, true)

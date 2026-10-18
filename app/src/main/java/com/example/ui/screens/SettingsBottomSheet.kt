@@ -123,6 +123,7 @@ enum class PreferencesSubScreen {
     HIJRI_METHOD,
     TASBEEH_SOUND,
     REMINDERS,
+    ADHAN_ALERTS,
     NAFL_PRAYERS,
     HOME_FEATURES,
     APP_UPDATES,
@@ -679,6 +680,13 @@ fun SettingsBottomSheet(
                         )
                     }
 
+                    PreferencesSubScreen.ADHAN_ALERTS -> {
+                        com.example.ui.adhan.AdhanPermissionOnboardingScreen(
+                            onDismiss = { activeSubScreen = PreferencesSubScreen.MAIN },
+                            isOpenedFromSettings = true
+                        )
+                    }
+
                     PreferencesSubScreen.NAFL_PRAYERS -> {
                         val naflItems = naflPreferences.naflOrder.map { naflId ->
                             when (naflId.uppercase()) {
@@ -1153,6 +1161,13 @@ fun MainPreferencesView(
                         value = summaryText,
                         onClick = { onNavigateTo(PreferencesSubScreen.REMINDERS) },
                         testTag = "pref_row_reminders"
+                    )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    GroupedMenuRow(
+                        label = "Adhan Alerts",
+                        value = if (com.example.data.reminder.AdhanPermissionHelper.isAnyRequiredPermissionMissing(context)) "Setup Required" else "Configured",
+                        onClick = { onNavigateTo(PreferencesSubScreen.ADHAN_ALERTS) },
+                        testTag = "pref_row_adhan_alerts"
                     )
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     GroupedMenuRow(

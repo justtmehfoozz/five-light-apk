@@ -70,6 +70,8 @@ class AdhanService : Service() {
             SmartPrayerNotificationManager.getNotificationId(prayerEnum, prayerDate)
         ) ?: SmartPrayerNotificationManager.getNotificationId(prayerEnum, prayerDate)
 
+        PrayerReminderManager.triggerAzaanOverlay(prayerEnum)
+
         acquireWakeLock()
 
         val notification = buildForegroundNotification(prayerEnum, prayerDate, notifId)
@@ -80,8 +82,29 @@ class AdhanService : Service() {
             } else {
                 startForeground(notifId, notification)
             }
+            PrayerNotificationLogger.logValidationSuccess("adhan_service", prayerEnum.name, prayerDate, "AdhanService started foreground notification.")
         } catch (e: Exception) {
             android.util.Log.e("AdhanService", "Failed to startForeground: ${e.message}", e)
+        }
+
+        // Direct background Activity launch if Display over other apps is granted
+        if (AdhanPermissionHelper.canDrawOverlays(this)) {
+            try {
+                val activityIntent = Intent(this, AdhanActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerEnum.name)
+                    putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, prayerDate)
+                }
+                startActivity(activityIntent)
+                PrayerNotificationLogger.logValidationSuccess(
+                    "adhan_service",
+                    prayerEnum.name,
+                    prayerDate,
+                    "Launched AdhanActivity directly via SYSTEM_ALERT_WINDOW from AdhanService."
+                )
+            } catch (e: Exception) {
+                android.util.Log.e("AdhanService", "Direct launch from AdhanService failed: ${e.message}", e)
+            }
         }
 
         // Start playback
@@ -103,6 +126,8 @@ class AdhanService : Service() {
 
         // Target AdhanActivity for full-screen and content intents
         val adhanActivityIntent = Intent(this, AdhanActivity::class.java).apply {
+            action = SmartPrayerNotificationManager.ACTION_SHOW_ADHAN_OVERLAY
+            data = Uri.parse("fivelight://adhan/$prayerDate/${prayerName.name}")
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerName.name)
             putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, prayerDate)
@@ -156,6 +181,7 @@ class AdhanService : Service() {
             .setStyle(NotificationCompat.BigTextStyle().bigText(bodyText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOngoing(true)
             .setContentIntent(contentPendingIntent)
             .setFullScreenIntent(fullScreenPendingIntent, true)
