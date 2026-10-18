@@ -58,238 +58,11 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
         val isFriday = PrayerDisplayUtils.isFriday(prayerDate)
         val displayName = PrayerDisplayUtils.getLocalizedPrayerName(context, prayerEnum, isFriday)
 
-        if (eventType == SmartPrayerNotificationManager.EVENT_TYPE_FARD) {
-            val notifId = SmartPrayerNotificationManager.getNotificationId(prayerEnum, prayerDate)
-            val pendingResult = goAsync()
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    PrayerNotificationLogger.logDelivery(
-                        eventType = eventType,
-                        prayerNameStr = prayerEnum.name,
-                        dateStr = prayerDate,
-                        scheduledMillis = triggerMillis,
-                        deliveryMillis = nowMillis
-                    )
-
-                    val valResult = PrayerNotificationValidator.validateFardEntry(
-                        context = context,
-                        prayerName = prayerEnum,
-                        prayerDateStr = prayerDate,
-                        triggerMillis = triggerMillis,
-                        windowEndMillis = windowEndMillis
-                    )
-
-                    when (valResult) {
-                        is PrayerNotificationValidator.ValidationResult.Invalid -> {
-                            PrayerNotificationLogger.logValidationFailure(
-                                eventType = eventType,
-                                prayerNameStr = prayerEnum.name,
-                                dateStr = prayerDate,
-                                reason = valResult.reason
-                            )
-                            return@launch
-                        }
-                        is PrayerNotificationValidator.ValidationResult.Valid -> {
-                            PrayerNotificationLogger.logValidationSuccess(
-                                eventType = eventType,
-                                prayerNameStr = prayerEnum.name,
-                                dateStr = prayerDate,
-                                details = "Entry notification validated successfully."
-                            )
-                        }
-                    }
-
-                    PrayerNotificationValidator.markFardEntryTriggered(context, prayerEnum, prayerDate)
-
-                    val manager = SmartPrayerNotificationManager(context.applicationContext)
-                    val title = localizedContext.getString(R.string.notif_prayer_title, displayName)
-                    val bodyText = localizedContext.getString(R.string.notif_prayer_time_entered, displayName)
-
-                    val isAzaanMode = manager.prayerAlertMode == PrayerAlertMode.AZAAN_AND_NOTIFICATION
-                    val targetChannel = if (isAzaanMode) {
-                        SmartPrayerNotificationManager.CHANNEL_ADHAN
-                    } else {
-                        SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME
-                    }
-
-                    com.example.util.AdhanDebugLogger.log(
-                        context,
-                        "[RECEIVER FIRED] SmartPrayerNotificationReceiver received (Event=$eventType, Prayer=${prayerEnum.name}, Date=$prayerDate, isAzaanMode=$isAzaanMode, Pid=${android.os.Process.myPid()})"
-                    )
-
-                    if (isAzaanMode) {
-                        PrayerReminderManager.triggerAzaanOverlay(prayerEnum)
-
-                        val serviceIntent = Intent(context, AdhanService::class.java).apply {
-                            setAction(AdhanService.ACTION_START_ADHAN)
-                            putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerEnum.name)
-                            putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, prayerDate)
-                            putExtra(SmartPrayerNotificationManager.EXTRA_NOTIF_ID, notifId)
-                        }
-                        var serviceStarted = false
-                        try {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                context.startForegroundService(serviceIntent)
-                            } else {
-                                context.startService(serviceIntent)
-                            }
-                            serviceStarted = true
-                            com.example.util.AdhanDebugLogger.log(
-                                context,
-                                "[SERVICE START ATTEMPT] Called startForegroundService(AdhanService) successfully."
-                            )
-                        } catch (e: Exception) {
-                            com.example.util.AdhanDebugLogger.log(
-                                context,
-                                "[SERVICE START ERROR] startForegroundService(AdhanService) failed: ${e.message}"
-                            )
-                        }
-
-                        if (!serviceStarted) {
-                            showFardPrayerNotification(
-                                context = context,
-                                title = title,
-                                message = bodyText,
-                                notificationId = notifId,
-                                prayerName = prayerEnum.name,
-                                displayName = displayName,
-                                prayerDate = prayerDate,
-                                channelId = targetChannel,
-                                includeMarkAsPrayed = true,
-                                triggerMillis = triggerMillis,
-                                windowEndMillis = windowEndMillis,
-                                stage = SmartPrayerNotificationManager.EVENT_TYPE_FARD,
-                                offsetMins = offsetMins
-                            )
-                            AzaanAudioPlayer.playAzaan(context)
-                        }
-
-                        val canDraw = AdhanPermissionHelper.canDrawOverlays(context)
-                        val canFullScreen = AdhanPermissionHelper.canUseFullScreenIntent(context)
-                        com.example.util.AdhanDebugLogger.log(
-                            context,
-                            "[RECEIVER LAUNCH ATTEMPT] canDrawOverlays=$canDraw, canUseFullScreenIntent=$canFullScreen"
-                        )
-
-                        if (canDraw) {
-                            try {
-                                val activityIntent = Intent(context, com.example.ui.adhan.AdhanActivity::class.java).apply {
-                                    setAction(SmartPrayerNotificationManager.ACTION_SHOW_ADHAN_OVERLAY)
-                                    setData(Uri.parse("fivelight://adhan/$prayerDate/${prayerEnum.name}"))
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                    putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerEnum.name)
-                                    putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, prayerDate)
-                                }
-                                context.startActivity(activityIntent)
-                                com.example.util.AdhanDebugLogger.log(
-                                    context,
-                                    "[RECEIVER LAUNCH SUCCESS] Directly launched AdhanActivity via SYSTEM_ALERT_WINDOW from receiver."
-                                )
-                            } catch (e: Exception) {
-                                com.example.util.AdhanDebugLogger.log(
-                                    context,
-                                    "[RECEIVER LAUNCH ERROR] Direct startActivity(AdhanActivity) from receiver failed: ${e.message}"
-                                )
-                            }
-                        }
-                    } else {
-                        showFardPrayerNotification(
-                            context = context,
-                            title = title,
-                            message = bodyText,
-                            notificationId = notifId,
-                            prayerName = prayerEnum.name,
-                            displayName = displayName,
-                            prayerDate = prayerDate,
-                            channelId = targetChannel,
-                            includeMarkAsPrayed = true,
-                            triggerMillis = triggerMillis,
-                            windowEndMillis = windowEndMillis,
-                            stage = SmartPrayerNotificationManager.EVENT_TYPE_FARD,
-                            offsetMins = offsetMins
-                        )
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.e("SmartPrayerNotif", "Error handling Fard prayer event: ${e.message}", e)
-                } finally {
-                    pendingResult.finish()
-                }
-            }
-            return
-        }
-
-        if (eventType == SmartPrayerNotificationManager.EVENT_TYPE_SNOOZE_ADHAN) {
-            val notifId = SmartPrayerNotificationManager.getNotificationId(prayerEnum, prayerDate)
-            val manager = SmartPrayerNotificationManager(context.applicationContext)
-            val isAzaanMode = manager.prayerAlertMode == PrayerAlertMode.AZAAN_AND_NOTIFICATION
-            val title = localizedContext.getString(R.string.notif_prayer_title, displayName)
-            val bodyText = localizedContext.getString(R.string.notif_prayer_time_entered, displayName)
-
-            if (isAzaanMode) {
-                PrayerReminderManager.triggerAzaanOverlay(prayerEnum)
-
-                val serviceIntent = Intent(context, AdhanService::class.java).apply {
-                    setAction(AdhanService.ACTION_START_ADHAN)
-                    putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerEnum.name)
-                    putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, prayerDate)
-                    putExtra(SmartPrayerNotificationManager.EXTRA_NOTIF_ID, notifId)
-                }
-                var serviceStarted = false
-                try {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        context.startForegroundService(serviceIntent)
-                    } else {
-                        context.startService(serviceIntent)
-                    }
-                    serviceStarted = true
-                } catch (_: Exception) {}
-
-                if (!serviceStarted) {
-                    showFardPrayerNotification(
-                        context = context,
-                        title = title,
-                        message = bodyText,
-                        notificationId = notifId,
-                        prayerName = prayerEnum.name,
-                        displayName = displayName,
-                        prayerDate = prayerDate,
-                        channelId = SmartPrayerNotificationManager.CHANNEL_ADHAN,
-                        includeMarkAsPrayed = true,
-                        triggerMillis = triggerMillis,
-                        windowEndMillis = windowEndMillis,
-                        stage = SmartPrayerNotificationManager.EVENT_TYPE_SNOOZE_ADHAN,
-                        offsetMins = offsetMins
-                    )
-                    AzaanAudioPlayer.playAzaan(context)
-                }
-
-                if (AdhanPermissionHelper.canDrawOverlays(context)) {
-                    try {
-                        val activityIntent = Intent(context, com.example.ui.adhan.AdhanActivity::class.java).apply {
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                            putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerEnum.name)
-                            putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, prayerDate)
-                        }
-                        context.startActivity(activityIntent)
-                    } catch (_: Exception) {}
-                }
-            } else {
-                showFardPrayerNotification(
-                    context = context,
-                    title = title,
-                    message = bodyText,
-                    notificationId = notifId,
-                    prayerName = prayerEnum.name,
-                    displayName = displayName,
-                    prayerDate = prayerDate,
-                    channelId = SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME,
-                    includeMarkAsPrayed = true,
-                    triggerMillis = triggerMillis,
-                    windowEndMillis = windowEndMillis,
-                    stage = SmartPrayerNotificationManager.EVENT_TYPE_SNOOZE_ADHAN,
-                    offsetMins = offsetMins
-                )
-            }
+        if (eventType == SmartPrayerNotificationManager.EVENT_TYPE_FARD || eventType == SmartPrayerNotificationManager.EVENT_TYPE_SNOOZE_ADHAN) {
+            com.example.util.AdhanDebugLogger.log(
+                context,
+                "[RECEIVER SKIPPED] SmartPrayerNotificationReceiver ignoring $eventType; handled directly by AdhanAlarmReceiver -> AdhanService."
+            )
             return
         }
 
@@ -502,7 +275,7 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                 )
             } catch (_: Exception) {
             } finally {
-                pendingResult.finish()
+                pendingResult?.finish()
             }
         }
     }
@@ -547,7 +320,7 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                 }
             } catch (_: Exception) {
             } finally {
-                pendingResult.finish()
+                pendingResult?.finish()
             }
         }
     }
@@ -639,7 +412,7 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                 }
             } catch (_: Exception) {
             } finally {
-                pendingResult.finish()
+                pendingResult?.finish()
             }
         }
     }

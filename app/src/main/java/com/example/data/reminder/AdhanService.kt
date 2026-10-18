@@ -30,6 +30,7 @@ class AdhanService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action ?: ACTION_START_ADHAN
+        com.example.util.AdhanDebugLogger.log(this, "[SERVICE onStartCommand] AdhanService onStartCommand action=$action")
 
         when (action) {
             ACTION_STOP_ADHAN -> {
@@ -89,7 +90,7 @@ class AdhanService : Service() {
             }
             com.example.util.AdhanDebugLogger.log(
                 this,
-                "[SERVICE FOREGROUND SUCCESS] AdhanService startForeground executed with type MEDIA_PLAYBACK for notifId=$notifId"
+                "[FOREGROUND STARTED] AdhanService startForeground executed with type MEDIA_PLAYBACK for notifId=$notifId"
             )
         } catch (e: Exception) {
             com.example.util.AdhanDebugLogger.log(
@@ -118,12 +119,12 @@ class AdhanService : Service() {
                 startActivity(activityIntent)
                 com.example.util.AdhanDebugLogger.log(
                     this,
-                    "[SERVICE LAUNCH SUCCESS] Called startActivity(AdhanActivity) directly from AdhanService."
+                    "[ACTIVITY LAUNCH startActivity ok] Called startActivity(AdhanActivity) directly from AdhanService."
                 )
             } catch (e: Exception) {
                 com.example.util.AdhanDebugLogger.log(
                     this,
-                    "[SERVICE LAUNCH ERROR] Direct startActivity(AdhanActivity) from AdhanService failed: ${e.message}"
+                    "[ACTIVITY LAUNCH startActivity exception] Direct startActivity(AdhanActivity) failed: ${e.message}"
                 )
             }
         } else {
@@ -224,6 +225,11 @@ class AdhanService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        com.example.util.AdhanDebugLogger.log(
+            this,
+            "[FULLSCREEN INTENT POSTED] Built foreground notification with setFullScreenIntent for AdhanActivity (notifId=$notifId)"
+        )
+
         return NotificationCompat.Builder(this, SmartPrayerNotificationManager.CHANNEL_ADHAN)
             .setSmallIcon(R.drawable.ic_notification_small)
             .setSubText("FiveLight")
@@ -274,6 +280,7 @@ class AdhanService : Service() {
     }
 
     private fun stopServiceSafely() {
+        com.example.util.AdhanDebugLogger.log(this, "[SERVICE STOPPED] AdhanService stopped safely.")
         releaseWakeLock()
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {

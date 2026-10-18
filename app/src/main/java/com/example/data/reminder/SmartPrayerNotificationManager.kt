@@ -627,10 +627,13 @@ class SmartPrayerNotificationManager(private val context: Context) {
                 eventType = eventType,
                 alertMode = prayerAlertMode.id
             )
+            val sourceTimeStr = intent.getStringExtra(EXTRA_PRAYER_TIME) ?: "N/A"
+            val tzId = PrayerCalc.activeTimeZone.id
             com.example.util.AdhanDebugLogger.log(
                 context,
                 "[ALARM SCHEDULED] Prayer: ${prayerEnum.name}, Date: $prayerDateStr, Event: $eventType, " +
-                        "TriggerTime: ${PrayerNotificationLogger.formatTime(triggerAtMillis)}, ReqCode: $requestCode, " +
+                        "SourceTimeStr: $sourceTimeStr, TimeZone: $tzId, " +
+                        "TriggerMillis: $triggerAtMillis (${PrayerNotificationLogger.formatTime(triggerAtMillis)}), ReqCode: $requestCode, " +
                         "canScheduleExactAlarms=$canExact, TargetComponent: ${intent.component?.className ?: "Broadcast"}"
             )
         } catch (e: SecurityException) {
