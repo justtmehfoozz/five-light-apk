@@ -14,6 +14,10 @@ class AdhanAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val prayerName = intent.getStringExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME) ?: "UNKNOWN"
         val dateStr = intent.getStringExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE) ?: "UNKNOWN"
+        com.example.util.AdhanDebugLogger.log(
+            context,
+            "[RECEIVER FIRED] AdhanAlarmReceiver received alarm broadcast (Action=${intent.action}, Prayer=$prayerName, Date=$dateStr, Pid=${android.os.Process.myPid()})"
+        )
         PrayerNotificationLogger.logValidationSuccess(
             "adhan_alarm_receiver",
             prayerName,

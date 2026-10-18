@@ -323,7 +323,7 @@ class SmartPrayerNotificationManager(private val context: Context) {
             if (isPrayerTimeNotificationsEnabled) {
                 // Notification 1: Entry Notification at actual prayer start time
                 if (prayerTriggerMillis > nowMillis) {
-                    val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
+                    val intent = Intent(context, AdhanAlarmReceiver::class.java).apply {
                         action = ACTION_SMART_PRAYER_NOTIF
                         data = Uri.parse("fivelight://prayer/$targetDateStr/${prayer.name.name}/entry")
                         putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_FARD)
@@ -568,10 +568,35 @@ class SmartPrayerNotificationManager(private val context: Context) {
         scheduleAlarm(triggerMillis, snoozeIntent, reqCode)
     }
 
+    fun scheduleTestAdhanIn10Seconds() {
+        val dateStr = LocalDate.now().toString()
+        val triggerMillis = System.currentTimeMillis() + 10_000L
+        val windowEndMillis = triggerMillis + (15 * 60 * 1000L)
+        val testIntent = Intent(context, AdhanAlarmReceiver::class.java).apply {
+            action = ACTION_SMART_PRAYER_NOTIF
+            data = Uri.parse("fivelight://test_adhan/$dateStr/${System.currentTimeMillis()}")
+            putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_FARD)
+            putExtra(EXTRA_PRAYER_NAME, PrayerName.FAJR.name)
+            putExtra(EXTRA_PRAYER_DATE, dateStr)
+            putExtra(EXTRA_TRIGGER_MILLIS, triggerMillis)
+            putExtra(EXTRA_WINDOW_END_MILLIS, windowEndMillis)
+        }
+        val reqCode = 99999
+        com.example.util.AdhanDebugLogger.log(
+            context,
+            "[TEST ALARM ENQUEUED] Test Adhan alarm enqueued for +10s (TriggerTime=${PrayerNotificationLogger.formatTime(triggerMillis)}, reqCode=$reqCode)"
+        )
+        scheduleAlarm(triggerMillis, testIntent, reqCode)
+    }
+
     internal fun scheduleAlarm(triggerAtMillis: Long, intent: Intent, requestCode: Int) {
         val nowMillis = System.currentTimeMillis()
         if (triggerAtMillis <= nowMillis) {
             // CRITICAL: NEVER schedule an alarm in the past! AlarmManager fires it immediately.
+            com.example.util.AdhanDebugLogger.log(
+                context,
+                "[SCHEDULE SKIPPED] Trigger time is in the past: ${PrayerNotificationLogger.formatTime(triggerAtMillis)}"
+            )
             return
         }
 
@@ -579,6 +604,7 @@ class SmartPrayerNotificationManager(private val context: Context) {
         val prayerNameRaw = intent.getStringExtra(EXTRA_PRAYER_NAME) ?: ""
         val prayerDateStr = intent.getStringExtra(EXTRA_PRAYER_DATE) ?: ""
         val prayerEnum = PrayerDisplayUtils.parsePrayerName(prayerNameRaw)
+        val canExact = AdhanPermissionHelper.canScheduleExactAlarms(context)
 
         val pendingIntent = PendingIntent.getBroadcast(
             context,
@@ -601,11 +627,31 @@ class SmartPrayerNotificationManager(private val context: Context) {
                 eventType = eventType,
                 alertMode = prayerAlertMode.id
             )
+            com.example.util.AdhanDebugLogger.log(
+                context,
+                "[ALARM SCHEDULED] Prayer: ${prayerEnum.name}, Date: $prayerDateStr, Event: $eventType, " +
+                        "TriggerTime: ${PrayerNotificationLogger.formatTime(triggerAtMillis)}, ReqCode: $requestCode, " +
+                        "canScheduleExactAlarms=$canExact, TargetComponent: ${intent.component?.className ?: "Broadcast"}"
+            )
         } catch (e: SecurityException) {
             try {
                 alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
-            } catch (_: Exception) {}
-        } catch (_: Exception) {}
+                com.example.util.AdhanDebugLogger.log(
+                    context,
+                    "[ALARM SCHEDULED FALLBACK] SecurityException exact alarm, used setAndAllowWhileIdle for ReqCode $requestCode"
+                )
+            } catch (ex: Exception) {
+                com.example.util.AdhanDebugLogger.log(
+                    context,
+                    "[ALARM SCHEDULE ERROR] Failed to schedule fallback alarm: ${ex.message}"
+                )
+            }
+        } catch (e: Exception) {
+            com.example.util.AdhanDebugLogger.log(
+                context,
+                "[ALARM SCHEDULE ERROR] Failed to schedule alarm: ${e.message}"
+            )
+        }
     }
 
     fun cancelPrayerNotification(prayerName: PrayerName, dateStr: String = LocalDate.now().toString()) {

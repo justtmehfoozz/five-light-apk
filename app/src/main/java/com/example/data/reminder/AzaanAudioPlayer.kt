@@ -46,6 +46,10 @@ object AzaanAudioPlayer {
         }
 
         if (isSilentOrVibrate || isDndMuted) {
+            com.example.util.AdhanDebugLogger.log(
+                appContext,
+                "[AUDIO SKIPPED] Suppressed due to Ringer Mode ($ringerMode) or DND Policy (isDndMuted=$isDndMuted)."
+            )
             Log.i(TAG, "Audio playback suppressed due to Ringer Mode ($ringerMode) or DND Policy.")
             performSoftHaptic(appContext)
             val cb = completionCallback
@@ -57,6 +61,10 @@ object AzaanAudioPlayer {
         // 3. Request Audio Focus
         val focusGranted = requestAudioFocus(audioManager)
         if (!focusGranted) {
+            com.example.util.AdhanDebugLogger.log(
+                appContext,
+                "[AUDIO SKIPPED] Audio focus request denied by system."
+            )
             Log.w(TAG, "Audio focus request denied. Suppressing audible Azaan.")
             performSoftHaptic(appContext)
             val cb = completionCallback
@@ -73,6 +81,7 @@ object AzaanAudioPlayer {
 
             mediaPlayer = MediaPlayer.create(appContext, R.raw.azaan, attrs, 0)?.apply {
                 setOnCompletionListener {
+                    com.example.util.AdhanDebugLogger.log(appContext, "[AUDIO COMPLETED] Azaan audio completed naturally.")
                     Log.i(TAG, "Scheduled Azaan audio playback completed naturally.")
                     stopAzaan()
                     val cb = completionCallback
@@ -80,6 +89,7 @@ object AzaanAudioPlayer {
                     cb?.invoke()
                 }
                 setOnErrorListener { mp, _, _ ->
+                    com.example.util.AdhanDebugLogger.log(appContext, "[AUDIO ERROR] MediaPlayer error during playback.")
                     Log.e(TAG, "MediaPlayer error during Azaan playback.")
                     try { mp.reset(); mp.release() } catch (_: Exception) {}
                     if (mediaPlayer === mp) mediaPlayer = null
@@ -91,8 +101,10 @@ object AzaanAudioPlayer {
                 }
                 start()
             }
+            com.example.util.AdhanDebugLogger.log(appContext, "[AUDIO STARTED] Azaan audio playback started successfully.")
             Log.i(TAG, "Scheduled Azaan audio playback started successfully.")
         } catch (e: Exception) {
+            com.example.util.AdhanDebugLogger.log(appContext, "[AUDIO ERROR] Failed to start Azaan audio: ${e.message}")
             Log.e(TAG, "Failed to play Azaan audio: ${e.message}", e)
             stopAzaan()
             val cb = completionCallback

@@ -26,6 +26,10 @@ class AdhanActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.example.util.AdhanDebugLogger.log(
+            this,
+            "[ADHAN ACTIVITY CREATED] AdhanActivity onCreate executed (Intent action=${intent?.action}, prayer=${intent?.getStringExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME)})"
+        )
         enableEdgeToEdge()
 
         configureWindowFlags()
@@ -67,6 +71,10 @@ class AdhanActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        com.example.util.AdhanDebugLogger.log(
+            this,
+            "[ADHAN ACTIVITY NEW INTENT] AdhanActivity onNewIntent executed (Action=${intent.action}, prayer=${intent.getStringExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME)})"
+        )
         setIntent(intent)
         handleAdhanIntent(intent)
     }
@@ -74,6 +82,10 @@ class AdhanActivity : ComponentActivity() {
     private fun handleAdhanIntent(intent: Intent?) {
         val prayerNameRaw = intent?.getStringExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME) ?: ""
         val prayerEnum = PrayerDisplayUtils.parsePrayerName(prayerNameRaw)
+        com.example.util.AdhanDebugLogger.log(
+            this,
+            "[ADHAN ACTIVITY TRIGGER OVERLAY] Calling PrayerReminderManager.triggerAzaanOverlay(${prayerEnum.name})"
+        )
         PrayerReminderManager.triggerAzaanOverlay(prayerEnum)
     }
 

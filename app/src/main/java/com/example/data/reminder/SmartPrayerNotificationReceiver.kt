@@ -112,6 +112,11 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                         SmartPrayerNotificationManager.CHANNEL_PRAYER_TIME
                     }
 
+                    com.example.util.AdhanDebugLogger.log(
+                        context,
+                        "[RECEIVER FIRED] SmartPrayerNotificationReceiver received (Event=$eventType, Prayer=${prayerEnum.name}, Date=$prayerDate, isAzaanMode=$isAzaanMode, Pid=${android.os.Process.myPid()})"
+                    )
+
                     if (isAzaanMode) {
                         PrayerReminderManager.triggerAzaanOverlay(prayerEnum)
 
@@ -129,14 +134,15 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
                                 context.startService(serviceIntent)
                             }
                             serviceStarted = true
-                            PrayerNotificationLogger.logValidationSuccess(
-                                eventType,
-                                prayerEnum.name,
-                                prayerDate,
-                                "Started AdhanService for foreground Azaan playback and notification."
+                            com.example.util.AdhanDebugLogger.log(
+                                context,
+                                "[SERVICE START ATTEMPT] Called startForegroundService(AdhanService) successfully."
                             )
                         } catch (e: Exception) {
-                            android.util.Log.e("SmartPrayerNotif", "Failed to start AdhanService: ${e.message}", e)
+                            com.example.util.AdhanDebugLogger.log(
+                                context,
+                                "[SERVICE START ERROR] startForegroundService(AdhanService) failed: ${e.message}"
+                            )
                         }
 
                         if (!serviceStarted) {
@@ -160,29 +166,30 @@ class SmartPrayerNotificationReceiver : BroadcastReceiver() {
 
                         val canDraw = AdhanPermissionHelper.canDrawOverlays(context)
                         val canFullScreen = AdhanPermissionHelper.canUseFullScreenIntent(context)
-                        PrayerNotificationLogger.logValidationSuccess(
-                            eventType,
-                            prayerEnum.name,
-                            prayerDate,
-                            "Permission status: canDrawOverlays=$canDraw, canUseFullScreenIntent=$canFullScreen"
+                        com.example.util.AdhanDebugLogger.log(
+                            context,
+                            "[RECEIVER LAUNCH ATTEMPT] canDrawOverlays=$canDraw, canUseFullScreenIntent=$canFullScreen"
                         )
 
                         if (canDraw) {
                             try {
                                 val activityIntent = Intent(context, com.example.ui.adhan.AdhanActivity::class.java).apply {
+                                    setAction(SmartPrayerNotificationManager.ACTION_SHOW_ADHAN_OVERLAY)
+                                    setData(Uri.parse("fivelight://adhan/$prayerDate/${prayerEnum.name}"))
                                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                                     putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerEnum.name)
                                     putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, prayerDate)
                                 }
                                 context.startActivity(activityIntent)
-                                PrayerNotificationLogger.logValidationSuccess(
-                                    eventType,
-                                    prayerEnum.name,
-                                    prayerDate,
-                                    "Directly launched AdhanActivity via SYSTEM_ALERT_WINDOW."
+                                com.example.util.AdhanDebugLogger.log(
+                                    context,
+                                    "[RECEIVER LAUNCH SUCCESS] Directly launched AdhanActivity via SYSTEM_ALERT_WINDOW from receiver."
                                 )
                             } catch (e: Exception) {
-                                android.util.Log.e("SmartPrayerNotif", "Direct launch of AdhanActivity failed: ${e.message}", e)
+                                com.example.util.AdhanDebugLogger.log(
+                                    context,
+                                    "[RECEIVER LAUNCH ERROR] Direct startActivity(AdhanActivity) from receiver failed: ${e.message}"
+                                )
                             }
                         }
                     } else {

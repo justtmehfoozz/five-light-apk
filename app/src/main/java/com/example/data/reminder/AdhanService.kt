@@ -70,6 +70,11 @@ class AdhanService : Service() {
             SmartPrayerNotificationManager.getNotificationId(prayerEnum, prayerDate)
         ) ?: SmartPrayerNotificationManager.getNotificationId(prayerEnum, prayerDate)
 
+        com.example.util.AdhanDebugLogger.log(
+            this,
+            "[SERVICE HANDLING START] AdhanService handleStartAdhan (Prayer=${prayerEnum.name}, Date=$prayerDate, NotifId=$notifId)"
+        )
+
         PrayerReminderManager.triggerAzaanOverlay(prayerEnum)
 
         acquireWakeLock()
@@ -82,34 +87,80 @@ class AdhanService : Service() {
             } else {
                 startForeground(notifId, notification)
             }
-            PrayerNotificationLogger.logValidationSuccess("adhan_service", prayerEnum.name, prayerDate, "AdhanService started foreground notification.")
+            com.example.util.AdhanDebugLogger.log(
+                this,
+                "[SERVICE FOREGROUND SUCCESS] AdhanService startForeground executed with type MEDIA_PLAYBACK for notifId=$notifId"
+            )
         } catch (e: Exception) {
-            android.util.Log.e("AdhanService", "Failed to startForeground: ${e.message}", e)
+            com.example.util.AdhanDebugLogger.log(
+                this,
+                "[SERVICE FOREGROUND ERROR] AdhanService startForeground failed: ${e.message}"
+            )
         }
 
-        // Direct background Activity launch if Display over other apps is granted
-        if (AdhanPermissionHelper.canDrawOverlays(this)) {
+        val canDraw = AdhanPermissionHelper.canDrawOverlays(this)
+        val canFullScreen = AdhanPermissionHelper.canUseFullScreenIntent(this)
+        com.example.util.AdhanDebugLogger.log(
+            this,
+            "[SERVICE LAUNCH ATTEMPT] canDrawOverlays=$canDraw, canUseFullScreenIntent=$canFullScreen"
+        )
+
+        if (canDraw) {
             try {
                 val activityIntent = Intent(this, AdhanActivity::class.java).apply {
+                    setAction(SmartPrayerNotificationManager.ACTION_SHOW_ADHAN_OVERLAY)
+                    setData(Uri.parse("fivelight://adhan/$prayerDate/${prayerEnum.name}"))
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                     putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerEnum.name)
                     putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, prayerDate)
+                    putExtra("LAUNCH_SOURCE", "DIRECT_START_ACTIVITY_SERVICE")
                 }
                 startActivity(activityIntent)
-                PrayerNotificationLogger.logValidationSuccess(
-                    "adhan_service",
-                    prayerEnum.name,
-                    prayerDate,
-                    "Launched AdhanActivity directly via SYSTEM_ALERT_WINDOW from AdhanService."
+                com.example.util.AdhanDebugLogger.log(
+                    this,
+                    "[SERVICE LAUNCH SUCCESS] Called startActivity(AdhanActivity) directly from AdhanService."
                 )
             } catch (e: Exception) {
-                android.util.Log.e("AdhanService", "Direct launch from AdhanService failed: ${e.message}", e)
+                com.example.util.AdhanDebugLogger.log(
+                    this,
+                    "[SERVICE LAUNCH ERROR] Direct startActivity(AdhanActivity) from AdhanService failed: ${e.message}"
+                )
+            }
+        } else {
+            com.example.util.AdhanDebugLogger.log(
+                this,
+                "[SERVICE LAUNCH SKIPPED] canDrawOverlays is false; relying on fullScreenIntent notification banner/launch."
+            )
+            try {
+                val fsPendingIntent = PendingIntent.getActivity(
+                    this,
+                    notifId * 10 + 4,
+                    Intent(this, AdhanActivity::class.java).apply {
+                        action = SmartPrayerNotificationManager.ACTION_SHOW_ADHAN_OVERLAY
+                        data = Uri.parse("fivelight://adhan/$prayerDate/${prayerEnum.name}")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerEnum.name)
+                        putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, prayerDate)
+                        putExtra("LAUNCH_SOURCE", "FULL_SCREEN_PENDING_INTENT_SEND")
+                    },
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                fsPendingIntent.send()
+                com.example.util.AdhanDebugLogger.log(
+                    this,
+                    "[SERVICE PENDING INTENT SEND SUCCESS] Sent fullScreenPendingIntent.send() from AdhanService."
+                )
+            } catch (e: Exception) {
+                com.example.util.AdhanDebugLogger.log(
+                    this,
+                    "[SERVICE PENDING INTENT SEND ERROR] fullScreenPendingIntent.send() failed: ${e.message}"
+                )
             }
         }
 
         // Start playback
         AzaanAudioPlayer.playAzaan(this) {
-            PrayerNotificationLogger.logValidationSuccess("adhan_service", prayerEnum.name, prayerDate, "Adhan playback completed. Stopping service.")
+            com.example.util.AdhanDebugLogger.log(this, "[SERVICE AUDIO DONE] Adhan playback finished naturally. Stopping service.")
             stopServiceSafely()
         }
     }

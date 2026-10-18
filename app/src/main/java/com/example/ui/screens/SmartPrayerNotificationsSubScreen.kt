@@ -408,6 +408,67 @@ fun SmartPrayerNotificationsSubScreen(
             }
 
             item {
+                var showDebugLogDialog by remember { mutableStateOf(false) }
+                var debugLogText by remember { mutableStateOf("") }
+
+                if (showDebugLogDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showDebugLogDialog = false },
+                        title = {
+                            Text(
+                                text = "Adhan Debug Log",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        text = {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 350.dp)
+                                    .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFF2F2F7), shape = RoundedCornerShape(8.dp))
+                                    .padding(12.dp)
+                            ) {
+                                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                                    item {
+                                        Text(
+                                            text = debugLogText,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                fontSize = 11.sp
+                                            ),
+                                            color = if (isDark) Color(0xFFE0E0E0) else Color(0xFF222222)
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(onClick = { showDebugLogDialog = false }) {
+                                Text("Close")
+                            }
+                        },
+                        dismissButton = {
+                            Row {
+                                TextButton(onClick = {
+                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("Adhan Debug Log", debugLogText)
+                                    clipboard?.setPrimaryClip(clip)
+                                    android.widget.Toast.makeText(context, "Log copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
+                                }) {
+                                    Text("Copy")
+                                }
+                                TextButton(onClick = {
+                                    com.example.util.AdhanDebugLogger.clearLog(context)
+                                    debugLogText = com.example.util.AdhanDebugLogger.getLogText(context)
+                                }) {
+                                    Text("Clear Log", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    )
+                }
+
                 OutlinedCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
@@ -423,35 +484,50 @@ fun SmartPrayerNotificationsSubScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "Test Notification Delivery",
+                            text = "Test Adhan Alarm & Diagnostics",
                             style = MaterialTheme.typography.titleSmall,
                             color = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "Verify that Android notification channels and alert delivery are working properly on your device.",
+                            text = "Test full background execution: schedules an alarm for 10 seconds from now using the exact AlarmManager -> Receiver -> Service -> Activity path. Swipe app from recents and lock phone to test.",
                             style = MaterialTheme.typography.bodySmall,
                             color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        OutlinedButton(
-                            onClick = {
-                                manager.sendTestNotification()
-                                android.widget.Toast.makeText(context, "Test notification sent", android.widget.Toast.LENGTH_SHORT).show()
-                            },
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = if (isDark) Color(0xFF2C2C2E) else Color.Transparent,
-                                contentColor = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.primary
-                            ),
-                            border = BorderStroke(1.dp, if (isDark) Color.White.copy(alpha = 0.14f) else MaterialTheme.colorScheme.outline),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("send_test_notification_button")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                text = "Send Test Smart Prayer Notification",
-                                color = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Medium
-                            )
+                            Button(
+                                onClick = {
+                                    manager.scheduleTestAdhanIn10Seconds()
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "Adhan alarm scheduled in +10s. Swipe app from recents & lock phone now!",
+                                        android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isDark) Color(0xFF4A4556) else MaterialTheme.colorScheme.primary
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("test_adhan_10s_button")
+                            ) {
+                                Text("Test in 10s", fontSize = 13.sp)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    debugLogText = com.example.util.AdhanDebugLogger.getLogText(context)
+                                    showDebugLogDialog = true
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("view_adhan_debug_log_button")
+                            ) {
+                                Text("View Debug Log", fontSize = 13.sp)
+                            }
                         }
                     }
                 }
