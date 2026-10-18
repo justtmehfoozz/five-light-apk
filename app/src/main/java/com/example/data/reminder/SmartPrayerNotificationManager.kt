@@ -60,17 +60,20 @@ class SmartPrayerNotificationManager(private val context: Context) {
         }
 
     fun cancelLegacyAlarms() {
-        // Broad sweep for legacy receivers and potentially wider request code ranges
-        val legacyReceivers = listOf(
-            PrayerReminderReceiver::class.java,
-            // Add other potential legacy receivers if identified in manifest
+        // Broad sweep for legacy receivers and exact historical actions/request codes
+        val legacyActions = listOf(
+            PrayerReminderManager.ACTION_PRAYER_REMINDER,
+            PrayerReminderManager.ACTION_SNOOZE_REMINDER,
+            PrayerReminderManager.ACTION_DISMISS_REMINDER,
+            null
         )
         
         try {
-            for (receiver in legacyReceivers) {
-                val legacyIntent = Intent(context, receiver)
-                // Expanded range to cover potential legacy usage beyond 200
-                for (reqCode in 0..1000) {
+            for (actionName in legacyActions) {
+                for (reqCode in 0..2500) {
+                    val legacyIntent = Intent(context, PrayerReminderReceiver::class.java).apply {
+                        if (actionName != null) action = actionName
+                    }
                     val pendingIntent = PendingIntent.getBroadcast(
                         context,
                         reqCode,
@@ -80,7 +83,7 @@ class SmartPrayerNotificationManager(private val context: Context) {
                     if (pendingIntent != null) {
                         alarmManager.cancel(pendingIntent)
                         pendingIntent.cancel()
-                        PrayerNotificationLogger.logStaleAlarmCancellation(reqCode, "Cancelling legacy ${receiver.simpleName} alarm")
+                        PrayerNotificationLogger.logStaleAlarmCancellation(reqCode, "Cancelled legacy PrayerReminderReceiver alarm (action=$actionName)")
                     }
                 }
             }
@@ -617,8 +620,28 @@ class SmartPrayerNotificationManager(private val context: Context) {
         nm.cancel(notifId)
     }
 
+    fun cancelAlarmWithData(requestCode: Int, dataUri: Uri? = null) {
+        try {
+            val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
+                action = ACTION_SMART_PRAYER_NOTIF
+                if (dataUri != null) data = dataUri
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                requestCode,
+                intent,
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            )
+            if (pendingIntent != null) {
+                alarmManager.cancel(pendingIntent)
+                pendingIntent.cancel()
+            }
+        } catch (_: Exception) {}
+    }
+
     fun cancelFollowUpAlarm(prayerName: PrayerName, dateStr: String = LocalDate.now().toString()) {
         val reqCode = getAlarmRequestCode(prayerName, dateStr, ALARM_SLOT_FOLLOWUP)
+        cancelAlarmWithData(reqCode, Uri.parse("fivelight://prayer/$dateStr/${prayerName.name}/followup"))
         cancelAlarmByRequestCode(reqCode)
     }
 
@@ -630,23 +653,44 @@ class SmartPrayerNotificationManager(private val context: Context) {
         val entryCode = getAlarmRequestCode(prayerName, dateStr, ALARM_SLOT_ENTRY)
         val preCode = getAlarmRequestCode(prayerName, dateStr, ALARM_SLOT_PRE_REMINDER)
         val followUpCode = getAlarmRequestCode(prayerName, dateStr, ALARM_SLOT_FOLLOWUP)
+
+        cancelAlarmWithData(entryCode, Uri.parse("fivelight://prayer/$dateStr/${prayerName.name}/entry"))
+        cancelAlarmWithData(preCode, Uri.parse("fivelight://prayer/$dateStr/${prayerName.name}/pre"))
+        cancelAlarmWithData(followUpCode, Uri.parse("fivelight://prayer/$dateStr/${prayerName.name}/followup"))
+
         cancelAlarmByRequestCode(entryCode)
         cancelAlarmByRequestCode(preCode)
         cancelAlarmByRequestCode(followUpCode)
     }
 
     fun cancelAlarmByRequestCode(requestCode: Int) {
-        val intent = Intent(context, SmartPrayerNotificationReceiver::class.java)
-        val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            requestCode,
-            intent,
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-        )
-        if (pendingIntent != null) {
-            alarmManager.cancel(pendingIntent)
-            pendingIntent.cancel()
-        }
+        try {
+            val intentWithoutAction = Intent(context, SmartPrayerNotificationReceiver::class.java)
+            val pi1 = PendingIntent.getBroadcast(
+                context,
+                requestCode,
+                intentWithoutAction,
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            )
+            if (pi1 != null) {
+                alarmManager.cancel(pi1)
+                pi1.cancel()
+            }
+
+            val intentWithAction = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
+                action = ACTION_SMART_PRAYER_NOTIF
+            }
+            val pi2 = PendingIntent.getBroadcast(
+                context,
+                requestCode,
+                intentWithAction,
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+            )
+            if (pi2 != null) {
+                alarmManager.cancel(pi2)
+                pi2.cancel()
+            }
+        } catch (_: Exception) {}
     }
 
     fun cancelSchedulesForDate(date: LocalDate) {
