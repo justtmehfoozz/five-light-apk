@@ -143,21 +143,30 @@ fun AzaanOverlay(
         sdf.format(Date(currentTimeMillis))
     }
 
-    // Stop audio and transition to Dua
-    val triggerStopAndShowDua = remember {
-        {
-            if (stage == OverlayStage.ADHAN_PLAYING) {
-                AzaanAudioPlayer.stopAzaan()
-                stage = OverlayStage.DUA_AFTER_ADHAN
-            }
+    // Function to switch to Dua Card with explicit logging
+    fun showDuaCard(reason: String) {
+        if (stage == OverlayStage.ADHAN_PLAYING) {
+            com.example.util.AdhanDebugLogger.log(
+                context,
+                "[OVERLAY STAGE] dua card shown (reason = $reason)"
+            )
+            AzaanAudioPlayer.stopAzaan()
+            stage = OverlayStage.DUA_AFTER_ADHAN
         }
     }
 
-    // Register audio completion listener
+    // Always start on Adhan screen (Stage 1) and register audio completion callback
     LaunchedEffect(activeState) {
+        com.example.util.AdhanDebugLogger.log(
+            context,
+            "[OVERLAY STAGE] adhan screen shown"
+        )
+        AzaanAudioPlayer.setAudioCompletionListener {
+            showDuaCard("audio_completed")
+        }
         if (!AzaanAudioPlayer.isPlaying()) {
             AzaanAudioPlayer.playAzaan(context) {
-                triggerStopAndShowDua()
+                showDuaCard("audio_completed")
             }
         }
     }
@@ -352,7 +361,7 @@ fun AzaanOverlay(
                                     .testTag("stop_adhan_button"),
                                 onClick = {
                                     try { haptic.performHapticFeedback(HapticFeedbackType.LongPress) } catch (_: Exception) {}
-                                    triggerStopAndShowDua()
+                                    showDuaCard("stop_tapped")
                                 }
                             )
 
@@ -491,7 +500,10 @@ private fun DuaAfterAdhanContent(
     val scrollState = rememberScrollState()
 
     Column(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .navigationBarsPadding()
+            .padding(bottom = 34.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Category Header
@@ -509,7 +521,7 @@ private fun DuaAfterAdhanContent(
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f, fill = false)
+                .weight(1f)
                 .clip(RoundedCornerShape(28.dp))
                 .border(1.dp, cardBorder, RoundedCornerShape(28.dp))
                 .testTag("dua_after_adhan_card"),
