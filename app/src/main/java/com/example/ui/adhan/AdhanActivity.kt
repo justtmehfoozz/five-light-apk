@@ -8,10 +8,10 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.data.model.PrayerName
-import com.example.data.reminder.ActiveAzaanState
+import com.example.data.reminder.AdhanService
 import com.example.data.reminder.PrayerReminderManager
 import com.example.data.reminder.SmartPrayerNotificationManager
 import com.example.data.util.PrayerDisplayUtils
@@ -39,33 +39,37 @@ class AdhanActivity : ComponentActivity() {
             FiveLightTheme {
                 val activeState by PrayerReminderManager.activeAzaanState.collectAsStateWithLifecycle()
 
+                // Item 3: If activeAzaanState becomes null (e.g. from manual dismissal), finish activity immediately
+                LaunchedEffect(activeState) {
+                    if (activeState == null) {
+                        finish()
+                    }
+                }
+
                 AzaanOverlay(
                     activeState = activeState,
                     onDismiss = {
-                        PrayerReminderManager.dismissAzaanOverlay()
-                        com.example.data.reminder.AzaanAudioPlayer.stopAzaan()
-                        try {
-                            val stopIntent = Intent(this@AdhanActivity, com.example.data.reminder.AdhanService::class.java).apply {
-                                action = com.example.data.reminder.AdhanService.ACTION_STOP_ADHAN
-                            }
-                            startService(stopIntent)
-                        } catch (_: Exception) {}
                         finish()
                     },
                     onSnooze = { prayer ->
                         SmartPrayerNotificationManager(this@AdhanActivity).scheduleSnooze(prayer)
-                        PrayerReminderManager.dismissAzaanOverlay()
-                        com.example.data.reminder.AzaanAudioPlayer.stopAzaan()
-                        try {
-                            val stopIntent = Intent(this@AdhanActivity, com.example.data.reminder.AdhanService::class.java).apply {
-                                action = com.example.data.reminder.AdhanService.ACTION_STOP_ADHAN
-                            }
-                            startService(stopIntent)
-                        } catch (_: Exception) {}
+                        AdhanService.stopAdhan(this@AdhanActivity, "overlay_snooze")
                         finish()
                     }
                 )
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        com.example.util.AdhanDebugLogger.log(this, "[ADHAN ACTIVITY RESUMED] AdhanActivity onResume executed")
+        val prayerNameRaw = intent?.getStringExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME) ?: ""
+        val prayerDate = intent?.getStringExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE) ?: ""
+        if (prayerNameRaw.isNotEmpty()) {
+            val prayerEnum = PrayerDisplayUtils.parsePrayerName(prayerNameRaw)
+            val notifId = SmartPrayerNotificationManager.getNotificationId(prayerEnum, prayerDate)
+            AdhanService.cancelAdhanAlertNotification(this, notifId)
         }
     }
 
@@ -100,17 +104,11 @@ class AdhanActivity : ComponentActivity() {
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
             )
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val keyguardManager = getSystemService(Context.KEYGUARD_SERVICE) as? android.app.KeyguardManager
-            keyguardManager?.requestDismissKeyguard(this, null)
-        } else {
-            @Suppress("DEPRECATION")
-            window.addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
-        }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     override fun onDestroy() {
+        com.example.util.AdhanDebugLogger.log(this, "[ADHAN ACTIVITY DESTROYED] AdhanActivity onDestroy executed")
         super.onDestroy()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(false)

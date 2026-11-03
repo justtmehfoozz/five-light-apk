@@ -16,10 +16,14 @@ class AdhanAlarmReceiver : BroadcastReceiver() {
         val prayerName = intent.getStringExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME) ?: "UNKNOWN"
         val dateStr = intent.getStringExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE) ?: "UNKNOWN"
         val eventType = intent.getStringExtra(SmartPrayerNotificationManager.EXTRA_EVENT_TYPE) ?: "UNKNOWN"
+        val triggerMillis = intent.getLongExtra(SmartPrayerNotificationManager.EXTRA_TRIGGER_MILLIS, 0L)
+
+        val now = System.currentTimeMillis()
+        val delayMs = if (triggerMillis > 0) now - triggerMillis else 0L
 
         AdhanDebugLogger.log(
             context,
-            "[RECEIVER FIRED] AdhanAlarmReceiver received alarm broadcast (Action=${intent.action}, Event=$eventType, Prayer=$prayerName, Date=$dateStr, Pid=${android.os.Process.myPid()})"
+            "[RECEIVER FIRED] AdhanAlarmReceiver received alarm broadcast (Action=${intent.action}, Event=$eventType, Prayer=$prayerName, Date=$dateStr, TriggerMillis=$triggerMillis, DelayMs=$delayMs, Pid=${android.os.Process.myPid()})"
         )
 
         PrayerNotificationLogger.logValidationSuccess(
@@ -29,11 +33,23 @@ class AdhanAlarmReceiver : BroadcastReceiver() {
             "AdhanAlarmReceiver received alarm intent (action=${intent.action})"
         )
 
+        // Stale Alarm Guard: Ignore fard prayer alarms triggered more than 2 minutes after expected trigger time
+        val isFardEvent = eventType == SmartPrayerNotificationManager.EVENT_TYPE_FARD ||
+                eventType == SmartPrayerNotificationManager.EVENT_TYPE_FARD_FOLLOWUP
+        if (isFardEvent && triggerMillis > 0 && (now - triggerMillis > 2 * 60 * 1000L)) {
+            AdhanDebugLogger.log(
+                context,
+                "[STALE ALARM IGNORED] Prayer=$prayerName, Date=$dateStr, TriggerMillis=$triggerMillis, Now=$now, DelayMs=$delayMs > 120000ms"
+            )
+            return
+        }
+
         val serviceIntent = Intent(context, AdhanService::class.java).apply {
             action = AdhanService.ACTION_START_ADHAN
             putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_NAME, prayerName)
             putExtra(SmartPrayerNotificationManager.EXTRA_PRAYER_DATE, dateStr)
             putExtra(SmartPrayerNotificationManager.EXTRA_EVENT_TYPE, eventType)
+            putExtra(SmartPrayerNotificationManager.EXTRA_TRIGGER_MILLIS, triggerMillis)
         }
 
         AdhanDebugLogger.log(
