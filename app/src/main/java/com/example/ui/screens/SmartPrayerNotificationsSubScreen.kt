@@ -38,8 +38,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsActive
-import androidx.compose.material.icons.outlined.VolumeUp
-import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,7 +52,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.data.model.PrayerName
 import com.example.data.reminder.PrePrayerReminderOffset
-import com.example.data.reminder.PrayerAlertMode
 import com.example.data.reminder.SmartPrayerNotificationManager
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -69,73 +66,9 @@ fun SmartPrayerNotificationsSubScreen(
 
     var isSmartEnabled by remember { mutableStateOf(manager.isSmartNotificationsEnabled) }
     var isPrayerTimeEnabled by remember { mutableStateOf(manager.isPrayerTimeNotificationsEnabled) }
-    var selectedAlertMode by remember { mutableStateOf(manager.prayerAlertMode) }
     var preReminderOffset by remember { mutableStateOf(manager.preReminderOffset) }
     var isContextualEnabled by remember { mutableStateOf(manager.isContextualRemindersEnabled) }
     var isNaflEnabled by remember { mutableStateOf(manager.isNaflOpportunitiesEnabled) }
-
-    var isTestAzaanPlaying by remember { mutableStateOf(false) }
-    var testAzaanPlayer by remember { mutableStateOf<android.media.MediaPlayer?>(null) }
-
-    fun stopTestAzaan() {
-        try {
-            testAzaanPlayer?.let { mp ->
-                if (mp.isPlaying) {
-                    mp.stop()
-                }
-                mp.release()
-            }
-        } catch (_: Exception) {}
-        testAzaanPlayer = null
-        isTestAzaanPlaying = false
-    }
-
-    fun startTestAzaan() {
-        if (isTestAzaanPlaying) {
-            stopTestAzaan()
-            return
-        }
-        if (!isSmartEnabled) {
-            android.widget.Toast.makeText(context, "Master Prayer Notifications switch is disabled", android.widget.Toast.LENGTH_SHORT).show()
-            return
-        }
-        try {
-            stopTestAzaan()
-            val attrs = android.media.AudioAttributes.Builder()
-                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
-                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
-                .build()
-            val mp = android.media.MediaPlayer.create(context, R.raw.azaan, attrs, 0)
-            if (mp != null) {
-                testAzaanPlayer = mp
-                mp.setOnCompletionListener {
-                    isTestAzaanPlaying = false
-                    try { mp.release() } catch (_: Exception) {}
-                    if (testAzaanPlayer === mp) testAzaanPlayer = null
-                }
-                mp.setOnErrorListener { player, _, _ ->
-                    isTestAzaanPlaying = false
-                    try { player.release() } catch (_: Exception) {}
-                    if (testAzaanPlayer === player) testAzaanPlayer = null
-                    android.widget.Toast.makeText(context, "Unable to play Azaan recording", android.widget.Toast.LENGTH_SHORT).show()
-                    true
-                }
-                mp.start()
-                isTestAzaanPlaying = true
-            } else {
-                android.widget.Toast.makeText(context, "Azaan recording file not available", android.widget.Toast.LENGTH_SHORT).show()
-            }
-        } catch (e: Exception) {
-            isTestAzaanPlaying = false
-            android.widget.Toast.makeText(context, "Error starting test Azaan playback", android.widget.Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            stopTestAzaan()
-        }
-    }
 
     var isIgnoringBattery by remember { mutableStateOf(manager.isIgnoringBatteryOptimizations()) }
     var isPermissionGranted by remember { mutableStateOf(manager.isNotificationPermissionGranted()) }
@@ -171,13 +104,9 @@ fun SmartPrayerNotificationsSubScreen(
     fun updateSettings() {
         manager.isSmartNotificationsEnabled = isSmartEnabled
         manager.isPrayerTimeNotificationsEnabled = isPrayerTimeEnabled
-        manager.prayerAlertMode = selectedAlertMode
         manager.preReminderOffset = preReminderOffset
         manager.isContextualRemindersEnabled = isContextualEnabled
         manager.isNaflOpportunitiesEnabled = isNaflEnabled
-        if (!isSmartEnabled) {
-            stopTestAzaan()
-        }
         onSettingsChanged()
     }
 
@@ -408,67 +337,6 @@ fun SmartPrayerNotificationsSubScreen(
             }
 
             item {
-                var showDebugLogDialog by remember { mutableStateOf(false) }
-                var debugLogText by remember { mutableStateOf("") }
-
-                if (showDebugLogDialog) {
-                    AlertDialog(
-                        onDismissRequest = { showDebugLogDialog = false },
-                        title = {
-                            Text(
-                                text = "Adhan Debug Log",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                        },
-                        text = {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 350.dp)
-                                    .background(if (isDark) Color(0xFF1C1C1E) else Color(0xFFF2F2F7), shape = RoundedCornerShape(8.dp))
-                                    .padding(12.dp)
-                            ) {
-                                LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                                    item {
-                                        Text(
-                                            text = debugLogText,
-                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                                fontSize = 11.sp
-                                            ),
-                                            color = if (isDark) Color(0xFFE0E0E0) else Color(0xFF222222)
-                                        )
-                                    }
-                                }
-                            }
-                        },
-                        confirmButton = {
-                            TextButton(onClick = { showDebugLogDialog = false }) {
-                                Text("Close")
-                            }
-                        },
-                        dismissButton = {
-                            Row {
-                                TextButton(onClick = {
-                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
-                                    val clip = android.content.ClipData.newPlainText("Adhan Debug Log", debugLogText)
-                                    clipboard?.setPrimaryClip(clip)
-                                    android.widget.Toast.makeText(context, "Log copied to clipboard", android.widget.Toast.LENGTH_SHORT).show()
-                                }) {
-                                    Text("Copy")
-                                }
-                                TextButton(onClick = {
-                                    com.example.util.AdhanDebugLogger.clearLog(context)
-                                    debugLogText = com.example.util.AdhanDebugLogger.getLogText(context)
-                                }) {
-                                    Text("Clear Log", color = MaterialTheme.colorScheme.error)
-                                }
-                            }
-                        }
-                    )
-                }
-
                 OutlinedCard(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
@@ -484,71 +352,35 @@ fun SmartPrayerNotificationsSubScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            text = "Test Adhan Alarm & Diagnostics",
+                            text = "Test Notification Delivery",
                             style = MaterialTheme.typography.titleSmall,
                             color = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface,
                             fontWeight = FontWeight.SemiBold
                         )
                         Text(
-                            text = "Test full background execution: schedules an alarm for 10 seconds from now using the exact AlarmManager -> Receiver -> Service -> Activity path. Swipe app from recents and lock phone to test.",
+                            text = "Verify that Android notification channels and alert delivery are working properly on your device.",
                             style = MaterialTheme.typography.bodySmall,
                             color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = {
-                                    manager.scheduleTestAdhanIn10Seconds()
-                                    android.widget.Toast.makeText(
-                                        context,
-                                        "Adhan alarm scheduled in +10s. Swipe app from recents & lock phone now!",
-                                        android.widget.Toast.LENGTH_LONG
-                                    ).show()
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isDark) Color(0xFF4A4556) else MaterialTheme.colorScheme.primary
-                                ),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("test_adhan_10s_button")
-                            ) {
-                                Text("Test in 10s", fontSize = 13.sp)
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    debugLogText = com.example.util.AdhanDebugLogger.getLogText(context)
-                                    showDebugLogDialog = true
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("view_adhan_debug_log_button")
-                            ) {
-                                Text("View Debug Log", fontSize = 13.sp)
-                            }
-                        }
-
                         OutlinedButton(
                             onClick = {
-                                com.example.data.reminder.AzaanAudioPlayer.playAzaan(
-                                    context,
-                                    "TEST_PRAYER",
-                                    java.time.LocalDate.now().toString(),
-                                    "manual_sound_test"
-                                )
-                                android.widget.Toast.makeText(
-                                    context,
-                                    "Testing Adhan sound directly...",
-                                    android.widget.Toast.LENGTH_SHORT
-                                ).show()
+                                manager.sendTestNotification()
+                                android.widget.Toast.makeText(context, "Test notification sent", android.widget.Toast.LENGTH_SHORT).show()
                             },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (isDark) Color(0xFF2C2C2E) else Color.Transparent,
+                                contentColor = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.primary
+                            ),
+                            border = BorderStroke(1.dp, if (isDark) Color.White.copy(alpha = 0.14f) else MaterialTheme.colorScheme.outline),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .testTag("test_adhan_sound_only_button")
+                                .testTag("send_test_notification_button")
                         ) {
-                            Text("Test Adhan sound only", fontSize = 13.sp)
+                            Text(
+                                text = "Send Test Smart Prayer Notification",
+                                color = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium
+                            )
                         }
                     }
                 }
@@ -604,166 +436,6 @@ fun SmartPrayerNotificationsSubScreen(
                                     },
                                     modifier = Modifier.testTag("prayer_time_notif_switch")
                                 )
-                            }
-                        }
-
-                        OutlinedCard(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.outlinedCardColors(
-                                containerColor = if (isDark) Color(0xFF242426) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-                            ),
-                            border = BorderStroke(1.dp, if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Text(
-                                    text = "Prayer Alert Mode",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-
-                                val modes = PrayerAlertMode.entries
-                                modes.forEach { mode ->
-                                    val isSelected = selectedAlertMode == mode
-                                    Card(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable {
-                                                selectedAlertMode = mode
-                                                manager.prayerAlertMode = mode
-                                                updateSettings()
-                                            }
-                                            .testTag(if (mode == PrayerAlertMode.AZAAN_AND_NOTIFICATION) "alert_mode_azaan_and_notification" else "alert_mode_notification_only"),
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = if (isSelected) {
-                                                if (isDark) Color(0xFF323238) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
-                                            } else {
-                                                if (isDark) Color(0xFF1C1C1E) else MaterialTheme.colorScheme.surface
-                                            }
-                                        ),
-                                        border = BorderStroke(
-                                            width = if (isSelected) 1.5.dp else 1.dp,
-                                            color = if (isSelected) {
-                                                if (isDark) Color(0xFF81C784) else MaterialTheme.colorScheme.primary
-                                            } else {
-                                                if (isDark) Color.White.copy(alpha = 0.08f) else MaterialTheme.colorScheme.outlineVariant
-                                            }
-                                        )
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(12.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            RadioButton(
-                                                selected = isSelected,
-                                                onClick = {
-                                                    selectedAlertMode = mode
-                                                    manager.prayerAlertMode = mode
-                                                    updateSettings()
-                                                },
-                                                colors = RadioButtonDefaults.colors(
-                                                    selectedColor = if (isDark) Color(0xFF81C784) else MaterialTheme.colorScheme.primary,
-                                                    unselectedColor = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = mode.title,
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    color = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-                                                Spacer(modifier = Modifier.height(2.dp))
-                                                Text(
-                                                    text = mode.description,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        OutlinedCard(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.outlinedCardColors(
-                                containerColor = if (isDark) Color(0xFF242426) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-                            ),
-                            border = BorderStroke(1.dp, if (isDark) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.outlineVariant)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "Test Azaan",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = "Preview the Azaan recording.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (isDark) Color(0xFFA8A8A2) else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                OutlinedButton(
-                                    onClick = {
-                                        if (isTestAzaanPlaying) {
-                                            stopTestAzaan()
-                                        } else {
-                                            startTestAzaan()
-                                        }
-                                    },
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        containerColor = if (isTestAzaanPlaying) {
-                                            if (isDark) Color(0xFF422121) else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f)
-                                        } else {
-                                            if (isDark) Color(0xFF2C2C2E) else Color.Transparent
-                                        },
-                                        contentColor = if (isTestAzaanPlaying) {
-                                            if (isDark) Color(0xFFFF8A80) else MaterialTheme.colorScheme.error
-                                        } else {
-                                            if (isDark) Color(0xFFF2F2EE) else MaterialTheme.colorScheme.primary
-                                        }
-                                    ),
-                                    border = BorderStroke(
-                                        width = 1.dp,
-                                        color = if (isTestAzaanPlaying) {
-                                            if (isDark) Color(0xFFFF5252) else MaterialTheme.colorScheme.error
-                                        } else {
-                                            if (isDark) Color.White.copy(alpha = 0.14f) else MaterialTheme.colorScheme.outline
-                                        }
-                                    ),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("test_azaan_button")
-                                ) {
-                                    Icon(
-                                        imageVector = if (isTestAzaanPlaying) Icons.Outlined.Stop else Icons.Outlined.VolumeUp,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = if (isTestAzaanPlaying) "Stop Azaan" else "Test Azaan",
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
                             }
                         }
 

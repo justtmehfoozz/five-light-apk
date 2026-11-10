@@ -63,7 +63,6 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.example.data.reminder.SmartPrayerNotificationManager
@@ -99,7 +98,6 @@ import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.QiblaScreen
 import com.example.ui.screens.QuranScreen
 import com.example.ui.screens.SettingsBottomSheet
-import com.example.ui.components.AzaanOverlay
 import com.example.ui.screens.TasbeehScreen
 import com.example.ui.theme.FiveLightTheme
 import com.example.ui.util.LocalVolumeKeyDispatcher
@@ -151,6 +149,7 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
 
         // Pre-warm audio engine for instant Tasbeeh sound playback
         com.example.data.audio.TasbeehAudioPlayer.getInstance(this)
+
 
         setContent {
             val activityContext = androidx.compose.ui.platform.LocalContext.current
@@ -1011,156 +1010,126 @@ class MainActivity : ComponentActivity(), VolumeKeyDispatcher {
                     } // end inner Box
                     } // end if (hasSeenAccountPrompt)
 
-                    var showAdhanPermissionOnboarding by remember {
-                        mutableStateOf(!com.example.data.reminder.AdhanPermissionHelper.hasCompletedOrDismissedOnboarding(this@MainActivity))
-                    }
+                    if (isSplashFinished && (!hasSeenAccountPrompt || authRouteState != "NONE" || isSetupRequired || !hasSeenFiveLightPrelude)) {
+                        val currentStartupOverlayState = remember(hasSeenFiveLightPrelude, hasSeenAccountPrompt, authRouteState) {
+                            if (!hasSeenFiveLightPrelude) {
+                                "PRELUDE"
+                            } else if (!hasSeenAccountPrompt && authRouteState == "NONE") {
+                                "PRE_LOGIN_PROMPT"
+                            } else {
+                                "NONE"
+                            }
+                        }
 
-                    val adhanOnboardingLifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
-                    DisposableEffect(adhanOnboardingLifecycleOwner) {
-                        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-                            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                                if (!com.example.data.reminder.AdhanPermissionHelper.hasCompletedOrDismissedOnboarding(this@MainActivity)) {
-                                    showAdhanPermissionOnboarding = true
+                        AnimatedContent(
+                            targetState = currentStartupOverlayState,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(500, easing = FastOutSlowInEasing)) togetherWith
+                                        fadeOut(animationSpec = tween(400, easing = FastOutSlowInEasing))
+                            },
+                            label = "preludeToAuthTransition"
+                        ) { overlayState ->
+                            when (overlayState) {
+                                "PRELUDE" -> {
+                                    com.example.ui.prelude.PreludeScreen(
+                                        onComplete = {
+                                            viewModel.setHasSeenFiveLightPrelude(true)
+                                        },
+                                        onSkip = {
+                                            viewModel.setHasSeenFiveLightPrelude(true)
+                                        },
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                                "PRE_LOGIN_PROMPT" -> {
+                                    PreLoginPromptScreen(
+                                        onLoginOrRegister = {
+                                            showLoginBottomSheet = true
+                                        },
+                                        onContinueAsGuest = {
+                                            viewModel.setHasSeenAccountPrompt(true)
+                                        },
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                                else -> {
+                                    // Empty container when no startup overlay active
                                 }
                             }
                         }
-                        adhanOnboardingLifecycleOwner.lifecycle.addObserver(observer)
-                        onDispose {
-                            adhanOnboardingLifecycleOwner.lifecycle.removeObserver(observer)
+
+                        AnimatedContent(
+                            targetState = authRouteState,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(350, easing = FastOutSlowInEasing)) +
+                                        slideInVertically(animationSpec = tween(350, easing = FastOutSlowInEasing), initialOffsetY = { it / 12 }) togetherWith
+                                        fadeOut(animationSpec = tween(250, easing = FastOutSlowInEasing))
+                            },
+                            label = "authRouteTransition"
+                        ) { targetRoute ->
+                            when (targetRoute) {
+                                "LOGIN_EMAIL" -> {
+                                    LoginScreen(
+                                        authRepository = viewModel.authRepository,
+                                        onBack = {
+                                            authRouteState = "NONE"
+                                            showLoginBottomSheet = true
+                                        },
+                                        onAuthSuccess = {
+                                            viewModel.setHasSeenAccountPrompt(true)
+                                            authRouteState = "NONE"
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .zIndex(10f)
+                                    )
+                                }
+                                "REGISTER" -> {
+                                    RegisterScreen(
+                                        authRepository = viewModel.authRepository,
+                                        onBack = {
+                                            authRouteState = "NONE"
+                                            showLoginBottomSheet = true
+                                        },
+                                        onRegistrationSuccess = { registeredEmail ->
+                                            pendingVerificationEmail = registeredEmail
+                                            authRouteState = "EMAIL_VERIFICATION"
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .zIndex(10f)
+                                    )
+                                }
+                                "EMAIL_VERIFICATION" -> {
+                                    EmailVerificationScreen(
+                                        email = pendingVerificationEmail,
+                                        authRepository = viewModel.authRepository,
+                                        onBack = {
+                                            coroutineScope.launch {
+                                                viewModel.authRepository.signOut()
+                                                authRouteState = "REGISTER"
+                                            }
+                                        },
+                                        onAuthSuccess = {
+                                            viewModel.setHasSeenAccountPrompt(true)
+                                            authRouteState = "NONE"
+                                        },
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .zIndex(10f)
+                                    )
+                                }
+                            }
                         }
-                    }
 
-                    if (isSplashFinished) {
-                        if (!hasSeenFiveLightPrelude || !hasSeenAccountPrompt || authRouteState != "NONE" || isSetupRequired) {
-                            val currentStartupOverlayState = remember(hasSeenFiveLightPrelude, hasSeenAccountPrompt, authRouteState) {
-                                if (!hasSeenFiveLightPrelude) {
-                                    "PRELUDE"
-                                } else if (!hasSeenAccountPrompt && authRouteState == "NONE") {
-                                    "PRE_LOGIN_PROMPT"
-                                } else {
-                                    "NONE"
-                                }
-                            }
-
-                            AnimatedContent(
-                                targetState = currentStartupOverlayState,
-                                transitionSpec = {
-                                    fadeIn(animationSpec = tween(500, easing = FastOutSlowInEasing)) togetherWith
-                                            fadeOut(animationSpec = tween(400, easing = FastOutSlowInEasing))
-                                },
-                                label = "preludeToAuthTransition"
-                            ) { overlayState ->
-                                when (overlayState) {
-                                    "PRELUDE" -> {
-                                        com.example.ui.prelude.PreludeScreen(
-                                            onComplete = {
-                                                viewModel.setHasSeenFiveLightPrelude(true)
-                                            },
-                                            onSkip = {
-                                                viewModel.setHasSeenFiveLightPrelude(true)
-                                            },
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    "PRE_LOGIN_PROMPT" -> {
-                                        PreLoginPromptScreen(
-                                            onLoginOrRegister = {
-                                                showLoginBottomSheet = true
-                                            },
-                                            onContinueAsGuest = {
-                                                viewModel.setHasSeenAccountPrompt(true)
-                                            },
-                                            modifier = Modifier.fillMaxSize()
-                                        )
-                                    }
-                                    else -> {
-                                        // Empty container when no startup overlay active
-                                    }
-                                }
-                            }
-
-                            AnimatedContent(
-                                targetState = authRouteState,
-                                transitionSpec = {
-                                    fadeIn(animationSpec = tween(350, easing = FastOutSlowInEasing)) +
-                                            slideInVertically(animationSpec = tween(350, easing = FastOutSlowInEasing), initialOffsetY = { it / 12 }) togetherWith
-                                            fadeOut(animationSpec = tween(250, easing = FastOutSlowInEasing))
-                                },
-                                label = "authRouteTransition"
-                            ) { targetRoute ->
-                                when (targetRoute) {
-                                    "LOGIN_EMAIL" -> {
-                                        LoginScreen(
-                                            authRepository = viewModel.authRepository,
-                                            onBack = {
-                                                authRouteState = "NONE"
-                                                showLoginBottomSheet = true
-                                            },
-                                            onAuthSuccess = {
-                                                viewModel.setHasSeenAccountPrompt(true)
-                                                authRouteState = "NONE"
-                                            },
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .zIndex(10f)
-                                        )
-                                    }
-                                    "REGISTER" -> {
-                                        RegisterScreen(
-                                            authRepository = viewModel.authRepository,
-                                            onBack = {
-                                                authRouteState = "NONE"
-                                                showLoginBottomSheet = true
-                                            },
-                                            onRegistrationSuccess = { registeredEmail ->
-                                                pendingVerificationEmail = registeredEmail
-                                                authRouteState = "EMAIL_VERIFICATION"
-                                            },
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .zIndex(10f)
-                                        )
-                                    }
-                                    "EMAIL_VERIFICATION" -> {
-                                        EmailVerificationScreen(
-                                            email = pendingVerificationEmail,
-                                            authRepository = viewModel.authRepository,
-                                            onBack = {
-                                                coroutineScope.launch {
-                                                    viewModel.authRepository.signOut()
-                                                    authRouteState = "REGISTER"
-                                                }
-                                            },
-                                            onAuthSuccess = {
-                                                viewModel.setHasSeenAccountPrompt(true)
-                                                authRouteState = "NONE"
-                                            },
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .zIndex(10f)
-                                        )
-                                    }
-                                }
-                            }
-
-                            if (hasSeenFiveLightPrelude && hasSeenAccountPrompt && authRouteState == "NONE" && isSetupRequired && !showLoginBottomSheet) {
-                                SetUpFiveLightScreen(
-                                    viewModel = viewModel,
-                                    currentUser = currentUser,
-                                    onSetupComplete = {
-                                        val uid = currentUser?.uid.orEmpty().ifBlank { "anonymous_user" }
-                                        viewModel.setSetupCompleted(uid, true)
-                                        viewModel.setHasSeenAccountPrompt(true)
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .zIndex(10f)
-                                )
-                            }
-                        } else if (!showLoginBottomSheet && showAdhanPermissionOnboarding) {
-                            com.example.ui.adhan.AdhanPermissionOnboardingScreen(
-                                onDismiss = {
-                                    showAdhanPermissionOnboarding = false
+                        if (hasSeenFiveLightPrelude && hasSeenAccountPrompt && authRouteState == "NONE" && isSetupRequired && !showLoginBottomSheet) {
+                            SetUpFiveLightScreen(
+                                viewModel = viewModel,
+                                currentUser = currentUser,
+                                onSetupComplete = {
+                                    val uid = currentUser?.uid.orEmpty().ifBlank { "anonymous_user" }
+                                    viewModel.setSetupCompleted(uid, true)
+                                    viewModel.setHasSeenAccountPrompt(true)
                                 },
                                 modifier = Modifier
                                     .fillMaxSize()

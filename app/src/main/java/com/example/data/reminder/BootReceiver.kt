@@ -30,7 +30,7 @@ class BootReceiver : BroadcastReceiver() {
                 val todayStr = repo.getTodayDateString()
 
                 val manager = SmartPrayerNotificationManager(context)
-                manager.scheduleSmartNotificationsForTodayAndTomorrow()
+                manager.scheduleSmartNotifications(calculatedPrayers, naflWindows, todayStr)
             } catch (_: Exception) {}
         }
     }

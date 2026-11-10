@@ -13,7 +13,6 @@ import com.example.data.model.NaflType
 import com.example.data.model.PrayerItem
 import com.example.data.model.PrayerName
 import com.example.data.util.PrayerCalc
-import com.example.data.util.PrayerDisplayUtils
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
@@ -28,134 +27,10 @@ enum class PrePrayerReminderOffset(val minutes: Int, val label: String) {
     MIN_30(30, "30 min")
 }
 
-enum class PrayerAlertMode(val id: String, val title: String, val description: String) {
-    AZAAN_AND_NOTIFICATION(
-        "azaan_and_notification",
-        "Azaan + Notification",
-        "Play Azaan and notify me when prayer time begins."
-    ),
-    NOTIFICATION_ONLY(
-        "notification_only",
-        "Notification Only",
-        "Notify me when prayer time begins without playing Azaan."
-    )
-}
-
 class SmartPrayerNotificationManager(private val context: Context) {
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     private val prefs = context.getSharedPreferences("smart_prayer_notifications_prefs", Context.MODE_PRIVATE)
     private val oldPrefs = context.getSharedPreferences("prayer_reminders_prefs", Context.MODE_PRIVATE)
-
-    var prayerAlertMode: PrayerAlertMode
-        get() {
-            val raw = prefs.getString(KEY_PRAYER_ALERT_MODE, null)
-            if (raw == null) {
-                return PrayerAlertMode.AZAAN_AND_NOTIFICATION
-            }
-            return PrayerAlertMode.entries.find { it.id == raw } ?: PrayerAlertMode.AZAAN_AND_NOTIFICATION
-        }
-        set(value) {
-            prefs.edit().putString(KEY_PRAYER_ALERT_MODE, value.id).apply()
-            scheduleSmartNotificationsForTodayAndTomorrow()
-        }
-
-    fun cancelLegacyAlarms() {
-        // Broad sweep for legacy receivers and exact historical actions/request codes
-        val legacyActions = listOf(
-            PrayerReminderManager.ACTION_PRAYER_REMINDER,
-            PrayerReminderManager.ACTION_SNOOZE_REMINDER,
-            PrayerReminderManager.ACTION_DISMISS_REMINDER,
-            null
-        )
-        
-        try {
-            for (actionName in legacyActions) {
-                for (reqCode in 0..2500) {
-                    val legacyIntent = Intent(context, PrayerReminderReceiver::class.java).apply {
-                        if (actionName != null) action = actionName
-                    }
-                    val pendingIntent = PendingIntent.getBroadcast(
-                        context,
-                        reqCode,
-                        legacyIntent,
-                        PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-                    )
-                    if (pendingIntent != null) {
-                        alarmManager.cancel(pendingIntent)
-                        pendingIntent.cancel()
-                        PrayerNotificationLogger.logStaleAlarmCancellation(reqCode, "Cancelled legacy PrayerReminderReceiver alarm (action=$actionName)")
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-    }
-
-    fun scheduleSmartNotificationsForToday() {
-        scheduleSmartNotificationsForTodayAndTomorrow()
-    }
-
-    fun scheduleSmartNotificationsForTodayAndTomorrow() {
-        cancelLegacyAlarms()
-        try {
-            val mainPrefs = context.getSharedPreferences("fivelight_prefs", Context.MODE_PRIVATE)
-            val savedCityName = mainPrefs.getString("selected_city_name", null)
-            val repository = com.example.data.repository.AppRepository(
-                com.example.data.db.AppDatabase.getDatabase(context), context
-            )
-            val city = repository.PREDEFINED_CITIES.find { it.cityName == savedCityName } ?: repository.PREDEFINED_CITIES[0]
-
-            val savedCalcMethod = mainPrefs.getString("calc_method", null)
-            val method = com.example.data.model.CalcMethod.entries.find { it.name == savedCalcMethod } ?: city.defaultCalcMethod
-
-            val savedMadhab = mainPrefs.getString("madhab", null)
-            val madhab = com.example.data.model.Madhab.entries.find { it.name == savedMadhab } ?: com.example.data.model.Madhab.STANDARD
-
-            val is24H = repository.timeFormat.value.is24Hour
-
-            for (dayOffset in 0..1) {
-                val date = java.time.LocalDate.now().plusDays(dayOffset.toLong())
-                val javaDate = java.util.Date.from(date.atStartOfDay(java.time.ZoneId.systemDefault()).toInstant())
-
-                val kolkataSdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss z", java.util.Locale.US).apply {
-                    timeZone = java.util.TimeZone.getTimeZone("Asia/Kolkata")
-                }
-
-                com.example.util.AdhanDebugLogger.log(
-                    context,
-                    "[SCHEDULER PARAMS dayOffset=$dayOffset] SystemZone=${java.time.ZoneId.systemDefault().id}, City=${city.cityName}, Lat=${city.latitude}, Lng=${city.longitude}, TzOffset=${city.timezoneOffsetHours}, Method=${method.name}, Madhab=${madhab.name}, InputDate=${date}, InputDateMillis=${javaDate.time} (${kolkataSdf.format(javaDate)})"
-                )
-
-                val prayerTimes = PrayerCalc.calculatePrayerTimes(
-                    latitude = city.latitude,
-                    longitude = city.longitude,
-                    date = javaDate,
-                    method = method,
-                    madhab = madhab,
-                    timeZoneOffsetHours = city.timezoneOffsetHours,
-                    is24Hour = is24H,
-                    updateActiveTimeZone = (dayOffset == 0)
-                )
-
-                for (p in prayerTimes) {
-                    val triggerKolkata = kolkataSdf.format(java.util.Date(p.timeMillis))
-                    com.example.util.AdhanDebugLogger.log(
-                        context,
-                        "[CALCULATED PRAYER TIME dayOffset=$dayOffset] Prayer=${p.name.name}, DateStr=$date, Formatted=${p.timeFormatted}, TriggerMillis=${p.timeMillis}, IST=$triggerKolkata"
-                    )
-                }
-
-                val naflWindows = com.example.data.util.NaflCalc.calculateNaflTimes(
-                    fardPrayers = prayerTimes,
-                    preferences = repository.naflPreferences.value,
-                    is24Hour = is24H
-                )
-
-                scheduleSmartNotifications(prayerTimes, naflWindows, date.toString())
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("SmartPrayerNotif", "Error scheduling notifications: ${e.message}", e)
-        }
-    }
 
     var isSmartNotificationsEnabled: Boolean
         get() {
@@ -340,7 +215,7 @@ class SmartPrayerNotificationManager(private val context: Context) {
             if (isPrayerTimeNotificationsEnabled) {
                 // Notification 1: Entry Notification at actual prayer start time
                 if (prayerTriggerMillis > nowMillis) {
-                    val intent = Intent(context, AdhanAlarmReceiver::class.java).apply {
+                    val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
                         action = ACTION_SMART_PRAYER_NOTIF
                         data = Uri.parse("fivelight://prayer/$targetDateStr/${prayer.name.name}/entry")
                         putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_FARD)
@@ -568,68 +443,12 @@ class SmartPrayerNotificationManager(private val context: Context) {
         scheduleAlarm(followUpMillis, followUpIntent, followUpReqCode)
     }
 
-    fun scheduleSnooze(prayerName: PrayerName, dateStr: String = LocalDate.now().toString()) {
-        val targetDate = parseDateOrToday(dateStr)
-        val triggerMillis = System.currentTimeMillis() + (5 * 60 * 1000L)
-        val windowEndMillis = triggerMillis + (15 * 60 * 1000L)
-        val snoozeIntent = Intent(context, AdhanAlarmReceiver::class.java).apply {
-            action = ACTION_SMART_PRAYER_NOTIF
-            data = Uri.parse("fivelight://snooze/$dateStr/${prayerName.name}/${System.currentTimeMillis()}")
-            putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_SNOOZE_ADHAN)
-            putExtra(EXTRA_PRAYER_NAME, prayerName.name)
-            putExtra(EXTRA_PRAYER_DATE, dateStr)
-            putExtra(EXTRA_TRIGGER_MILLIS, triggerMillis)
-            putExtra(EXTRA_WINDOW_END_MILLIS, windowEndMillis)
-        }
-        val reqCode = getSpecialAlarmRequestCode(targetDate, 800 + prayerName.ordinal)
-        scheduleAlarm(triggerMillis, snoozeIntent, reqCode)
-    }
-
-    fun scheduleTestAdhanIn10Seconds() {
-        val dateStr = LocalDate.now().toString()
-        val triggerMillis = System.currentTimeMillis() + 10_000L
-        val windowEndMillis = triggerMillis + (15 * 60 * 1000L)
-        val testIntent = Intent(context, AdhanAlarmReceiver::class.java).apply {
-            action = ACTION_SMART_PRAYER_NOTIF
-            data = Uri.parse("fivelight://test_adhan/$dateStr/${System.currentTimeMillis()}")
-            putExtra(EXTRA_EVENT_TYPE, EVENT_TYPE_FARD)
-            putExtra(EXTRA_PRAYER_NAME, PrayerName.FAJR.name)
-            putExtra(EXTRA_PRAYER_DATE, dateStr)
-            putExtra(EXTRA_TRIGGER_MILLIS, triggerMillis)
-            putExtra(EXTRA_WINDOW_END_MILLIS, windowEndMillis)
-        }
-        val reqCode = 99999
-        com.example.util.AdhanDebugLogger.log(
-            context,
-            "[TEST ALARM ENQUEUED] Test Adhan alarm enqueued for +10s (TriggerTime=${PrayerNotificationLogger.formatTime(triggerMillis)}, reqCode=$reqCode)"
-        )
-        scheduleAlarm(triggerMillis, testIntent, reqCode)
-    }
-
     internal fun scheduleAlarm(triggerAtMillis: Long, intent: Intent, requestCode: Int) {
         val nowMillis = System.currentTimeMillis()
-        val eventType = intent.getStringExtra(EXTRA_EVENT_TYPE) ?: "unknown"
-        val prayerNameRaw = intent.getStringExtra(EXTRA_PRAYER_NAME) ?: ""
-        val prayerDateStr = intent.getStringExtra(EXTRA_PRAYER_DATE) ?: ""
-
         if (triggerAtMillis <= nowMillis) {
-            val kolkataSdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss z", java.util.Locale.US).apply {
-                timeZone = java.util.TimeZone.getTimeZone("Asia/Kolkata")
-            }
-            val triggerKolkata = kolkataSdf.format(java.util.Date(triggerAtMillis))
-            val nowKolkata = kolkataSdf.format(java.util.Date(nowMillis))
-
-            com.example.util.AdhanDebugLogger.log(
-                context,
-                "[ALARM SKIPPED PAST] Prayer=$prayerNameRaw, Date=$prayerDateStr, Event=$eventType, TriggerMillis=$triggerAtMillis ($triggerKolkata), NowMillis=$nowMillis ($nowKolkata)"
-            )
+            // CRITICAL: NEVER schedule an alarm in the past! AlarmManager fires it immediately.
             return
         }
-
-        cancelAlarmByRequestCode(requestCode)
-
-        val prayerEnum = PrayerDisplayUtils.parsePrayerName(prayerNameRaw)
-        val canExact = AdhanPermissionHelper.canScheduleExactAlarms(context)
 
         val pendingIntent = PendingIntent.getBroadcast(
             context,
@@ -644,42 +463,11 @@ class SmartPrayerNotificationManager(private val context: Context) {
             } else {
                 alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
             }
-            PrayerNotificationLogger.logSchedule(
-                prayerName = prayerEnum,
-                dateStr = prayerDateStr,
-                triggerMillis = triggerAtMillis,
-                requestCode = requestCode,
-                eventType = eventType,
-                alertMode = prayerAlertMode.id
-            )
-            val sourceTimeStr = intent.getStringExtra(EXTRA_PRAYER_TIME) ?: "N/A"
-            val tzId = PrayerCalc.activeTimeZone.id
-            com.example.util.AdhanDebugLogger.log(
-                context,
-                "[ALARM SCHEDULED] Prayer: ${prayerEnum.name}, Date: $prayerDateStr, Event: $eventType, " +
-                        "SourceTimeStr: $sourceTimeStr, TimeZone: $tzId, " +
-                        "TriggerMillis: $triggerAtMillis (${PrayerNotificationLogger.formatTime(triggerAtMillis)}), ReqCode: $requestCode, " +
-                        "canScheduleExactAlarms=$canExact, TargetComponent: ${intent.component?.className ?: "Broadcast"}"
-            )
         } catch (e: SecurityException) {
             try {
                 alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
-                com.example.util.AdhanDebugLogger.log(
-                    context,
-                    "[ALARM SCHEDULED FALLBACK] SecurityException exact alarm, used setAndAllowWhileIdle for ReqCode $requestCode"
-                )
-            } catch (ex: Exception) {
-                com.example.util.AdhanDebugLogger.log(
-                    context,
-                    "[ALARM SCHEDULE ERROR] Failed to schedule fallback alarm: ${ex.message}"
-                )
-            }
-        } catch (e: Exception) {
-            com.example.util.AdhanDebugLogger.log(
-                context,
-                "[ALARM SCHEDULE ERROR] Failed to schedule alarm: ${e.message}"
-            )
-        }
+            } catch (_: Exception) {}
+        } catch (_: Exception) {}
     }
 
     fun cancelPrayerNotification(prayerName: PrayerName, dateStr: String = LocalDate.now().toString()) {
@@ -694,28 +482,8 @@ class SmartPrayerNotificationManager(private val context: Context) {
         nm.cancel(notifId)
     }
 
-    fun cancelAlarmWithData(requestCode: Int, dataUri: Uri? = null) {
-        try {
-            val intent = Intent(context, SmartPrayerNotificationReceiver::class.java).apply {
-                action = ACTION_SMART_PRAYER_NOTIF
-                if (dataUri != null) data = dataUri
-            }
-            val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                requestCode,
-                intent,
-                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-            )
-            if (pendingIntent != null) {
-                alarmManager.cancel(pendingIntent)
-                pendingIntent.cancel()
-            }
-        } catch (_: Exception) {}
-    }
-
     fun cancelFollowUpAlarm(prayerName: PrayerName, dateStr: String = LocalDate.now().toString()) {
         val reqCode = getAlarmRequestCode(prayerName, dateStr, ALARM_SLOT_FOLLOWUP)
-        cancelAlarmWithData(reqCode, Uri.parse("fivelight://prayer/$dateStr/${prayerName.name}/followup"))
         cancelAlarmByRequestCode(reqCode)
     }
 
@@ -727,50 +495,23 @@ class SmartPrayerNotificationManager(private val context: Context) {
         val entryCode = getAlarmRequestCode(prayerName, dateStr, ALARM_SLOT_ENTRY)
         val preCode = getAlarmRequestCode(prayerName, dateStr, ALARM_SLOT_PRE_REMINDER)
         val followUpCode = getAlarmRequestCode(prayerName, dateStr, ALARM_SLOT_FOLLOWUP)
-
-        cancelAlarmWithData(entryCode, Uri.parse("fivelight://prayer/$dateStr/${prayerName.name}/entry"))
-        cancelAlarmWithData(preCode, Uri.parse("fivelight://prayer/$dateStr/${prayerName.name}/pre"))
-        cancelAlarmWithData(followUpCode, Uri.parse("fivelight://prayer/$dateStr/${prayerName.name}/followup"))
-
         cancelAlarmByRequestCode(entryCode)
         cancelAlarmByRequestCode(preCode)
         cancelAlarmByRequestCode(followUpCode)
     }
 
     fun cancelAlarmByRequestCode(requestCode: Int) {
-        try {
-            val receiverClasses = listOf(
-                AdhanAlarmReceiver::class.java,
-                SmartPrayerNotificationReceiver::class.java
-            )
-            for (receiverClass in receiverClasses) {
-                val intentWithoutAction = Intent(context, receiverClass)
-                val pi1 = PendingIntent.getBroadcast(
-                    context,
-                    requestCode,
-                    intentWithoutAction,
-                    PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-                )
-                if (pi1 != null) {
-                    alarmManager.cancel(pi1)
-                    pi1.cancel()
-                }
-
-                val intentWithAction = Intent(context, receiverClass).apply {
-                    action = ACTION_SMART_PRAYER_NOTIF
-                }
-                val pi2 = PendingIntent.getBroadcast(
-                    context,
-                    requestCode,
-                    intentWithAction,
-                    PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
-                )
-                if (pi2 != null) {
-                    alarmManager.cancel(pi2)
-                    pi2.cancel()
-                }
-            }
-        } catch (_: Exception) {}
+        val intent = Intent(context, SmartPrayerNotificationReceiver::class.java)
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            intent,
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+        )
+        if (pendingIntent != null) {
+            alarmManager.cancel(pendingIntent)
+            pendingIntent.cancel()
+        }
     }
 
     fun cancelSchedulesForDate(date: LocalDate) {
@@ -805,15 +546,11 @@ class SmartPrayerNotificationManager(private val context: Context) {
         const val CHANNEL_PRAYER_TIME = "fivelight_prayer_time"
         const val CHANNEL_ADHAN = "fivelight_adhan_audio"
         const val CHANNEL_QUIET_REMINDER = "fivelight_quiet_reminder"
-        const val CHANNEL_ADHAN_SERVICE = "fivelight_adhan_service_v2"
-        const val CHANNEL_ADHAN_SERVICE_V2 = "fivelight_adhan_service_v2"
-        const val CHANNEL_ADHAN_ALERT = "fivelight_adhan_alert"
 
         const val CHANNEL_ID = CHANNEL_SMART_PRAYER
 
         const val KEY_SMART_ENABLED = "smart_enabled"
         const val KEY_PRAYER_TIME_ENABLED = "prayer_time_enabled"
-        const val KEY_PRAYER_ALERT_MODE = "prayer_alert_mode"
         const val KEY_PRE_REMINDER_MINS = "pre_reminder_mins"
         const val KEY_CONTEXTUAL_ENABLED = "contextual_enabled"
         const val KEY_NAFL_ENABLED = "nafl_enabled"
@@ -831,12 +568,10 @@ class SmartPrayerNotificationManager(private val context: Context) {
         const val ACTION_SMART_PRAYER_NOTIF = "com.example.ACTION_SMART_PRAYER_NOTIF"
         const val ACTION_MARK_PRAYED = "com.example.ACTION_MARK_PRAYED"
         const val ACTION_UNDO_PRAYED = "com.example.ACTION_UNDO_PRAYED"
-        const val ACTION_SHOW_ADHAN_OVERLAY = "com.example.ACTION_SHOW_ADHAN_OVERLAY"
 
         const val EVENT_TYPE_TEST = "test_smart_prayer"
         const val EVENT_TYPE_FARD = "fard_prayer"
         const val EVENT_TYPE_FARD_FOLLOWUP = "fard_prayer_followup"
-        const val EVENT_TYPE_SNOOZE_ADHAN = "snooze_adhan"
         const val EVENT_TYPE_PRE_PRAYER = "pre_prayer"
         const val EVENT_TYPE_CONTEXTUAL_MORNING = "contextual_morning"
         const val EVENT_TYPE_CONTEXTUAL_EVENING = "contextual_evening"
@@ -961,38 +696,8 @@ class SmartPrayerNotificationManager(private val context: Context) {
                     setSound(null, null)
                 }
 
-                try {
-                    notificationManager.deleteNotificationChannel("fivelight_adhan_service")
-                } catch (_: Exception) {}
-
-                val adhanServiceChannel = NotificationChannel(
-                    CHANNEL_ADHAN_SERVICE_V2,
-                    "Adhan Foreground Service",
-                    NotificationManager.IMPORTANCE_LOW
-                ).apply {
-                    description = "Foreground service notification during Adhan playback"
-                    enableVibration(false)
-                    setSound(null, null)
-                }
-
-                val adhanAlertChannel = NotificationChannel(
-                    CHANNEL_ADHAN_ALERT,
-                    "Adhan FullScreen Alert",
-                    NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = "High-importance alarm alert when device is locked or screen is off"
-                    enableVibration(true)
-                }
-
                 notificationManager.createNotificationChannels(
-                    listOf(
-                        smartPrayerChannel,
-                        prayerTimeChannel,
-                        adhanChannel,
-                        quietReminderChannel,
-                        adhanServiceChannel,
-                        adhanAlertChannel
-                    )
+                    listOf(smartPrayerChannel, prayerTimeChannel, adhanChannel, quietReminderChannel)
                 )
             }
         }
