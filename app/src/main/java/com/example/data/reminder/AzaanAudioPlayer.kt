@@ -7,6 +7,8 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -15,6 +17,9 @@ import com.example.R
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 enum class AdhanPlaybackState {
     IDLE,
@@ -35,13 +40,27 @@ object AzaanAudioPlayer {
     private var audioManager: AudioManager? = null
     private var audioFocusRequest: AudioFocusRequest? = null
     private var isAudioStoppedOrCompleted = false
+    private var lastContext: Context? = null
 
     private val _playbackState = MutableStateFlow(AdhanPlaybackState.IDLE)
     val playbackState: StateFlow<AdhanPlaybackState> = _playbackState.asStateFlow()
 
+    private fun setPlaybackState(context: Context?, newState: AdhanPlaybackState) {
+        val oldState = _playbackState.value
+        _playbackState.value = newState
+        val ctx = context ?: lastContext
+        if (ctx != null) {
+            val timestamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
+            com.example.util.AdhanDebugLogger.log(
+                ctx,
+                "[PLAYBACK STATE CHANGE $timestamp] ${oldState.name} -> ${newState.name}"
+            )
+        }
+    }
+
     @Synchronized
-    fun resetPlaybackState() {
-        _playbackState.value = AdhanPlaybackState.IDLE
+    fun resetPlaybackState(context: Context? = null) {
+        setPlaybackState(context, AdhanPlaybackState.IDLE)
     }
 
     @Synchronized
@@ -51,6 +70,7 @@ object AzaanAudioPlayer {
         dateStr: String = "UNKNOWN",
         reason: String = "service_request"
     ) {
+        lastContext = context.applicationContext
         val stackTrace = Thread.currentThread().stackTrace
         val callerFrames = stackTrace.drop(2).take(4).joinToString(" -> ") { "${it.className}.${it.methodName}(${it.fileName}:${it.lineNumber})" }
         com.example.util.AdhanDebugLogger.log(
@@ -58,9 +78,9 @@ object AzaanAudioPlayer {
             "[AUDIO START REQUESTED] Prayer=$prayerName, Date=$dateStr, Reason=$reason, Stack=$callerFrames"
         )
 
-        stopAzaanInternal()
+        stopAzaanInternal(context)
         isAudioStoppedOrCompleted = false
-        _playbackState.value = AdhanPlaybackState.IDLE
+        setPlaybackState(context, AdhanPlaybackState.IDLE)
 
         val appContext = context.applicationContext
         audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
@@ -80,7 +100,7 @@ object AzaanAudioPlayer {
 
         if (isSilentOrVibrate || isDndMuted) {
             isAudioStoppedOrCompleted = true
-            _playbackState.value = AdhanPlaybackState.SKIPPED
+            setPlaybackState(appContext, AdhanPlaybackState.SKIPPED)
             com.example.util.AdhanDebugLogger.log(
                 appContext,
                 "[AUDIO SKIPPED reason = ringerMode ($ringerMode) / dnd value (isDndMuted=$isDndMuted)] Audio playback suppressed due to Ringer Mode or DND Policy."
@@ -94,7 +114,7 @@ object AzaanAudioPlayer {
         val focusGranted = requestAudioFocus(appContext, audioManager)
         if (!focusGranted) {
             isAudioStoppedOrCompleted = true
-            _playbackState.value = AdhanPlaybackState.SKIPPED
+            setPlaybackState(appContext, AdhanPlaybackState.SKIPPED)
             com.example.util.AdhanDebugLogger.log(
                 appContext,
                 "[AUDIO ERROR] Audio focus request denied by system."
@@ -104,6 +124,22 @@ object AzaanAudioPlayer {
             return
         }
 
+        // 4. Detailed Pre-Creation Diagnostics Log
+        val alarmVol = audioManager?.getStreamVolume(AudioManager.STREAM_ALARM) ?: -1
+        val alarmMax = audioManager?.getStreamMaxVolume(AudioManager.STREAM_ALARM) ?: -1
+        val musicVol = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: -1
+        val musicMax = audioManager?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: -1
+        val filterVal = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager != null) {
+            notificationManager.currentInterruptionFilter
+        } else -1
+        val isServiceCtx = context is android.app.Service || appContext is android.app.Service
+        val ctxClassName = context.javaClass.name
+
+        com.example.util.AdhanDebugLogger.log(
+            appContext,
+            "[AUDIO DIAGNOSTICS] ringerMode=$ringerMode, dndFilter=$filterVal, ALARM_VOL=$alarmVol/$alarmMax, MUSIC_VOL=$musicVol/$musicMax, focusGranted=$focusGranted, isServiceCtx=$isServiceCtx ($ctxClassName)"
+        )
+
         try {
             val attrs = AudioAttributes.Builder()
                 .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
@@ -111,51 +147,88 @@ object AzaanAudioPlayer {
                 .build()
 
             mediaPlayer = MediaPlayer.create(appContext, R.raw.azaan, attrs, 0)?.apply {
+                val durMs = try { duration } catch (_: Exception) { -1 }
+                com.example.util.AdhanDebugLogger.log(
+                    appContext,
+                    "[MEDIAPLAYER CREATED] mpNotNull=true, duration=$durMs ms"
+                )
+
+                setOnInfoListener { _, what, extra ->
+                    com.example.util.AdhanDebugLogger.log(
+                        appContext,
+                        "[AUDIO INFO] MediaPlayer info code: what=$what, extra=$extra"
+                    )
+                    false
+                }
+
                 setOnCompletionListener {
                     isAudioStoppedOrCompleted = true
-                    _playbackState.value = AdhanPlaybackState.COMPLETED
+                    setPlaybackState(appContext, AdhanPlaybackState.COMPLETED)
                     com.example.util.AdhanDebugLogger.log(appContext, "[AUDIO COMPLETED] Azaan audio completed naturally.")
                     Log.i(TAG, "Scheduled Azaan audio playback completed naturally.")
-                    stopAzaanInternal()
+                    stopAzaanInternal(appContext)
                 }
+
                 setOnErrorListener { mp, what, extra ->
                     isAudioStoppedOrCompleted = true
-                    _playbackState.value = AdhanPlaybackState.STOPPED
-                    com.example.util.AdhanDebugLogger.log(appContext, "[AUDIO ERROR] MediaPlayer error during playback (what=$what, extra=$extra).")
+                    setPlaybackState(appContext, AdhanPlaybackState.STOPPED)
+                    com.example.util.AdhanDebugLogger.log(appContext, "[AUDIO ERROR] MediaPlayer error code: what=$what, extra=$extra.")
                     Log.e(TAG, "MediaPlayer error during Azaan playback.")
                     try { mp.reset(); mp.release() } catch (_: Exception) {}
                     if (mediaPlayer === mp) mediaPlayer = null
                     abandonAudioFocus()
                     true
                 }
+
                 start()
+
+                val mainHandler = Handler(Looper.getMainLooper())
+                mainHandler.postDelayed({
+                    val isPlaying1s = isPlaying()
+                    val pos1s = try { mediaPlayer?.currentPosition ?: -1 } catch (_: Exception) { -1 }
+                    com.example.util.AdhanDebugLogger.log(
+                        appContext,
+                        "[AUDIO 1S CHECK] 1 sec post-start: isPlaying=$isPlaying1s, currentPosition=$pos1s ms"
+                    )
+                }, 1000L)
             }
+
             if (mediaPlayer == null) {
                 isAudioStoppedOrCompleted = true
-                _playbackState.value = AdhanPlaybackState.SKIPPED
+                setPlaybackState(appContext, AdhanPlaybackState.SKIPPED)
                 com.example.util.AdhanDebugLogger.log(appContext, "[AUDIO ERROR] MediaPlayer creation failed (null or missing R.raw.azaan resource).")
                 return
             }
-            _playbackState.value = AdhanPlaybackState.PLAYING
+
+            setPlaybackState(appContext, AdhanPlaybackState.PLAYING)
             com.example.util.AdhanDebugLogger.log(appContext, "[AUDIO STARTED] Azaan audio playback started successfully.")
             Log.i(TAG, "Scheduled Azaan audio playback started successfully.")
         } catch (e: Exception) {
             isAudioStoppedOrCompleted = true
-            _playbackState.value = AdhanPlaybackState.STOPPED
+            setPlaybackState(appContext, AdhanPlaybackState.STOPPED)
             com.example.util.AdhanDebugLogger.log(appContext, "[AUDIO ERROR] Failed to start Azaan audio: ${e.message}")
             Log.e(TAG, "Failed to play Azaan audio: ${e.message}", e)
-            stopAzaanInternal()
+            stopAzaanInternal(appContext)
         }
     }
 
     @Synchronized
-    fun stopAzaan() {
+    fun stopAzaan(context: Context? = null) {
+        val stackTrace = Thread.currentThread().stackTrace
+        val callerFrames = stackTrace.drop(2).take(4).joinToString(" -> ") { "${it.className}.${it.methodName}(${it.fileName}:${it.lineNumber})" }
+        val ctx = context ?: lastContext
+        if (ctx != null) {
+            com.example.util.AdhanDebugLogger.log(
+                ctx,
+                "[AUDIO STOP REQUESTED] Stack=$callerFrames"
+            )
+        }
         isAudioStoppedOrCompleted = true
-        _playbackState.value = AdhanPlaybackState.STOPPED
-        stopAzaanInternal()
+        setPlaybackState(ctx, AdhanPlaybackState.STOPPED)
+        stopAzaanInternal(ctx)
     }
 
-    private fun stopAzaanInternal() {
+    private fun stopAzaanInternal(context: Context? = null) {
         try {
             mediaPlayer?.let { mp ->
                 if (mp.isPlaying) {
@@ -190,15 +263,12 @@ object AzaanAudioPlayer {
             Log.i(TAG, "Audio focus change received: $focusChange")
             when (focusChange) {
                 AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                    // Full or transient loss: stop playback
-                    stopAzaan()
+                    stopAzaan(context)
                 }
                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                    // DUCK: Lower volume to 30% instead of stopping
                     try { mediaPlayer?.setVolume(0.3f, 0.3f) } catch (_: Exception) {}
                 }
                 AudioManager.AUDIOFOCUS_GAIN -> {
-                    // GAIN: Restore volume to 100% if playing
                     try { mediaPlayer?.setVolume(1.0f, 1.0f) } catch (_: Exception) {}
                 }
             }

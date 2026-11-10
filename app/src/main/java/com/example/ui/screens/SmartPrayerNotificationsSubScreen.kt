@@ -529,6 +529,27 @@ fun SmartPrayerNotificationsSubScreen(
                                 Text("View Debug Log", fontSize = 13.sp)
                             }
                         }
+
+                        OutlinedButton(
+                            onClick = {
+                                com.example.data.reminder.AzaanAudioPlayer.playAzaan(
+                                    context,
+                                    "TEST_PRAYER",
+                                    java.time.LocalDate.now().toString(),
+                                    "manual_sound_test"
+                                )
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "Testing Adhan sound directly...",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("test_adhan_sound_only_button")
+                        ) {
+                            Text("Test Adhan sound only", fontSize = 13.sp)
+                        }
                     }
                 }
             }
